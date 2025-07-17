@@ -1,4 +1,1 @@
 .env
-
-/dev/cert/*
-/dev/acme.sh/*

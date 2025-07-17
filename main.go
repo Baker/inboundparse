@@ -102,6 +102,8 @@ func main() {
 	log.Printf("DKIM validation: %v", *enableDKIM)
 	log.Printf("DMARC validation: %v", *enableDMARC)
 	log.Printf("Verbose: %v", *verbose)
+	log.Printf("Cert File: %s", *certFile)
+	log.Printf("Key File: %s", *keyFile)
 
 	if err := server.Start(); err != nil {
 		log.Fatal("Failed to start SMTP server:", err)

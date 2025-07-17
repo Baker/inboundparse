@@ -7,11 +7,12 @@ import (
 
 	"github.com/emersion/go-msgauth/dkim"
 	"github.com/emersion/go-msgauth/dmarc"
+	"github.com/mnako/letters"
 	"github.com/zaccone/spf"
 )
 
 // performAuthenticationChecks runs all enabled authentication checks
-func (mp *MessageProcessor) performAuthenticationChecks(rawMessage string, headers map[string][]string) AuthenticationResults {
+func (mp *MessageProcessor) performAuthenticationChecks(rawMessage string, headers letters.Headers) AuthenticationResults {
 	results := AuthenticationResults{}
 
 	// SPF Check
@@ -97,9 +98,9 @@ func (mp *MessageProcessor) checkDKIM(rawMessage string) *DKIMResult {
 }
 
 // checkDMARC performs DMARC authentication check with hierarchical domain lookup following RFC 7489
-func (mp *MessageProcessor) checkDMARC(rawMessage string, headers map[string][]string, spfResult *SPFResult, dkimResult *DKIMResult) *DMARCResult {
+func (mp *MessageProcessor) checkDMARC(rawMessage string, headers letters.Headers, spfResult *SPFResult, dkimResult *DKIMResult) *DMARCResult {
 	// Extract domain from From header (RFC5322.From) - this is what DMARC protects
-	fromHeader := headers["From"]
+	fromHeader := headers.From[0].Address
 	if len(fromHeader) == 0 {
 		return &DMARCResult{
 			Result: "none",
@@ -108,7 +109,7 @@ func (mp *MessageProcessor) checkDMARC(rawMessage string, headers map[string][]s
 	}
 
 	// RFC 7489: The domain in the RFC5322.From field is the primary identifier
-	fromDomain := mp.extractDomainFromEmail(fromHeader[0])
+	fromDomain := mp.extractDomainFromEmail(fromHeader)
 	if fromDomain == "" {
 		return &DMARCResult{
 			Result: "none",

@@ -49,6 +49,7 @@ func NewSMTPServer(config *ServerConfig) *SMTPServer {
 
 	// Optionally enable TLS
 	if config.CertFile != "" && config.KeyFile != "" {
+		log.Printf("Loading TLS certificate from %s and %s", config.CertFile, config.KeyFile)
 		cert, err := tls.LoadX509KeyPair(config.CertFile, config.KeyFile)
 		if err != nil {
 			log.Fatalf("Failed to load TLS certificate: %v", err)

@@ -41,33 +41,15 @@ func (mp *MessageProcessor) ParseSubject(subject string) string {
 	return decoded
 }
 
-func (mp *MessageProcessor) ParseEmailAddresses(addrs []string) []EmailAddress {
-	result := make([]EmailAddress, len(addrs))
-	dec := new(mime.WordDecoder)
+func (mp *MessageProcessor) ParseEmailAddresses(addrs []*mail.Address) []EmailAddress {
+	parsedAddresses := make([]EmailAddress, len(addrs))
 	for i, addr := range addrs {
-		parsed, err := mail.ParseAddress(addr)
-		if err != nil {
-			result[i] = EmailAddress{
-				Address: strings.Trim(addr, "<>"),
-			}
-			continue
-		}
-
-		name := parsed.Name
-		if name != "" {
-			decoded, err := dec.DecodeHeader(name)
-			if err == nil {
-				name = decoded
-			}
-			log.Printf("Decoded email address: %v", name)
-		}
-
-		result[i] = EmailAddress{
-			Address: parsed.Address,
-			Name:    name,
+		parsedAddresses[i] = EmailAddress{
+			Address: addr.Address,
+			Name:    addr.Name,
 		}
 	}
-	return result
+	return parsedAddresses
 }
 
 func (mp *MessageProcessor) ParseBody(msg *mail.Message) Body {

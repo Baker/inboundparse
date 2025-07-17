@@ -8,10 +8,10 @@ import (
 	"log"
 	"net/http"
 	"net/mail"
-	"strings"
 	"time"
 
 	"github.com/emersion/go-smtp"
+	"github.com/mnako/letters"
 )
 
 type MessageProcessor struct {
@@ -68,16 +68,19 @@ type Body struct {
 }
 
 type WebhookPayload struct {
-	Timestamp             time.Time             `json:"timestamp"`
-	From                  EmailAddress          `json:"from"`
-	To                    []EmailAddress        `json:"to"`
-	Subject               string                `json:"subject"`
-	MessageID             string                `json:"message_id"`
-	Headers               map[string][]string   `json:"headers"`
-	TextBody              string                `json:"text_body"`
-	HTMLBody              string                `json:"html_body"`
-	AuthenticationResults AuthenticationResults `json:"authentication_results"`
-	ServerInfo            ServerInfo            `json:"server_info"`
+	Timestamp             time.Time              `json:"timestamp"`
+	From                  []*mail.Address        `json:"from"`
+	To                    []*mail.Address        `json:"to"`
+	Subject               string                 `json:"subject"`
+	MessageID             string                 `json:"message_id"`
+	Headers               letters.Headers        `json:"headers"`
+	TextBody              string                 `json:"text_body"`
+	EnrichedTextBody      string                 `json:"enriched_text_body"`
+	HTMLBody              string                 `json:"html_body"`
+	Attachments           []letters.AttachedFile `json:"attachments"`
+	InlineFiles           []letters.InlineFile   `json:"inline_files"`
+	AuthenticationResults AuthenticationResults  `json:"authentication_results"`
+	ServerInfo            ServerInfo             `json:"server_info"`
 }
 
 type ServerInfo struct {
@@ -97,40 +100,24 @@ func (mp *MessageProcessor) ProcessMessage(r io.Reader) error {
 	rawMessage := buf.String()
 
 	// Parse the email
-	msg, err := mail.ReadMessage(strings.NewReader(rawMessage))
+	email, err := letters.ParseEmail(bytes.NewReader(buf.Bytes()))
 	if err != nil {
 		return fmt.Errorf("failed to parse message: %w", err)
 	}
 
-	// Extract headers
-	headers := make(map[string][]string)
-	for key, values := range msg.Header {
-		headers[key] = values
-	}
-
-	// Read body
-	var bodyBuf bytes.Buffer
-	_, err = io.Copy(&bodyBuf, msg.Body)
-	if err != nil {
-		return fmt.Errorf("failed to read body: %w", err)
-	}
-	body := bodyBuf.String()
-
-	if mp.config.Verbose {
-		log.Printf("From: %v", mp.from)
-		log.Printf("FromHeader: %v", msg.Header.Get("From"))
-	}
-
 	// Create webhook payload
 	payload := &WebhookPayload{
-		Timestamp: time.Now(),
-		From:      mp.ParseEmailAddress(msg.Header.Get("From")),
-		To:        mp.ParseEmailAddresses(strings.Split(msg.Header.Get("To"), ",")),
-		Subject:   mp.ParseSubject(msg.Header.Get("Subject")),
-		MessageID: msg.Header.Get("Message-ID"),
-		Headers:   headers,
-		TextBody:  body, // Simplified - in reality you'd parse MIME
-		HTMLBody:  "",   // Would need MIME parsing for HTML
+		Timestamp:        email.Headers.Date,
+		From:             email.Headers.From,
+		To:               email.Headers.To,
+		Subject:          email.Headers.Subject,
+		MessageID:        string(email.Headers.MessageID),
+		Headers:          email.Headers,
+		TextBody:         email.Text,
+		EnrichedTextBody: email.EnrichedText, // See RFC 1523, RFC 1563, and RFC 1896
+		HTMLBody:         email.HTML,
+		Attachments:      email.AttachedFiles,
+		InlineFiles:      email.InlineFiles,
 		ServerInfo: ServerInfo{
 			RemoteAddr: mp.getRemoteAddr(),
 			LocalAddr:  mp.getLocalAddr(),
@@ -140,7 +127,7 @@ func (mp *MessageProcessor) ProcessMessage(r io.Reader) error {
 
 	// Perform authentication checks
 	if mp.config.EnableSPF || mp.config.EnableDKIM || mp.config.EnableDMARC {
-		payload.AuthenticationResults = mp.performAuthenticationChecks(rawMessage, headers)
+		payload.AuthenticationResults = mp.performAuthenticationChecks(rawMessage, email.Headers)
 	}
 
 	// Send to webhook

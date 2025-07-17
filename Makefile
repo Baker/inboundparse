@@ -3,7 +3,6 @@
 # Variables
 BINARY_NAME=inboundparse
 DOCKER_IMAGE=inboundparse:latest
-WEBHOOK_URL=http://localhost:8080/api/webhook
 
 # Default target
 help:
@@ -31,23 +30,15 @@ deps:
 # Run the service
 run: build
 	@echo "Starting inboundparse server..."
-	@echo "Webhook URL: $(WEBHOOK_URL)"
+	@echo "Webhook URL: $${WEBHOOK_URL:-http://localhost:8080/webhook}"
 	@echo "SMTP listening on :25 (run as root or use port >1024)"
-	./$(BINARY_NAME) -webhook=$(WEBHOOK_URL) -verbose=true
+	./$(BINARY_NAME)
 
 # Run with non-privileged port
 run-dev: build
 	@echo "Starting inboundparse server on port 2525..."
-	./$(BINARY_NAME) -listen=:2525 -webhook=$(WEBHOOK_URL) -verbose=true
-
-run-service:
-	@echo "Starting inboundparse server..."
-	@echo "Webhook URL: $(WEBHOOK_URL)"
-	cd dev && docker-compose up -d
-
-stop-service:
-	@echo "Stopping inboundparse server..."
-	cd dev && docker-compose down
+	@echo "Webhook URL: $${WEBHOOK_URL:-http://localhost:8080/webhook}"
+	./$(BINARY_NAME) -listen=:2525 
 
 # Run tests
 test:
@@ -64,16 +55,6 @@ clean:
 docker-build:
 	@echo "Building Docker image..."
 	docker build -t $(DOCKER_IMAGE) .
-
-# Run with Docker Compose
-docker-run:
-	@echo "Starting services with Docker Compose..."
-	docker-compose up -d
-
-# Stop Docker containers
-docker-stop:
-	@echo "Stopping Docker containers..."
-	docker-compose down
 
 # Test email sending
 test-email:
