@@ -23,7 +23,9 @@ primary_region = 'bos'
   protocol = "tcp"
 
   [[services.ports]]
+    handlers = ["proxy_proto"]
     port = 25
 
   [[services.ports]]
+    handlers = ["proxy_proto"]
     port = 587

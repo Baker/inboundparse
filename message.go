@@ -73,20 +73,13 @@ type WebhookPayload struct {
 	To                    []*mail.Address        `json:"to"`
 	Subject               string                 `json:"subject"`
 	MessageID             string                 `json:"message_id"`
-	Headers               letters.Headers        `json:"headers"`
+	Headers               map[string][]string    `json:"headers"`
 	TextBody              string                 `json:"text_body"`
 	EnrichedTextBody      string                 `json:"enriched_text_body"`
 	HTMLBody              string                 `json:"html_body"`
 	Attachments           []letters.AttachedFile `json:"attachments"`
 	InlineFiles           []letters.InlineFile   `json:"inline_files"`
 	AuthenticationResults AuthenticationResults  `json:"authentication_results"`
-	ServerInfo            ServerInfo             `json:"server_info"`
-}
-
-type ServerInfo struct {
-	RemoteAddr string `json:"remote_addr"`
-	LocalAddr  string `json:"local_addr"`
-	ServerName string `json:"server_name"`
 }
 
 func (mp *MessageProcessor) ProcessMessage(r io.Reader) error {
@@ -112,17 +105,12 @@ func (mp *MessageProcessor) ProcessMessage(r io.Reader) error {
 		To:               email.Headers.To,
 		Subject:          email.Headers.Subject,
 		MessageID:        string(email.Headers.MessageID),
-		Headers:          email.Headers,
+		Headers:          email.Headers.ExtraHeaders,
 		TextBody:         email.Text,
 		EnrichedTextBody: email.EnrichedText, // See RFC 1523, RFC 1563, and RFC 1896
 		HTMLBody:         email.HTML,
 		Attachments:      email.AttachedFiles,
 		InlineFiles:      email.InlineFiles,
-		ServerInfo: ServerInfo{
-			RemoteAddr: mp.getRemoteAddr(),
-			LocalAddr:  mp.getLocalAddr(),
-			ServerName: mp.config.ServerName,
-		},
 	}
 
 	// Perform authentication checks
@@ -132,20 +120,6 @@ func (mp *MessageProcessor) ProcessMessage(r io.Reader) error {
 
 	// Send to webhook
 	return mp.sendWebhook(payload)
-}
-
-func (mp *MessageProcessor) getRemoteAddr() string {
-	if mp.conn != nil && mp.conn.Conn() != nil {
-		return mp.conn.Conn().RemoteAddr().String()
-	}
-	return "unknown"
-}
-
-func (mp *MessageProcessor) getLocalAddr() string {
-	if mp.conn != nil && mp.conn.Conn() != nil {
-		return mp.conn.Conn().LocalAddr().String()
-	}
-	return "unknown"
 }
 
 func (mp *MessageProcessor) sendWebhook(payload *WebhookPayload) error {
