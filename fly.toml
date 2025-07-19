@@ -27,9 +27,11 @@ primary_region = 'bos'
 
   [[services.ports]]
     port = 25
+    handlers = ["proxy_proto"]
 
   [[services.ports]]
     port = 587
+    handlers = ["proxy_proto"]
 
 [mounts]
   source = "certs"

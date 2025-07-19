@@ -22,7 +22,7 @@ FROM alpine:latest
 RUN apk --no-cache add ca-certificates openssl curl socat
 
 # Install acme.sh
-RUN curl https://get.acme.sh | sh -s email=${ACME_SH_EMAIL:-acme@example.com}
+RUN curl https://get.acme.sh | sh -s email=${ACME_SH_EMAIL:-dev@inboundparse.com}
 
 WORKDIR /root/
 
@@ -43,7 +43,6 @@ ENV CF_Token=""
 ENV CF_Zone_ID=""
 ENV DNS_API=""
 ENV ACME_SH_EMAIL=""
-ENV DOMAIN=""
 ENV MXDOMAIN=""
 ENV WEBHOOK_URL=""
 ENV ENABLE_SPF="true"
