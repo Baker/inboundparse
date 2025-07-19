@@ -13,11 +13,11 @@ if ! command -v acme.sh >/dev/null 2>&1; then
 fi
 
 # Set up account on first startup
-if [ ! -f /acme.sh/account.conf ]; then
+if [ ! -f /cert/account.conf ]; then
     echo "First startup - setting up account ${ACME_SH_EMAIL}"
-    acme.sh --update-account --accountemail ${ACME_SH_EMAIL}
+    acme.sh --home /cert --update-account --accountemail ${ACME_SH_EMAIL}
     echo "Requesting certificates for ${DOMAIN} using ${DNS_API}"
-    acme.sh --issue -d "${DOMAIN}" --dns "${DNS_API}" --server letsencrypt --log
+    acme.sh --home /cert --issue -d "${DOMAIN}" --dns "${DNS_API}" --server letsencrypt --log
 fi
 
 # Install certificates if not already present

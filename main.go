@@ -9,12 +9,12 @@ import (
 )
 
 var (
-	listenAddr     = flag.String("listen", ":25", "SMTP server listen address")
-	listenAddrTLS  = flag.String("listen-tls", ":587", "SMTP server listen address for TLS")
+	listenAddr     = flag.String("listen", "0.0.0.0:25", "SMTP server listen address")
+	listenAddrTLS  = flag.String("listen-tls", "0.0.0.0:587", "SMTP server listen address for TLS")
 	webhookURL     = flag.String("webhook", "", "Webhook URL to send email data to")
 	webhookUser    = flag.String("webhook-user", "", "Basic auth username for webhook")
 	webhookPass    = flag.String("webhook-pass", "", "Basic auth password for webhook")
-	serverName     = flag.String("name", "inboundparse", "SMTP server name")
+	serverName     = flag.String("name", "mx.inboundparse.com", "SMTP server name")
 	maxMessageSize = flag.Int64("max-size", 10*1024*1024, "Maximum message size in bytes")
 	readTimeout    = flag.Int("read-timeout", 30, "Read timeout in seconds")
 	writeTimeout   = flag.Int("write-timeout", 30, "Write timeout in seconds")

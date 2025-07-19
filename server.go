@@ -78,7 +78,6 @@ func NewSMTPServer(config *ServerConfig) *SMTPServer {
 }
 
 func (s *SMTPServer) Start() error {
-	log.Printf("SMTP server listening on %s", s.config.ListenAddr)
 	if s.server.TLSConfig != nil {
 		go func() {
 			log.Printf("Starting plainServer at %s", s.config.ListenAddr)

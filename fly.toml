@@ -9,8 +9,10 @@ primary_region = 'bos'
 [build]
 
 [env]
-  WEBHOOK_URL = "https://webhook.site/"
   VERBOSE = "true"
+  ENABLE_DKIM = "true"
+  ENABLE_DMARC = "true"
+  ENABLE_SPF = "true"
 
 [[vm]]
   memory = '1gb'
@@ -20,6 +22,7 @@ primary_region = 'bos'
 
 [[services]]
   internal_port = 25
+  internal_address = "0.0.0.0"
   protocol = "tcp"
 
   [[services.ports]]
@@ -27,3 +30,10 @@ primary_region = 'bos'
 
   [[services.ports]]
     port = 587
+
+[mounts]
+  source = "certs"
+  destination = "/cert"
+  auto_extend_size_threshold = 80
+  auto_extend_size_increment = "1GB"
+  auto_extend_size_limit = "5GB"
