@@ -15,7 +15,7 @@ type Backend struct {
 // NewSession is called when a new SMTP session is created
 func (b *Backend) NewSession(c *smtp.Conn) (smtp.Session, error) {
 	if b.config.Verbose {
-		log.Printf("New SMTP session from %s", c.Conn().RemoteAddr())
+		log.Printf("New SMTP session from %s", c.Conn().RemoteAddr().String())
 	}
 	return &Session{
 		config: b.config,

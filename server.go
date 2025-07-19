@@ -82,15 +82,15 @@ func NewSMTPServer(config *ServerConfig) *SMTPServer {
 func (s *SMTPServer) Start() error {
 	if s.server.TLSConfig != nil {
 		go func() {
-			log.Printf("Starting plain SMTP server at %s with PROXY protocol", s.config.ListenAddr)
+			log.Printf("Starting plain SMTP server at %s", s.config.ListenAddr)
 			if err := s.listenAndServeWithProxy(s.server, s.config.ListenAddr); err != nil {
 				log.Fatal(err)
 			}
 		}()
-		log.Printf("Starting TLS SMTP server at %s with PROXY protocol", s.config.ListenAddrTLS)
+		log.Printf("Starting TLS SMTP server at %s", s.config.ListenAddrTLS)
 		return s.listenAndServeWithProxy(s.tlsServer, s.config.ListenAddrTLS)
 	}
-	log.Printf("Starting plain SMTP server at %s with PROXY protocol", s.config.ListenAddr)
+	log.Printf("Starting plain SMTP server at %s", s.config.ListenAddr)
 	return s.listenAndServeWithProxy(s.server, s.config.ListenAddr)
 }
 
@@ -105,7 +105,7 @@ func (s *SMTPServer) listenAndServeWithProxy(server *smtp.Server, addr string) e
 		Listener: ln,
 		Policy: func(upstream net.Addr) (proxyproto.Policy, error) {
 			// Accept PROXY protocol from any source
-			// In production, you might want to restrict this to Fly.io's proxy IPs
+			// TODO: In production, you might want to restrict this to Fly.io's proxy IPs
 			return proxyproto.USE, nil
 		},
 	}
