@@ -1,4 +1,4 @@
-version: 2
+version: "2"
 
 run:
   timeout: 5m
@@ -14,20 +14,18 @@ linters:
     - unused
     - gocyclo
     - misspell
+  settings:
+    gocyclo:
+      min-complexity: 20
+    misspell:
+      locale: US
 
 formatters:
   enable:
     - gofmt
     - goimports
 
-linters-settings:
-  gocyclo:
-    min-complexity: 20
-  misspell:
-    locale: US
-
 issues:
-  exclude-use-default: false
   max-issues-per-linter: 0
   max-same-issues: 0
 
