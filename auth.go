@@ -336,8 +336,3 @@ func (mp *MessageProcessor) extractDomainFromEmail(email string) string {
 
 	return domain
 }
-
-// Legacy alias for backward compatibility
-func (mp *MessageProcessor) extractDomainFromEmail5322(email string) string {
-	return mp.extractDomainFromEmail(email)
-}
