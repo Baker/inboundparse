@@ -42,8 +42,9 @@ run-dev: build
 
 # Run tests
 test:
-	@echo "Running tests..."
-	go test -v ./...
+    @echo "Running tests..."
+    go test -v ./...
+
 
 # Clean build artifacts
 clean:

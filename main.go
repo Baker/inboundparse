@@ -27,6 +27,9 @@ var (
 )
 
 func main() {
+	if os.Getenv("INBOUNDPARSE_TEST_EXIT") == "1" {
+		return
+	}
 	// Load environment variables
 	if err := godotenv.Load(); err != nil {
 		log.Println("No .env file found, using default values")
@@ -91,7 +94,10 @@ func main() {
 		KeyFile:        *keyFile,
 	}
 
-	server := NewSMTPServer(config)
+	server, err := NewSMTPServer(config)
+	if err != nil {
+		log.Fatal("Failed to initialize SMTP server:", err)
+	}
 
 	log.Printf("Starting SMTP server on %s", *listenAddr)
 	if *certFile != "" && *keyFile != "" {

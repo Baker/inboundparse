@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"net/mail"
 	"time"
@@ -19,6 +20,8 @@ type MessageProcessor struct {
 	from   string
 	to     []string
 	conn   *smtp.Conn
+	// testRemoteIP allows tests to stub the remote IP without a real connection
+	testRemoteIP net.IP
 }
 
 type EmailAddress struct {

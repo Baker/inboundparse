@@ -2,6 +2,8 @@ package main
 
 import (
 	"crypto/tls"
+	"errors"
+	"fmt"
 	"log"
 	"net"
 	"time"
@@ -34,7 +36,7 @@ type SMTPServer struct {
 	tlsServer *smtp.Server
 }
 
-func NewSMTPServer(config *ServerConfig) *SMTPServer {
+func NewSMTPServer(config *ServerConfig) (*SMTPServer, error) {
 	var tlsServer *smtp.Server
 	backend := &Backend{
 		config: config,
@@ -45,7 +47,7 @@ func NewSMTPServer(config *ServerConfig) *SMTPServer {
 	server.Domain = config.ServerName
 	server.MaxMessageBytes = config.MaxMessageSize
 	server.MaxRecipients = 100       // Allow multiple recipients
-	server.AllowInsecureAuth = false // Allow auth without TLS
+	server.AllowInsecureAuth = false // Disallow AUTH before TLS
 	server.ReadTimeout = time.Duration(config.ReadTimeout) * time.Second
 	server.WriteTimeout = time.Duration(config.WriteTimeout) * time.Second
 
@@ -54,8 +56,7 @@ func NewSMTPServer(config *ServerConfig) *SMTPServer {
 		log.Printf("Loading TLS certificate from %s and %s", config.CertFile, config.KeyFile)
 		cert, err := tls.LoadX509KeyPair(config.CertFile, config.KeyFile)
 		if err != nil {
-			log.Fatalf("Failed to load TLS certificate: %v", err)
-			return nil
+			return nil, fmt.Errorf("failed to load TLS certificate: %w", err)
 		}
 		tlsServer = smtp.NewServer(backend)
 		tlsServer.Addr = config.ListenAddrTLS
@@ -68,6 +69,7 @@ func NewSMTPServer(config *ServerConfig) *SMTPServer {
 		tlsServer.TLSConfig = &tls.Config{
 			ServerName:   config.ServerName,
 			Certificates: []tls.Certificate{cert},
+			MinVersion:   tls.VersionTLS12,
 		}
 		server.TLSConfig = tlsServer.TLSConfig
 	}
@@ -76,15 +78,15 @@ func NewSMTPServer(config *ServerConfig) *SMTPServer {
 		config:    config,
 		server:    server,
 		tlsServer: tlsServer,
-	}
+	}, nil
 }
 
 func (s *SMTPServer) Start() error {
-	if s.server.TLSConfig != nil {
+	if s.tlsServer != nil {
 		go func() {
 			log.Printf("Starting plain SMTP server at %s", s.config.ListenAddr)
 			if err := s.listenAndServeWithProxy(s.server, s.config.ListenAddr); err != nil {
-				log.Fatal(err)
+				log.Printf("plain SMTP server stopped with error: %v", err)
 			}
 		}()
 		log.Printf("Starting TLS SMTP server at %s", s.config.ListenAddrTLS)
@@ -114,11 +116,16 @@ func (s *SMTPServer) listenAndServeWithProxy(server *smtp.Server, addr string) e
 }
 
 func (s *SMTPServer) Stop() error {
+	var closeErrors error
 	if s.server != nil {
-		return s.server.Close()
+		if err := s.server.Close(); err != nil {
+			closeErrors = errors.Join(closeErrors, err)
+		}
 	}
 	if s.tlsServer != nil {
-		return s.tlsServer.Close()
+		if err := s.tlsServer.Close(); err != nil {
+			closeErrors = errors.Join(closeErrors, err)
+		}
 	}
-	return nil
+	return closeErrors
 }

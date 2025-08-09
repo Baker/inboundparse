@@ -14,16 +14,24 @@ linters:
     - unused
     - gocyclo
     - misspell
+    - gosec      
+    - gocritic   
+    - revive     
   settings:
     gocyclo:
       min-complexity: 20
     misspell:
       locale: US
+    revive:
+      rules:
+        - name: unused-parameter
+          disabled: true
 
 formatters:
   enable:
     - gofmt
     - goimports
+    - gofumpt
 
 issues:
   max-issues-per-linter: 0
