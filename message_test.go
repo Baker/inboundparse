@@ -54,3 +54,19 @@ func TestPerformAuthenticationChecks_Flags(t *testing.T){
 	h := letters.Headers{}
 	_ = mp.performAuthenticationChecks("raw", h)
 }
+
+func TestSendWebhook_SuccessLogs(t *testing.T){
+    // successful webhook
+    ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request){ w.WriteHeader(200) }))
+    defer ts.Close()
+    mp := &MessageProcessor{ config: &ServerConfig{WebhookURL: ts.URL, Verbose:true} }
+    payload := &WebhookPayload{}
+    if err := mp.sendWebhook(payload); err != nil { t.Fatalf("unexpected: %v", err) }
+}
+
+func TestProcessMessage_ParseError(t *testing.T){
+    mp := &MessageProcessor{ config: &ServerConfig{WebhookURL: "http://127.0.0.1:1"} }
+    // malformed email to trigger parse failure (no headers/body separation)
+    bad := bytes.NewBufferString("\xff\xfe\xfd")
+    if err := mp.ProcessMessage(bad); err == nil { t.Fatal("expected parse error") }
+}
