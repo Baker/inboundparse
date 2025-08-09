@@ -44,7 +44,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        go: [stable, oldstable, nightly]
+        go: [stable, oldstable, tip]
         include:
           - os: ubuntu-latest
             go-version-file: go.mod
@@ -76,7 +76,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        go: [stable, oldstable, nightly]
+        go: [stable, oldstable, tip]
         include:
           - os: ubuntu-latest
             go-version-file: go.mod
