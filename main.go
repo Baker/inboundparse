@@ -91,7 +91,10 @@ func main() {
 		KeyFile:        *keyFile,
 	}
 
-	server := NewSMTPServer(config)
+	server, err := NewSMTPServer(config)
+	if err != nil {
+		log.Fatal("Failed to initialize SMTP server:", err)
+	}
 
 	log.Printf("Starting SMTP server on %s", *listenAddr)
 	if *certFile != "" && *keyFile != "" {

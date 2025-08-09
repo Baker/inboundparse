@@ -100,13 +100,13 @@ func (mp *MessageProcessor) checkDKIM(rawMessage string) *DKIMResult {
 // checkDMARC performs DMARC authentication check with hierarchical domain lookup following RFC 7489
 func (mp *MessageProcessor) checkDMARC(rawMessage string, headers letters.Headers, spfResult *SPFResult, dkimResult *DKIMResult) *DMARCResult {
 	// Extract domain from From header (RFC5322.From) - this is what DMARC protects
-	fromHeader := headers.From[0].Address
-	if len(fromHeader) == 0 {
+	if len(headers.From) == 0 || headers.From[0] == nil || len(headers.From[0].Address) == 0 {
 		return &DMARCResult{
 			Result: "none",
 			Raw:    "No From header found",
 		}
 	}
+	fromHeader := headers.From[0].Address
 
 	// RFC 7489: The domain in the RFC5322.From field is the primary identifier
 	fromDomain := mp.extractDomainFromEmail(fromHeader)

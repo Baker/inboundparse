@@ -14,7 +14,7 @@ on:
         default: "1"
         type: string
       dry_run:
-        description: Show what would be deleted without deleting
+        description: Dry run mode; shows what would be deleted without deleting anything.
         required: true
         default: "true"
         type: choice
