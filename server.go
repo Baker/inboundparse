@@ -69,7 +69,7 @@ func NewSMTPServer(config *ServerConfig) (*SMTPServer, error) {
 		tlsServer.TLSConfig = &tls.Config{
 			ServerName:   config.ServerName,
 			Certificates: []tls.Certificate{cert},
-			MinVersion
+			MinVersion:   tls.VersionTLS12,
 		}
 		server.TLSConfig = tlsServer.TLSConfig
 	}
