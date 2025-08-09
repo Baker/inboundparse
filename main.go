@@ -27,6 +27,9 @@ var (
 )
 
 func main() {
+	if os.Getenv("INBOUNDPARSE_TEST_EXIT") == "1" {
+		return
+	}
 	// Load environment variables
 	if err := godotenv.Load(); err != nil {
 		log.Println("No .env file found, using default values")

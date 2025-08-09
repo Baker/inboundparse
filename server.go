@@ -69,6 +69,7 @@ func NewSMTPServer(config *ServerConfig) (*SMTPServer, error) {
 		tlsServer.TLSConfig = &tls.Config{
 			ServerName:   config.ServerName,
 			Certificates: []tls.Certificate{cert},
+			MinVersion
 		}
 		server.TLSConfig = tlsServer.TLSConfig
 	}
@@ -81,7 +82,7 @@ func NewSMTPServer(config *ServerConfig) (*SMTPServer, error) {
 }
 
 func (s *SMTPServer) Start() error {
-	if s.server.TLSConfig != nil {
+	if s.tlsServer != nil {
 		go func() {
 			log.Printf("Starting plain SMTP server at %s", s.config.ListenAddr)
 			if err := s.listenAndServeWithProxy(s.server, s.config.ListenAddr); err != nil {

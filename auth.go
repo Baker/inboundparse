@@ -11,6 +11,13 @@ import (
 	"github.com/zaccone/spf"
 )
 
+// Test hooks for external auth lookups; overridden in tests
+var (
+	dkimVerifyFn   = dkim.Verify
+	dmarcLookupFn  = dmarc.Lookup
+	spfCheckHostFn = spf.CheckHost
+)
+
 // performAuthenticationChecks runs all enabled authentication checks
 func (mp *MessageProcessor) performAuthenticationChecks(rawMessage string, headers letters.Headers) AuthenticationResults {
 	results := AuthenticationResults{}
@@ -52,7 +59,7 @@ func (mp *MessageProcessor) checkSPF() *SPFResult {
 		}
 	}
 
-	result, mechanism, err := spf.CheckHost(remoteIP, domain, mp.from)
+	result, mechanism, err := spfCheckHostFn(remoteIP, domain, mp.from)
 	if err != nil {
 		return &SPFResult{
 			Result: "temperror",
@@ -69,7 +76,7 @@ func (mp *MessageProcessor) checkSPF() *SPFResult {
 
 // checkDKIM performs DKIM authentication check
 func (mp *MessageProcessor) checkDKIM(rawMessage string) *DKIMResult {
-	verifications, err := dkim.Verify(strings.NewReader(rawMessage))
+	verifications, err := dkimVerifyFn(strings.NewReader(rawMessage))
 	if err != nil {
 		return &DKIMResult{
 			Valid: false,
@@ -194,7 +201,7 @@ func (mp *MessageProcessor) lookupDMARCRecord(domain string) (*dmarc.Record, str
 	currentDomain := domain
 
 	for {
-		record, err := dmarc.Lookup(currentDomain)
+		record, err := dmarcLookupFn(currentDomain)
 		if err == nil && record != nil {
 			return record, currentDomain, nil
 		}
@@ -247,10 +254,9 @@ func (mp *MessageProcessor) checkDomainAlignment(authDomain, fromDomain string, 
 	if alignment == string(dmarc.AlignmentStrict) || alignment == "s" {
 		// RFC 7489: Strict alignment requires exact domain match (case insensitive)
 		return strings.EqualFold(authDomain, fromDomain)
-	} else {
-		// RFC 7489: Relaxed alignment allows organizational domain match
-		return mp.isOrganizationalDomainMatch(authDomain, fromDomain)
 	}
+	// RFC 7489: Relaxed alignment allows organizational domain match
+	return mp.isOrganizationalDomainMatch(authDomain, fromDomain)
 }
 
 // checkDKIMAlignment checks DKIM signature alignment per RFC 7489
@@ -302,6 +308,9 @@ func (mp *MessageProcessor) getOrganizationalDomain(domain string) string {
 
 // getRemoteIP extracts the remote IP address from the connection
 func (mp *MessageProcessor) getRemoteIP() net.IP {
+	if mp.testRemoteIP != nil {
+		return mp.testRemoteIP
+	}
 	if mp.conn != nil && mp.conn.Conn() != nil {
 		addr := mp.conn.Conn().RemoteAddr()
 		if tcpAddr, ok := addr.(*net.TCPAddr); ok {
