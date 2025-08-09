@@ -1,18 +1,19 @@
-# InboundParse - Enhanced Email to Webhook Gateway
+# InboundParse - Email to Webhook Gateway
 
 A modern SMTP server that receives emails from any domain without authentication and forwards them to webhooks with comprehensive email authentication validation and SSL/TLS support.
 
 ## Features
 
-- **No Authentication Required**: Accepts emails from any domain without username/password
-- **SSL/TLS Support**: Automatic SSL certificate management via Let's Encrypt
+- **No SMTP Auth Required**: Accepts emails from any domain without username/password
+- **TLS Support**: Optional TLS when `-cert-file` and `-key-file` are provided
 - **SPF Validation**: Validates Sender Policy Framework records
-- **DKIM Validation**: Verifies DomainKeys Identified Mail signatures  
-- **DMARC Validation**: Checks Domain-based Message Authentication, Reporting & Conformance policies
-- **Complete Headers**: Includes all email headers in the webhook payload
+- **DKIM Validation**: Verifies DomainKeys Identified Mail signatures
+- **DMARC Validation**: Evaluates DMARC policy and alignment
+- **Headers Included**: Forwards received headers along with parsed message data
 - **Webhook Authentication**: Supports HTTP Basic Auth for webhook endpoints
-- **Comprehensive Logging**: Detailed logging with verbose mode option
-- **Multiple Ports**: Supports both port 25 (SMTP) and 587 (submission)
+- **Verbose Logging**: Enable extra logs with `-verbose`
+- **Multiple Ports**: Listens on 25 by default; TLS listener on 587 when certs are provided
+- **PROXY protocol**: Accepts PROXY protocol connections (e.g., from load balancers)
 
 ## Quick Start
 
@@ -34,7 +35,9 @@ go build -o inboundparse
 ```bash
 Usage of ./inboundparse:
   -listen string
-        SMTP server listen address (default ":25")
+        SMTP server listen address (default "0.0.0.0:25")
+  -listen-tls string
+        SMTP server listen address for TLS (default "0.0.0.0:587")
   -webhook string
         Webhook URL to send email data to (required)
   -webhook-user string
@@ -42,7 +45,7 @@ Usage of ./inboundparse:
   -webhook-pass string
         Basic auth password for webhook
   -name string
-        SMTP server name (default "inboundparse")
+        SMTP server name (default "mx.inboundparse.com")
   -max-size int
         Maximum message size in bytes (default 10485760)
   -read-timeout int
@@ -56,9 +59,9 @@ Usage of ./inboundparse:
   -enable-dmarc
         Enable DMARC validation (default true)
   -cert-file string
-        SSL certificate file path
+        TLS certificate file path (optional)
   -key-file string
-        SSL private key file path
+        TLS private key file path (optional)
   -verbose
         Enable verbose logging (default false)
 ```
@@ -71,19 +74,12 @@ You can also configure using environment variables:
 - `WEBHOOK_URL` - Webhook URL (required)
 - `WEBHOOK_USER` - Basic auth username for webhook
 - `WEBHOOK_PASS` - Basic auth password for webhook
-- `LISTEN_ADDR` - SMTP server listen address
-- `SERVER_NAME` - SMTP server name
+- `LISTEN_ADDR` - SMTP server listen address (overrides `-listen`)
+- `LISTEN_ADDR_TLS` - TLS server listen address (overrides `-listen-tls`)
 
-#### SSL/TLS Configuration
-- `MXDOMAIN` - Domain name for SSL certificates (required for SSL)
-- `CERT_FILE` - SSL certificate file path (default: /cert/cert.pem)
-- `KEY_FILE` - SSL private key file path (default: /cert/key.pem)
-
-#### Let's Encrypt Configuration
-- `CF_Token` - Cloudflare API token for DNS validation
-- `CF_Zone_ID` - Cloudflare zone ID
-- `DNS_API` - DNS API provider (default: dns_cf)
-- `ACME_SH_EMAIL` - Email for Let's Encrypt account registration
+#### TLS Configuration
+- `CERT_FILE` - TLS certificate file path
+- `KEY_FILE` - TLS private key file path
 
 #### Feature Toggles
 - `ENABLE_SPF` - Enable SPF validation (default: true)
@@ -93,59 +89,25 @@ You can also configure using environment variables:
 
 ## Webhook Payload
 
-The service sends a JSON payload to your webhook with the following structure:
+The service sends a JSON payload to your webhook similar to:
 
 ```json
 {
   "timestamp": "2024-01-01T12:00:00Z",
-  "from": {
-    "address": "sender@example.com",
-    "name": "Sender Name"
-  },
-  "to": [
-    {
-      "address": "recipient1@example.com",
-      "name": "Recipient 1"
-    },
-    {
-      "address": "recipient2@example.com", 
-      "name": "Recipient 2"
-    }
-  ],
+  "from": [{ "address": "sender@example.com", "name": "Sender" }],
+  "to":   [{ "address": "recipient@example.com", "name": "Recipient" }],
   "subject": "Email Subject",
   "message_id": "<unique-message-id@example.com>",
-  "headers": {
-    "From": ["sender@example.com"],
-    "To": ["recipient1@example.com", "recipient2@example.com"],
-    "Subject": ["Email Subject"],
-    "Date": ["Mon, 1 Jan 2024 12:00:00 +0000"],
-    "Message-ID": ["<unique-message-id@example.com>"],
-    "Content-Type": ["text/plain; charset=utf-8"]
-  },
-  "text_body": "Plain text email body content",
-  "html_body": "HTML email body content",
+  "headers": { "From": ["sender@example.com"], "Subject": ["Email Subject"] },
+  "text_body": "Plain text body",
+  "enriched_text_body": "...",
+  "html_body": "<p>HTML body</p>",
+  "attachments": [ /* array of files */ ],
+  "inline_files": [ /* array of inline files */ ],
   "authentication_results": {
-    "spf": {
-      "result": "pass",
-      "raw": "SPF result: pass for domain example.com from IP 192.168.1.100",
-      "mechanism": "include:_spf.example.com"
-    },
-    "dkim": {
-      "valid": true,
-      "signatures": ["Valid: example.com"],
-      "raw": "DKIM verification found 1 signatures"
-    },
-    "dmarc": {
-      "result": "pass",
-      "raw": "DMARC record found for domain example.com",
-      "policy": "quarantine"
-    }
-  },
-  "raw": "Full raw email message including headers and body",
-  "server_info": {
-    "remote_addr": "192.168.1.100:54321",
-    "local_addr": "0.0.0.0:25",
-    "server_name": "inboundparse"
+    "spf":   { "result": "pass", "raw": "...", "mechanism": "..." },
+    "dkim":  { "valid": true, "signatures": ["Valid: example.com"], "raw": "..." },
+    "dmarc": { "result": "pass", "raw": "...", "policy": "reject" }
   }
 }
 ```
@@ -185,41 +147,26 @@ docker run -p 25:25 -p 587:587 inboundparse \
   -verbose=true
 ```
 
-### Run with Docker (SSL/TLS)
+### Run with Docker (TLS)
 
-```bash
-docker run -p 25:25 -p 587:587 \
-  -e WEBHOOK_URL=https://your-webhook-url.com/api/webhook \
-  -e MXDOMAIN=mx.yourdomain.com \
-  -e CF_Token=your-cloudflare-token \
-  -e CF_Zone_ID=your-zone-id \
-  -e ACME_SH_EMAIL=your-email@example.com \
-  -e VERBOSE=true \
-  inboundparse
-```
+Provide your own certificate and key inside the container and set `CERT_FILE`/`KEY_FILE`.
 
 ### Environment File (.env)
 
-Create a `.env` file in your project directory:
+Create a `.env` file in your project directory (optional):
 
 ```bash
-# Required
 WEBHOOK_URL=https://your-webhook-url.com/api/webhook
-MXDOMAIN=mx.yourdomain.com
 
-# Cloudflare DNS API (required for SSL)
-CF_Token=your-cloudflare-token
-CF_Zone_ID=your-zone-id
-DNS_API=dns_cf
-
-# SSL Configuration
-ACME_SH_EMAIL=your-email@example.com
-
-# Feature Configuration
+# Optional overrides
+LISTEN_ADDR=0.0.0.0:25
+LISTEN_ADDR_TLS=0.0.0.0:587
 ENABLE_SPF=true
 ENABLE_DKIM=true
 ENABLE_DMARC=true
-VERBOSE=true
+VERBOSE=false
+CERT_FILE=/cert/cert.pem
+KEY_FILE=/cert/key.pem
 ```
 
 ## Testing
