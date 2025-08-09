@@ -14,7 +14,7 @@ permissions: write-all
 
 jobs:
   lint:
-    name: 🧹 golangci-lint
+    name: 🧹 Lint
     runs-on: ubuntu-latest
     steps:
       - name: 📥 Checkout
@@ -38,7 +38,7 @@ jobs:
           govulncheck ./...
 
   deps:
-    name: 📦 Dependency Updates
+    name: 📦 Dependencies
     runs-on: ubuntu-latest
     steps:
       - name: 📥 Checkout
@@ -87,7 +87,7 @@ jobs:
   
 
   coverage:
-    name: 📊 Coverage gate
+    name: 📊 Coverage
     needs:
       - lint
       - deps
