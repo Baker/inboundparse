@@ -149,7 +149,11 @@ func (mp *MessageProcessor) sendWebhook(payload *WebhookPayload) error {
 	if err != nil {
 		return fmt.Errorf("webhook request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			log.Printf("Failed to close response body: %v", closeErr)
+		}
+	}()
 
 	if resp.StatusCode >= 400 {
 		return fmt.Errorf("webhook returned error status: %d", resp.StatusCode)
