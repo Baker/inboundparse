@@ -37,11 +37,35 @@ jobs:
           go install golang.org/x/vuln/cmd/govulncheck@latest
           govulncheck ./...
 
+  deps:
+    name: 📦 Dependency Updates
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
+
+      - name: 🔧 Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: 🔄 Tidy dependencies
+        run: go mod tidy
+
+      - name: 📦 Verify dependencies
+        run: go mod verify
+
+      - name: 🔍 Check for outdated dependencies
+        run: |
+          go list -u -m all | grep -v "^inboundparse " | grep -E "\[[^\]]*\]$" || true
+
 
   test:
     name: 🧪 Test
     needs:
       - lint
+      - deps
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -66,6 +90,7 @@ jobs:
     name: 📊 Coverage gate
     needs:
       - lint
+      - deps
       - test
     runs-on: ubuntu-latest
     steps:
@@ -93,6 +118,7 @@ jobs:
     name: 🔨 Build matrix
     needs:
       - lint
+      - deps
       - test
     runs-on: ${{ matrix.os }}
     strategy:
