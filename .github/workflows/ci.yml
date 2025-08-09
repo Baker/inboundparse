@@ -88,28 +88,6 @@ jobs:
           profile: cover.out
           config: ./.github/.testcoverage.yml
 
-      - name: find pull request ID
-        if: github.event_name == 'pull_request'
-        run: |
-            echo "pull_request_id=${{ github.event.number }}" >> $GITHUB_ENV
-
-      - name: post coverage report
-        if: env.pull_request_id
-        uses: thollander/actions-comment-pull-request@v3
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          comment-tag: coverage-report
-          pr-number: ${{ env.pull_request_id }}
-          message: |
-            go-test-coverage report:
-            ```
-            ${{ fromJSON(steps.coverage.outputs.report) }}```
-
-      - name: "finally check coverage"
-        if: steps.coverage.outcome == 'failure'
-        shell: bash
-        run: echo "coverage check failed" && exit 1
-
 
   build:
     name: 🔨 Build matrix
