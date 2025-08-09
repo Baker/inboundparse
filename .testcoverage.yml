@@ -1,0 +1,4 @@
+# Configuration for vladopajic/go-test-coverage
+# Minimal setup to match CI job
+profile: cover.out
+threshold: 60
