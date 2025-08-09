@@ -10,8 +10,7 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-permissions:
-  contents: read
+permissions: write-all
 
 jobs:
   lint:
@@ -62,6 +61,32 @@ jobs:
       - name: 🧪 Test
         run: go test -v ./... 
   
+
+  coverage:
+    name: 📊 Coverage gate
+    needs:
+      - lint
+      - test
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
+
+      - name: 🔧 Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: stable
+          cache: true
+
+      - name: 🧪 Run tests with coverage
+        run: go test -covermode=atomic -coverpkg=./... -coverprofile=cover.out ./...
+
+      - name: ✅ Enforce coverage threshold
+        uses: vladopajic/go-test-coverage@v2
+        with:
+          profile: cover.out
+          threshold: 60
+
 
   build:
     name: 🔨 Build matrix
