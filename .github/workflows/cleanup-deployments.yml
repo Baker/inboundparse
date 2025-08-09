@@ -1,0 +1,126 @@
+name: Cleanup deployments
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Environment name to filter (optional)
+        required: false
+        default: "production"
+        type: string
+      keep_latest:
+        description: Number of most recent deployments to keep
+        required: true
+        default: "1"
+        type: string
+      dry_run:
+        description: Show what would be deleted without deleting
+        required: true
+        default: "true"
+        type: choice
+        options: ["true", "false"]
+
+permissions:
+  contents: read
+  deployments: write
+
+jobs:
+  cleanup:
+    name: Delete old deployments
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Cleanup GitHub deployments
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          ENV_FILTER: ${{ inputs.environment }}
+          KEEP: ${{ inputs.keep_latest }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # Ensure jq is available
+          if ! command -v jq >/dev/null 2>&1; then
+            sudo apt-get update -y
+            sudo apt-get install -y jq
+          fi
+
+          PER_PAGE=100
+          PAGE=1
+          query_params="per_page=${PER_PAGE}&page=${PAGE}"
+          if [ -n "${ENV_FILTER:-}" ]; then
+            # URL-encode ENV_FILTER via jq
+            enc_env=$(printf %s "$ENV_FILTER" | jq -sRr @uri)
+            query_params="${query_params}&environment=${enc_env}"
+          fi
+
+          deployments_json="[]"
+          while :; do
+            resp=$(gh api -X GET "repos/${REPO}/deployments?${query_params}" -H "Accept: application/vnd.github+json")
+            count=$(echo "$resp" | jq 'length')
+            deployments_json=$(jq -s 'add' <(echo "$deployments_json") <(echo "$resp"))
+            if [ "$count" -lt "$PER_PAGE" ]; then
+              break
+            fi
+            PAGE=$(( PAGE + 1 ))
+            query_params="per_page=${PER_PAGE}&page=${PAGE}"
+            if [ -n "${ENV_FILTER:-}" ]; then
+              enc_env=$(printf %s "$ENV_FILTER" | jq -sRr @uri)
+              query_params="${query_params}&environment=${enc_env}"
+            fi
+          done
+
+          total=$(echo "$deployments_json" | jq 'length')
+          if [ "$total" -eq 0 ]; then
+            echo "No deployments found${ENV_FILTER:+ for environment '${ENV_FILTER}'}; nothing to do."
+            exit 0
+          fi
+
+          deployments_sorted=$(echo "$deployments_json" | jq 'sort_by(.created_at) | reverse')
+          echo "Found $total deployment(s)${ENV_FILTER:+ for environment '${ENV_FILTER}'}"
+
+          # Determine which to delete (skip the first KEEP entries)
+          to_delete=$(echo "$deployments_sorted" | jq ".[${KEEP}:]")
+          del_count=$(echo "$to_delete" | jq 'length')
+          echo "Keeping ${KEEP}, candidate deletions: $del_count"
+          if [ "$del_count" -eq 0 ]; then
+            echo "Nothing to delete."
+            exit 0
+          fi
+
+          deleted=0
+          while IFS= read -r row; do
+            id=$(echo "$row" | jq -r '.id')
+            env_name=$(echo "$row" | jq -r '.environment')
+            sha=$(echo "$row" | jq -r '.sha')
+            created=$(echo "$row" | jq -r '.created_at')
+            echo "Target: id=$id env=$env_name sha=${sha:0:7} created=$created"
+
+            if [ "$DRY_RUN" = "true" ]; then
+              continue
+            fi
+
+            # Mark inactive to satisfy deletion requirement
+            gh api -X POST "repos/${REPO}/deployments/${id}/statuses" \
+              -H "Accept: application/vnd.github+json" \
+              -f state=inactive \
+              >/dev/null || echo "Warning: failed to mark deployment ${id} inactive"
+
+            # Attempt delete (may fail if still considered active)
+            if gh api -X DELETE "repos/${REPO}/deployments/${id}" -H "Accept: application/vnd.github+json" >/dev/null; then
+              deleted=$(( deleted + 1 ))
+            else
+              echo "Warning: failed to delete deployment ${id}"
+            fi
+          done < <(echo "$to_delete" | jq -c '.[]')
+
+          if [ "$DRY_RUN" = "true" ]; then
+            echo "Dry run complete. No deletions performed."
+          else
+            echo "Deleted $deleted deployment(s)."
+          fi
