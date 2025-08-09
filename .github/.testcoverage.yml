@@ -2,5 +2,5 @@
 # Minimal setup to match CI job
 profile: '' # set via github action
 threshold:
-  file: 60
-  total: 60
+  file: 75
+  total: 75
