@@ -86,19 +86,37 @@ type WebhookPayload struct {
 }
 
 func (mp *MessageProcessor) ProcessMessage(r io.Reader) error {
+	startTime := time.Now()
+	
 	// Read the entire message
 	var buf bytes.Buffer
 	_, err := io.Copy(&buf, r)
 	if err != nil {
+		if mp.config.Metrics != nil {
+			mp.config.Metrics.IncrementMessageParsingFailed()
+		}
 		return fmt.Errorf("failed to read message: %w", err)
 	}
 
 	rawMessage := buf.String()
+	
+	// Record message size
+	if mp.config.Metrics != nil {
+		mp.config.Metrics.RecordMessageSize(int64(buf.Len()))
+	}
 
 	// Parse the email
 	email, err := letters.ParseEmail(bytes.NewReader(buf.Bytes()))
 	if err != nil {
+		if mp.config.Metrics != nil {
+			mp.config.Metrics.IncrementMessageParsingFailed()
+		}
 		return fmt.Errorf("failed to parse message: %w", err)
+	}
+	
+	// Record parsing duration
+	if mp.config.Metrics != nil {
+		mp.config.Metrics.RecordMessageParsingDuration(time.Since(startTime))
 	}
 
 	// Create webhook payload
@@ -118,7 +136,7 @@ func (mp *MessageProcessor) ProcessMessage(r io.Reader) error {
 
 	// Perform authentication checks
 	if mp.config.EnableSPF || mp.config.EnableDKIM || mp.config.EnableDMARC {
-		payload.AuthenticationResults = mp.performAuthenticationChecks(rawMessage, email.Headers)
+		payload.AuthenticationResults = mp.performAuthenticationChecksWithMetrics(rawMessage, email.Headers)
 	}
 
 	// Send to webhook
@@ -126,13 +144,21 @@ func (mp *MessageProcessor) ProcessMessage(r io.Reader) error {
 }
 
 func (mp *MessageProcessor) sendWebhook(payload *WebhookPayload) error {
+	startTime := time.Now()
+	
 	jsonData, err := json.Marshal(payload)
 	if err != nil {
+		if mp.config.Metrics != nil {
+			mp.config.Metrics.IncrementWebhookFailed()
+		}
 		return fmt.Errorf("failed to marshal payload: %w", err)
 	}
 
 	req, err := http.NewRequest("POST", mp.config.WebhookURL, bytes.NewBuffer(jsonData))
 	if err != nil {
+		if mp.config.Metrics != nil {
+			mp.config.Metrics.IncrementWebhookFailed()
+		}
 		return fmt.Errorf("failed to create request: %w", err)
 	}
 
@@ -148,8 +174,16 @@ func (mp *MessageProcessor) sendWebhook(payload *WebhookPayload) error {
 		Timeout: 30 * time.Second,
 	}
 
+	// Record webhook request
+	if mp.config.Metrics != nil {
+		mp.config.Metrics.IncrementWebhookRequests()
+	}
+
 	resp, err := client.Do(req)
 	if err != nil {
+		if mp.config.Metrics != nil {
+			mp.config.Metrics.IncrementWebhookFailed()
+		}
 		return fmt.Errorf("webhook request failed: %w", err)
 	}
 	defer func() {
@@ -158,7 +192,15 @@ func (mp *MessageProcessor) sendWebhook(payload *WebhookPayload) error {
 		}
 	}()
 
+	// Record webhook duration
+	if mp.config.Metrics != nil {
+		mp.config.Metrics.RecordWebhookDuration(time.Since(startTime))
+	}
+
 	if resp.StatusCode >= 400 {
+		if mp.config.Metrics != nil {
+			mp.config.Metrics.IncrementWebhookFailed()
+		}
 		return fmt.Errorf("webhook returned error status: %d", resp.StatusCode)
 	}
 
@@ -167,4 +209,55 @@ func (mp *MessageProcessor) sendWebhook(payload *WebhookPayload) error {
 	}
 
 	return nil
+}
+
+func (mp *MessageProcessor) performAuthenticationChecksWithMetrics(rawMessage string, headers letters.Headers) AuthenticationResults {
+	results := AuthenticationResults{}
+
+	// SPF Check
+	if mp.config.EnableSPF {
+		if mp.config.Metrics != nil {
+			mp.config.Metrics.IncrementAuthChecks()
+			mp.config.Metrics.IncrementSPFChecks()
+		}
+		
+		results.SPF = mp.checkSPF()
+		if results.SPF != nil && results.SPF.Result == "temperror" {
+			if mp.config.Metrics != nil {
+				mp.config.Metrics.IncrementAuthChecksFailed()
+			}
+		}
+	}
+
+	// DKIM Check
+	if mp.config.EnableDKIM {
+		if mp.config.Metrics != nil {
+			mp.config.Metrics.IncrementAuthChecks()
+			mp.config.Metrics.IncrementDKIMChecks()
+		}
+		
+		results.DKIM = mp.checkDKIM(rawMessage)
+		if results.DKIM != nil && !results.DKIM.Valid && results.DKIM.Error != "" {
+			if mp.config.Metrics != nil {
+				mp.config.Metrics.IncrementAuthChecksFailed()
+			}
+		}
+	}
+
+	// DMARC Check
+	if mp.config.EnableDMARC {
+		if mp.config.Metrics != nil {
+			mp.config.Metrics.IncrementAuthChecks()
+			mp.config.Metrics.IncrementDMARCChecks()
+		}
+		
+		results.DMARC = mp.checkDMARC(rawMessage, headers, results.SPF, results.DKIM)
+		if results.DMARC != nil && results.DMARC.Result == "temperror" {
+			if mp.config.Metrics != nil {
+				mp.config.Metrics.IncrementAuthChecksFailed()
+			}
+		}
+	}
+
+	return results
 }

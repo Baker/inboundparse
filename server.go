@@ -1,5 +1,4 @@
 package main
-
 import (
 	"crypto/tls"
 	"errors"
@@ -28,6 +27,7 @@ type ServerConfig struct {
 	Verbose        bool
 	CertFile       string
 	KeyFile        string
+	Metrics        *Metrics
 }
 
 type SMTPServer struct {

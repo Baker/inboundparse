@@ -3,6 +3,7 @@ package main
 import (
 	"io"
 	"log"
+	"time"
 
 	"github.com/emersion/go-smtp"
 )
@@ -21,6 +22,14 @@ func (b *Backend) NewSession(c *smtp.Conn) (smtp.Session, error) {
 		}
 		log.Printf("New SMTP session from %s", remote)
 	}
+	
+	// Record metrics
+	if b.config.Metrics != nil {
+		b.config.Metrics.IncrementSMTPConnections()
+		b.config.Metrics.IncrementActiveConnections()
+		b.config.Metrics.IncrementActiveSessions()
+	}
+	
 	return &Session{
 		config: b.config,
 		conn:   c,
@@ -29,10 +38,11 @@ func (b *Backend) NewSession(c *smtp.Conn) (smtp.Session, error) {
 
 // Session implements smtp.Session
 type Session struct {
-	config *ServerConfig
-	conn   *smtp.Conn
-	from   string
-	to     []string
+	config     *ServerConfig
+	conn       *smtp.Conn
+	from       string
+	to         []string
+	startTime  time.Time
 }
 
 // AuthPlain handles PLAIN authentication (we'll accept any or none)
@@ -68,6 +78,11 @@ func (s *Session) Data(r io.Reader) error {
 		log.Printf("Receiving message data from %s to %v", s.from, s.to)
 	}
 
+	// Record metrics
+	if s.config.Metrics != nil {
+		s.config.Metrics.IncrementSMTPMessages()
+	}
+
 	// Process the email message
 	processor := &MessageProcessor{
 		config: s.config,
@@ -76,7 +91,18 @@ func (s *Session) Data(r io.Reader) error {
 		conn:   s.conn,
 	}
 
-	return processor.ProcessMessage(r)
+	err := processor.ProcessMessage(r)
+	
+	// Record processing result
+	if s.config.Metrics != nil {
+		if err != nil {
+			s.config.Metrics.IncrementMessagesFailed()
+		} else {
+			s.config.Metrics.IncrementMessagesProcessed()
+		}
+	}
+
+	return err
 }
 
 // Reset is called when the RSET command is received
@@ -93,5 +119,15 @@ func (s *Session) Logout() error {
 	if s.config.Verbose {
 		log.Println("Session logout")
 	}
+	
+	// Record metrics
+	if s.config.Metrics != nil {
+		s.config.Metrics.DecrementActiveConnections()
+		s.config.Metrics.DecrementActiveSessions()
+		if !s.startTime.IsZero() {
+			s.config.Metrics.RecordConnectionDuration(time.Since(s.startTime))
+		}
+	}
+	
 	return nil
 }

@@ -51,10 +51,14 @@ ENV ENABLE_DMARC="true"
 ENV CERT_FILE="/cert/cert.pem"
 ENV KEY_FILE="/cert/key.pem"
 ENV VERBOSE="false"
+ENV METRICS_ADDR="0.0.0.0:9090"
+ENV ENABLE_METRICS="false"
 
 # Expose SMTP ports
 EXPOSE 25
 EXPOSE 587
+# Expose metrics port
+EXPOSE 9090
 
 # Run the startup script
 ENTRYPOINT ["./start.sh"]

@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"log"
+	"net/http"
 	"os"
 
 	"github.com/joho/godotenv"
@@ -24,6 +25,8 @@ var (
 	certFile       = flag.String("cert-file", "", "TLS certificate file")
 	keyFile        = flag.String("key-file", "", "TLS key file")
 	verbose        = flag.Bool("verbose", false, "Enable verbose logging")
+	metricsAddr    = flag.String("metrics-addr", "0.0.0.0:9090", "Metrics server listen address")
+	enableMetrics  = flag.Bool("enable-metrics", false, "Enable Prometheus metrics collection")
 )
 
 func main() {
@@ -71,9 +74,40 @@ func main() {
 	if env := os.Getenv("KEY_FILE"); env != "" {
 		*keyFile = env
 	}
+	if env := os.Getenv("METRICS_ADDR"); env != "" {
+		*metricsAddr = env
+	}
+	if env := os.Getenv("ENABLE_METRICS"); env != "" {
+		*enableMetrics = env == "true"
+	}
 
 	if *webhookURL == "" {
 		log.Fatal("Webhook URL is required. Use -webhook flag or WEBHOOK_URL environment variable")
+	}
+
+	// Initialize metrics
+	var metrics *Metrics
+	if *enableMetrics {
+		var err error
+		metrics, err = NewMetrics(true)
+		if err != nil {
+			log.Fatal("Failed to initialize metrics:", err)
+		}
+		defer metrics.Close()
+
+		// Start metrics server
+		go func() {
+			mux := http.NewServeMux()
+			mux.Handle("/metrics", MetricsHandler())
+			mux.Handle("/health", HealthHandler())
+			
+			log.Printf("Starting metrics server on %s", *metricsAddr)
+			if err := http.ListenAndServe(*metricsAddr, mux); err != nil {
+				log.Printf("Metrics server error: %v", err)
+			}
+		}()
+	} else {
+		metrics = NewMetricsDisabled()
 	}
 
 	config := &ServerConfig{
@@ -92,6 +126,7 @@ func main() {
 		Verbose:        *verbose,
 		CertFile:       *certFile,
 		KeyFile:        *keyFile,
+		Metrics:        metrics,
 	}
 
 	server, err := NewSMTPServer(config)
@@ -110,6 +145,11 @@ func main() {
 	log.Printf("Verbose: %v", *verbose)
 	log.Printf("Cert File: %s", *certFile)
 	log.Printf("Key File: %s", *keyFile)
+	if *enableMetrics {
+		log.Printf("Metrics enabled on: %s", *metricsAddr)
+	} else {
+		log.Printf("Metrics disabled")
+	}
 
 	if err := server.Start(); err != nil {
 		log.Fatal("Failed to start SMTP server:", err)
