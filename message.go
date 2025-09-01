@@ -87,7 +87,7 @@ type WebhookPayload struct {
 
 func (mp *MessageProcessor) ProcessMessage(r io.Reader) error {
 	startTime := time.Now()
-	
+
 	// Read the entire message
 	var buf bytes.Buffer
 	_, err := io.Copy(&buf, r)
@@ -99,7 +99,7 @@ func (mp *MessageProcessor) ProcessMessage(r io.Reader) error {
 	}
 
 	rawMessage := buf.String()
-	
+
 	// Record message size
 	if mp.config.Metrics != nil {
 		mp.config.Metrics.RecordMessageSize(int64(buf.Len()))
@@ -113,7 +113,7 @@ func (mp *MessageProcessor) ProcessMessage(r io.Reader) error {
 		}
 		return fmt.Errorf("failed to parse message: %w", err)
 	}
-	
+
 	// Record parsing duration
 	if mp.config.Metrics != nil {
 		mp.config.Metrics.RecordMessageParsingDuration(time.Since(startTime))
@@ -145,7 +145,7 @@ func (mp *MessageProcessor) ProcessMessage(r io.Reader) error {
 
 func (mp *MessageProcessor) sendWebhook(payload *WebhookPayload) error {
 	startTime := time.Now()
-	
+
 	jsonData, err := json.Marshal(payload)
 	if err != nil {
 		if mp.config.Metrics != nil {
@@ -220,7 +220,7 @@ func (mp *MessageProcessor) performAuthenticationChecksWithMetrics(rawMessage st
 			mp.config.Metrics.IncrementAuthChecks()
 			mp.config.Metrics.IncrementSPFChecks()
 		}
-		
+
 		results.SPF = mp.checkSPF()
 		if results.SPF != nil && results.SPF.Result == "temperror" {
 			if mp.config.Metrics != nil {
@@ -235,7 +235,7 @@ func (mp *MessageProcessor) performAuthenticationChecksWithMetrics(rawMessage st
 			mp.config.Metrics.IncrementAuthChecks()
 			mp.config.Metrics.IncrementDKIMChecks()
 		}
-		
+
 		results.DKIM = mp.checkDKIM(rawMessage)
 		if results.DKIM != nil && !results.DKIM.Valid && results.DKIM.Error != "" {
 			if mp.config.Metrics != nil {
@@ -250,7 +250,7 @@ func (mp *MessageProcessor) performAuthenticationChecksWithMetrics(rawMessage st
 			mp.config.Metrics.IncrementAuthChecks()
 			mp.config.Metrics.IncrementDMARCChecks()
 		}
-		
+
 		results.DMARC = mp.checkDMARC(rawMessage, headers, results.SPF, results.DKIM)
 		if results.DMARC != nil && results.DMARC.Result == "temperror" {
 			if mp.config.Metrics != nil {

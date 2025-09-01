@@ -13,25 +13,25 @@ import (
 // Metrics holds all the metrics for the application
 type Metrics struct {
 	// Prometheus metrics
-	SMTPConnectionsTotal     prometheus.Counter
-	SMTPConnectionsActive    prometheus.Gauge
-	SMTPConnectionsDuration  prometheus.Histogram
-	SMTPMessagesTotal        prometheus.Counter
-	SMTPMessagesSize         prometheus.Histogram
-	SMTPMessagesProcessed    prometheus.Counter
-	SMTPMessagesFailed       prometheus.Counter
-	WebhookRequestsTotal     prometheus.Counter
-	WebhookRequestsDuration  prometheus.Histogram
-	WebhookRequestsFailed    prometheus.Counter
-	AuthChecksTotal          prometheus.Counter
-	AuthChecksSPF            prometheus.Counter
-	AuthChecksDKIM           prometheus.Counter
-	AuthChecksDMARC          prometheus.Counter
-	AuthChecksFailed         prometheus.Counter
-	MessageParsingDuration   prometheus.Histogram
-	MessageParsingFailed     prometheus.Counter
-	ActiveSessions           prometheus.Gauge
-	ServerUptime             prometheus.Gauge
+	SMTPConnectionsTotal    prometheus.Counter
+	SMTPConnectionsActive   prometheus.Gauge
+	SMTPConnectionsDuration prometheus.Histogram
+	SMTPMessagesTotal       prometheus.Counter
+	SMTPMessagesSize        prometheus.Histogram
+	SMTPMessagesProcessed   prometheus.Counter
+	SMTPMessagesFailed      prometheus.Counter
+	WebhookRequestsTotal    prometheus.Counter
+	WebhookRequestsDuration prometheus.Histogram
+	WebhookRequestsFailed   prometheus.Counter
+	AuthChecksTotal         prometheus.Counter
+	AuthChecksSPF           prometheus.Counter
+	AuthChecksDKIM          prometheus.Counter
+	AuthChecksDMARC         prometheus.Counter
+	AuthChecksFailed        prometheus.Counter
+	MessageParsingDuration  prometheus.Histogram
+	MessageParsingFailed    prometheus.Counter
+	ActiveSessions          prometheus.Gauge
+	ServerUptime            prometheus.Gauge
 
 	// Whether metrics are enabled
 	enabled bool
@@ -348,6 +348,6 @@ func HealthHandler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		fmt.Fprintf(w, `{"status":"healthy","timestamp":"%s"}`, time.Now().Format(time.RFC3339))
+		_, _ = fmt.Fprintf(w, `{"status":"healthy","timestamp":"%s"}`, time.Now().Format(time.RFC3339))
 	})
 }

@@ -18,28 +18,6 @@ var (
 	spfCheckHostFn = spf.CheckHost
 )
 
-// performAuthenticationChecks runs all enabled authentication checks
-func (mp *MessageProcessor) performAuthenticationChecks(rawMessage string, headers letters.Headers) AuthenticationResults {
-	results := AuthenticationResults{}
-
-	// SPF Check
-	if mp.config.EnableSPF {
-		results.SPF = mp.checkSPF()
-	}
-
-	// DKIM Check
-	if mp.config.EnableDKIM {
-		results.DKIM = mp.checkDKIM(rawMessage)
-	}
-
-	// DMARC Check - pass previously computed results to avoid redundant checks
-	if mp.config.EnableDMARC {
-		results.DMARC = mp.checkDMARC(rawMessage, headers, results.SPF, results.DKIM)
-	}
-
-	return results
-}
-
 // checkSPF performs SPF authentication check
 func (mp *MessageProcessor) checkSPF() *SPFResult {
 	remoteIP := mp.getRemoteIP()

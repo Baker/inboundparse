@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/joho/godotenv"
 )
@@ -29,11 +30,7 @@ var (
 	enableMetrics  = flag.Bool("enable-metrics", false, "Enable Prometheus metrics collection")
 )
 
-func main() {
-	if os.Getenv("INBOUNDPARSE_TEST_EXIT") == "1" {
-		return
-	}
-	// Load environment variables
+func loadConfig() {
 	if err := godotenv.Load(); err != nil {
 		log.Println("No .env file found, using default values")
 	}
@@ -80,35 +77,76 @@ func main() {
 	if env := os.Getenv("ENABLE_METRICS"); env != "" {
 		*enableMetrics = env == "true"
 	}
+}
+
+func initializeMetrics() *Metrics {
+	if !*enableMetrics {
+		return NewMetricsDisabled()
+	}
+
+	metrics, err := NewMetrics(true)
+	if err != nil {
+		log.Fatal("Failed to initialize metrics:", err)
+	}
+
+	// Start metrics server
+	go func() {
+		mux := http.NewServeMux()
+		mux.Handle("/metrics", MetricsHandler())
+		mux.Handle("/health", HealthHandler())
+
+		log.Printf("Starting metrics server on %s", *metricsAddr)
+		server := &http.Server{
+			Addr:         *metricsAddr,
+			Handler:      mux,
+			ReadTimeout:  10 * time.Second,
+			WriteTimeout: 10 * time.Second,
+			IdleTimeout:  120 * time.Second,
+		}
+		if err := server.ListenAndServe(); err != nil {
+			log.Printf("Metrics server error: %v", err)
+		}
+	}()
+
+	return metrics
+}
+
+func logServerInfo() {
+	log.Printf("Starting SMTP server on %s", *listenAddr)
+	if *certFile != "" && *keyFile != "" {
+		log.Printf("Starting TLS SMTP server on %s", *listenAddrTLS)
+	}
+	log.Printf("Webhook URL: %s", *webhookURL)
+	log.Printf("SPF validation: %v", *enableSPF)
+	log.Printf("DKIM validation: %v", *enableDKIM)
+	log.Printf("DMARC validation: %v", *enableDMARC)
+	log.Printf("Verbose: %v", *verbose)
+	log.Printf("Cert File: %s", *certFile)
+	log.Printf("Key File: %s", *keyFile)
+	if *enableMetrics {
+		log.Printf("Metrics enabled on: %s", *metricsAddr)
+	} else {
+		log.Printf("Metrics disabled")
+	}
+}
+
+func main() {
+	if os.Getenv("INBOUNDPARSE_TEST_EXIT") == "1" {
+		return
+	}
+
+	loadConfig()
 
 	if *webhookURL == "" {
 		log.Fatal("Webhook URL is required. Use -webhook flag or WEBHOOK_URL environment variable")
 	}
 
-	// Initialize metrics
-	var metrics *Metrics
-	if *enableMetrics {
-		var err error
-		metrics, err = NewMetrics(true)
-		if err != nil {
-			log.Fatal("Failed to initialize metrics:", err)
+	metrics := initializeMetrics()
+	defer func() {
+		if err := metrics.Close(); err != nil {
+			log.Printf("Failed to close metrics: %v", err)
 		}
-		defer metrics.Close()
-
-		// Start metrics server
-		go func() {
-			mux := http.NewServeMux()
-			mux.Handle("/metrics", MetricsHandler())
-			mux.Handle("/health", HealthHandler())
-			
-			log.Printf("Starting metrics server on %s", *metricsAddr)
-			if err := http.ListenAndServe(*metricsAddr, mux); err != nil {
-				log.Printf("Metrics server error: %v", err)
-			}
-		}()
-	} else {
-		metrics = NewMetricsDisabled()
-	}
+	}()
 
 	config := &ServerConfig{
 		ListenAddr:     *listenAddr,
@@ -131,27 +169,14 @@ func main() {
 
 	server, err := NewSMTPServer(config)
 	if err != nil {
-		log.Fatal("Failed to initialize SMTP server:", err)
+		log.Printf("Failed to initialize SMTP server: %v", err)
+		return
 	}
 
-	log.Printf("Starting SMTP server on %s", *listenAddr)
-	if *certFile != "" && *keyFile != "" {
-		log.Printf("Starting TLS SMTP server on %s", *listenAddrTLS)
-	}
-	log.Printf("Webhook URL: %s", *webhookURL)
-	log.Printf("SPF validation: %v", *enableSPF)
-	log.Printf("DKIM validation: %v", *enableDKIM)
-	log.Printf("DMARC validation: %v", *enableDMARC)
-	log.Printf("Verbose: %v", *verbose)
-	log.Printf("Cert File: %s", *certFile)
-	log.Printf("Key File: %s", *keyFile)
-	if *enableMetrics {
-		log.Printf("Metrics enabled on: %s", *metricsAddr)
-	} else {
-		log.Printf("Metrics disabled")
-	}
+	logServerInfo()
 
 	if err := server.Start(); err != nil {
-		log.Fatal("Failed to start SMTP server:", err)
+		log.Printf("Failed to start SMTP server: %v", err)
+		return
 	}
 }

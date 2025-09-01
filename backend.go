@@ -22,14 +22,14 @@ func (b *Backend) NewSession(c *smtp.Conn) (smtp.Session, error) {
 		}
 		log.Printf("New SMTP session from %s", remote)
 	}
-	
+
 	// Record metrics
 	if b.config.Metrics != nil {
 		b.config.Metrics.IncrementSMTPConnections()
 		b.config.Metrics.IncrementActiveConnections()
 		b.config.Metrics.IncrementActiveSessions()
 	}
-	
+
 	return &Session{
 		config: b.config,
 		conn:   c,
@@ -38,11 +38,11 @@ func (b *Backend) NewSession(c *smtp.Conn) (smtp.Session, error) {
 
 // Session implements smtp.Session
 type Session struct {
-	config     *ServerConfig
-	conn       *smtp.Conn
-	from       string
-	to         []string
-	startTime  time.Time
+	config    *ServerConfig
+	conn      *smtp.Conn
+	from      string
+	to        []string
+	startTime time.Time
 }
 
 // AuthPlain handles PLAIN authentication (we'll accept any or none)
@@ -92,7 +92,7 @@ func (s *Session) Data(r io.Reader) error {
 	}
 
 	err := processor.ProcessMessage(r)
-	
+
 	// Record processing result
 	if s.config.Metrics != nil {
 		if err != nil {
@@ -119,7 +119,7 @@ func (s *Session) Logout() error {
 	if s.config.Verbose {
 		log.Println("Session logout")
 	}
-	
+
 	// Record metrics
 	if s.config.Metrics != nil {
 		s.config.Metrics.DecrementActiveConnections()
@@ -128,6 +128,6 @@ func (s *Session) Logout() error {
 			s.config.Metrics.RecordConnectionDuration(time.Since(s.startTime))
 		}
 	}
-	
+
 	return nil
 }

@@ -4,6 +4,7 @@
 # Variables
 BINARY_NAME=inboundparse
 DOCKER_IMAGE=inboundparse:latest
+GOBIN := $(shell go env GOPATH)/bin
 
 help:
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "%-30s %s\n", $$1, $$2}'
@@ -66,3 +67,26 @@ status: ## Show service status
 
 ci: ## Run CI workflow
 	gh act push -W .github/workflows/ci.yml
+
+.PHONY: lint verify-deps coverage check
+
+lint: ## Lint (golangci-lint) + vuln scan (govulncheck)
+	@echo "Running golangci-lint..."
+	@command -v $(GOBIN)/golangci-lint >/dev/null 2>&1 || go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+	@$(GOBIN)/golangci-lint run --fix --timeout=5m
+	@echo "Running govulncheck..."
+	@command -v $(GOBIN)/govulncheck >/dev/null 2>&1 || go install golang.org/x/vuln/cmd/govulncheck@latest
+	@$(GOBIN)/govulncheck ./...
+
+verify-deps: ## Verify and report dependency status
+	@echo "Verifying dependencies..."
+	go mod verify
+	@echo "Outdated modules:"
+	@go list -u -m all | grep -v "^inboundparse " | grep -E "\[[^\]]*\]$" || true
+
+coverage: ## Run tests with coverage and print summary
+	@echo "Running tests with coverage..."
+	go test -covermode=atomic -coverpkg=./... -coverprofile=cover.out ./...
+	@go tool cover -func=cover.out | tail -n1
+
+check: deps lint  ## Run deps, linters, vulncheck
