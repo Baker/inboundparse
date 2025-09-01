@@ -33,6 +33,12 @@ type Metrics struct {
 	ActiveSessions          prometheus.Gauge
 	ServerUptime            prometheus.Gauge
 
+	// Detailed authentication result metrics with labels
+	SPFResults    *prometheus.CounterVec
+	DKIMResults   *prometheus.CounterVec
+	DMARCResults  *prometheus.CounterVec
+	DMARCPolicies *prometheus.CounterVec
+
 	// Whether metrics are enabled
 	enabled bool
 }
@@ -147,6 +153,27 @@ func NewMetrics(enabled bool) (*Metrics, error) {
 		Name: "server_uptime_seconds",
 		Help: "Server uptime in seconds",
 	})
+
+	// Initialize detailed authentication metrics
+	m.SPFResults = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "spf_results_total",
+		Help: "Total number of SPF authentication results by result type",
+	}, []string{"result"})
+
+	m.DKIMResults = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "dkim_results_total",
+		Help: "Total number of DKIM authentication results by result type",
+	}, []string{"result"})
+
+	m.DMARCResults = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "dmarc_results_total",
+		Help: "Total number of DMARC authentication results by result type",
+	}, []string{"result"})
+
+	m.DMARCPolicies = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "dmarc_policies_total",
+		Help: "Total number of DMARC policies encountered by policy type",
+	}, []string{"policy"})
 
 	// Start uptime counter
 	go m.startUptimeCounter()
@@ -331,6 +358,42 @@ func (m *Metrics) DecrementActiveSessions() {
 		return
 	}
 	m.ActiveSessions.Dec()
+}
+
+// RecordSPFResult records a detailed SPF authentication result
+func (m *Metrics) RecordSPFResult(result string) {
+	if !m.enabled {
+		return
+	}
+	m.SPFResults.WithLabelValues(result).Inc()
+}
+
+// RecordDKIMResult records a detailed DKIM authentication result
+func (m *Metrics) RecordDKIMResult(result string) {
+	if !m.enabled {
+		return
+	}
+	m.DKIMResults.WithLabelValues(result).Inc()
+}
+
+// RecordDMARCResult records a detailed DMARC authentication result
+func (m *Metrics) RecordDMARCResult(result string) {
+	if !m.enabled {
+		return
+	}
+	m.DMARCResults.WithLabelValues(result).Inc()
+}
+
+// RecordDMARCPolicy records a DMARC policy encountered
+func (m *Metrics) RecordDMARCPolicy(policy string) {
+	if !m.enabled {
+		return
+	}
+	// Default to "none" if policy is empty
+	if policy == "" {
+		policy = "none"
+	}
+	m.DMARCPolicies.WithLabelValues(policy).Inc()
 }
 
 // Close closes the metrics (no-op for Prometheus-only implementation)

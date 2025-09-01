@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := help
-.PHONY: build run test clean docker-build docker-run help
+.PHONY: build run test clean docker-build docker-run help lint verify-deps coverage check
 
 # Variables
 BINARY_NAME=inboundparse
@@ -43,6 +43,10 @@ docker-build: ## Build Docker image
 	@echo "Building Docker image..."
 	docker build -t $(DOCKER_IMAGE) .
 
+docker-run: ## Run Docker image
+	@echo "Running Docker image..."
+	docker-compose up -d
+
 test-email: ## Test email sending
 	@echo "Sending test email via telnet..."
 	@echo "Connect with: telnet localhost 2525"
@@ -67,8 +71,6 @@ status: ## Show service status
 
 ci: ## Run CI workflow
 	gh act push -W .github/workflows/ci.yml
-
-.PHONY: lint verify-deps coverage check
 
 lint: ## Lint (golangci-lint) + vuln scan (govulncheck)
 	@echo "Running golangci-lint..."

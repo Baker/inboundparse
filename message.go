@@ -222,9 +222,14 @@ func (mp *MessageProcessor) performAuthenticationChecksWithMetrics(rawMessage st
 		}
 
 		results.SPF = mp.checkSPF()
-		if results.SPF != nil && results.SPF.Result == "temperror" {
+		if results.SPF != nil {
 			if mp.config.Metrics != nil {
-				mp.config.Metrics.IncrementAuthChecksFailed()
+				// Record detailed SPF result
+				mp.config.Metrics.RecordSPFResult(results.SPF.Result)
+
+				if results.SPF.Result == "temperror" {
+					mp.config.Metrics.IncrementAuthChecksFailed()
+				}
 			}
 		}
 	}
@@ -237,9 +242,18 @@ func (mp *MessageProcessor) performAuthenticationChecksWithMetrics(rawMessage st
 		}
 
 		results.DKIM = mp.checkDKIM(rawMessage)
-		if results.DKIM != nil && !results.DKIM.Valid && results.DKIM.Error != "" {
+		if results.DKIM != nil {
 			if mp.config.Metrics != nil {
-				mp.config.Metrics.IncrementAuthChecksFailed()
+				// Record detailed DKIM result
+				if results.DKIM.Valid {
+					mp.config.Metrics.RecordDKIMResult("pass")
+				} else {
+					mp.config.Metrics.RecordDKIMResult("fail")
+				}
+
+				if !results.DKIM.Valid && results.DKIM.Error != "" {
+					mp.config.Metrics.IncrementAuthChecksFailed()
+				}
 			}
 		}
 	}
@@ -252,9 +266,17 @@ func (mp *MessageProcessor) performAuthenticationChecksWithMetrics(rawMessage st
 		}
 
 		results.DMARC = mp.checkDMARC(rawMessage, headers, results.SPF, results.DKIM)
-		if results.DMARC != nil && results.DMARC.Result == "temperror" {
+		if results.DMARC != nil {
 			if mp.config.Metrics != nil {
-				mp.config.Metrics.IncrementAuthChecksFailed()
+				// Record detailed DMARC result
+				mp.config.Metrics.RecordDMARCResult(results.DMARC.Result)
+
+				// Record DMARC policy
+				mp.config.Metrics.RecordDMARCPolicy(results.DMARC.Policy)
+
+				if results.DMARC.Result == "temperror" {
+					mp.config.Metrics.IncrementAuthChecksFailed()
+				}
 			}
 		}
 	}
