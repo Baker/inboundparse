@@ -1,0 +1,28 @@
+version: '3.8'
+
+services:
+  inboundparse:
+    build: .
+    ports:
+      - "25:25"
+      - "587:587"
+      - "9090:9090"
+    environment:
+      - METRICS_ADDR=0.0.0.0:9090
+      - ENABLE_METRICS=true
+      - VERBOSE=true
+    env_file:
+      - .env
+
+    networks:
+      - monitoring
+    volumes:
+      - certs:/cert
+
+volumes:
+  certs:
+
+networks:
+  monitoring:
+    driver: bridge
+    

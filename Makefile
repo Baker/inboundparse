@@ -43,9 +43,15 @@ docker-build: ## Build Docker image
 	@echo "Building Docker image..."
 	docker build -t $(DOCKER_IMAGE) .
 
-docker-run: ## Run Docker image
-	@echo "Running Docker image..."
-	docker-compose up -d
+up: ## Start the docker containers
+	@echo "Starting the docker containers"
+	@docker compose -f docker-compose.dev.yml up --build --detach
+
+down: ## Stop the docker containers
+	@echo "Stopping the docker containers"
+	@docker compose -f docker-compose.dev.yml down
+
+dev: down up ## Restart the docker containers
 
 test-email: ## Test email sending
 	@echo "Sending test email via telnet..."

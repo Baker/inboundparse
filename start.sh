@@ -3,6 +3,11 @@
 ACME_SH_EMAIL=${ACME_SH_EMAIL:-dev@inboundparse.com}
 DOMAIN=${MXDOMAIN:-mx.inboundparse.com}
 DNS_API=${DNS_API:-dns_cf}
+CERT_FILE=${CERT_FILE:-/cert/cert.pem}
+KEY_FILE=${KEY_FILE:-/cert/key.pem}
+
+# Ensure cert home exists
+mkdir -p /cert
 
 # Validate required environment variables for Cloudflare DNS
 if [ "${DNS_API}" = "dns_cf" ]; then
@@ -26,11 +31,18 @@ if ! command -v acme.sh >/dev/null 2>&1; then
     . ~/.acme.sh/acme.sh.env
 fi
 
+# Ensure acme.sh env is loaded if available (path, aliases)
+if [ -f ~/.acme.sh/acme.sh.env ]; then
+    . ~/.acme.sh/acme.sh.env
+fi
+
 # Set up account on first startup
 if [ ! -f /cert/account.conf ]; then
-    echo "First startup - setting up account ${ACME_SH_EMAIL}"
-    if ! acme.sh --home /cert --update-account --accountemail ${ACME_SH_EMAIL}; then
-        echo "ERROR: Failed to set up ACME account"
+    echo "First startup - registering Let's Encrypt account for ${ACME_SH_EMAIL}"
+    # Use Let's Encrypt as default CA to avoid ZeroSSL EAB requirements
+    acme.sh --home /cert --set-default-ca --server letsencrypt
+    if ! acme.sh --home /cert --register-account -m "${ACME_SH_EMAIL}" --server letsencrypt; then
+        echo "ERROR: Failed to register ACME account with Let's Encrypt"
         exit 1
     fi
     echo "Requesting certificates for ${DOMAIN} using ${DNS_API}"
