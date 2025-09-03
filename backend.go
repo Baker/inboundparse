@@ -102,6 +102,11 @@ func (s *Session) Data(r io.Reader) error {
 		}
 	}
 
+	// Report processing errors to Sentry
+	if err != nil {
+		reportToSentry(err)
+	}
+
 	return err
 }
 

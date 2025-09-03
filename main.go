@@ -7,6 +7,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/getsentry/sentry-go"
 	"github.com/joho/godotenv"
 )
 
@@ -31,6 +32,10 @@ var (
 	metricsApiKey   = flag.String("metrics-api-key", "", "Metrics API key")
 	metricsUsername = flag.String("metrics-username", "", "Metrics username")
 	metricsPassword = flag.String("metrics-password", "", "Metrics password")
+	enableSentry    = flag.Bool("enable-sentry", false, "Enable Sentry error tracking")
+	sentryDSN       = flag.String("sentry-dsn", "", "Sentry DSN for error tracking")
+	sentryEnv       = flag.String("sentry-env", "production", "Sentry environment (production, staging, development)")
+	sentryRelease   = flag.String("sentry-release", "", "Sentry release version")
 )
 
 func loadConfig() {
@@ -40,13 +45,32 @@ func loadConfig() {
 
 	flag.Parse()
 
-	// Override with environment variables if set
+	loadServerConfig()
+	loadWebhookConfig()
+	loadAuthConfig()
+	loadMetricsConfig()
+	loadSentryConfig()
+}
+
+func loadServerConfig() {
 	if env := os.Getenv("LISTEN_ADDR"); env != "" {
 		*listenAddr = env
 	}
 	if env := os.Getenv("LISTEN_ADDR_TLS"); env != "" {
 		*listenAddrTLS = env
 	}
+	if env := os.Getenv("CERT_FILE"); env != "" {
+		*certFile = env
+	}
+	if env := os.Getenv("KEY_FILE"); env != "" {
+		*keyFile = env
+	}
+	if env := os.Getenv("VERBOSE"); env != "" {
+		*verbose = env == "true"
+	}
+}
+
+func loadWebhookConfig() {
 	if env := os.Getenv("WEBHOOK_URL"); env != "" {
 		*webhookURL = env
 	}
@@ -56,6 +80,9 @@ func loadConfig() {
 	if env := os.Getenv("WEBHOOK_PASS"); env != "" {
 		*webhookPass = env
 	}
+}
+
+func loadAuthConfig() {
 	if env := os.Getenv("ENABLE_SPF"); env != "" {
 		*enableSPF = env == "true"
 	}
@@ -65,15 +92,9 @@ func loadConfig() {
 	if env := os.Getenv("ENABLE_DMARC"); env != "" {
 		*enableDMARC = env == "true"
 	}
-	if env := os.Getenv("VERBOSE"); env != "" {
-		*verbose = env == "true"
-	}
-	if env := os.Getenv("CERT_FILE"); env != "" {
-		*certFile = env
-	}
-	if env := os.Getenv("KEY_FILE"); env != "" {
-		*keyFile = env
-	}
+}
+
+func loadMetricsConfig() {
 	if env := os.Getenv("METRICS_ADDR"); env != "" {
 		*metricsAddr = env
 	}
@@ -88,6 +109,21 @@ func loadConfig() {
 	}
 	if env := os.Getenv("METRICS_PASSWORD"); env != "" {
 		*metricsPassword = env
+	}
+}
+
+func loadSentryConfig() {
+	if env := os.Getenv("ENABLE_SENTRY"); env != "" {
+		*enableSentry = env == "true"
+	}
+	if env := os.Getenv("SENTRY_DSN"); env != "" {
+		*sentryDSN = env
+	}
+	if env := os.Getenv("SENTRY_ENV"); env != "" {
+		*sentryEnv = env
+	}
+	if env := os.Getenv("SENTRY_RELEASE"); env != "" {
+		*sentryRelease = env
 	}
 }
 
@@ -165,6 +201,40 @@ func initializeMetrics() *Metrics {
 	return metrics
 }
 
+func initializeSentry() {
+	if !*enableSentry {
+		return
+	}
+
+	if *sentryDSN == "" {
+		log.Println("Sentry enabled but no DSN provided, skipping Sentry initialization")
+		return
+	}
+
+	err := sentry.Init(sentry.ClientOptions{
+		Dsn:              *sentryDSN,
+		Environment:      *sentryEnv,
+		Release:          *sentryRelease,
+		TracesSampleRate: 0.1, // Sample 10% of transactions for performance monitoring
+		Debug:            *verbose,
+		BeforeSend: func(event *sentry.Event, hint *sentry.EventHint) *sentry.Event {
+			// Add custom tags
+			event.Tags["service"] = "inboundparse"
+			event.Tags["component"] = "smtp-server"
+			return event
+		},
+	})
+	if err != nil {
+		log.Printf("Failed to initialize Sentry: %v", err)
+		return
+	}
+
+	log.Printf("Sentry initialized for environment: %s", *sentryEnv)
+	if *sentryRelease != "" {
+		log.Printf("Sentry release: %s", *sentryRelease)
+	}
+}
+
 func logServerInfo() {
 	log.Printf("Starting SMTP server on %s", *listenAddr)
 	if *certFile != "" && *keyFile != "" {
@@ -182,6 +252,11 @@ func logServerInfo() {
 	} else {
 		log.Printf("Metrics disabled")
 	}
+	if *enableSentry {
+		log.Printf("Sentry enabled for environment: %s", *sentryEnv)
+	} else {
+		log.Printf("Sentry disabled")
+	}
 }
 
 func main() {
@@ -191,9 +266,14 @@ func main() {
 
 	loadConfig()
 
+	// Check required configuration before initializing Sentry
 	if *webhookURL == "" {
 		log.Fatal("Webhook URL is required. Use -webhook flag or WEBHOOK_URL environment variable")
 	}
+
+	// Initialize Sentry early to capture any startup errors
+	initializeSentry()
+	defer sentry.Flush(2 * time.Second)
 
 	metrics := initializeMetrics()
 	defer func() {

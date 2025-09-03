@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -12,6 +13,7 @@ import (
 	"time"
 
 	"github.com/emersion/go-smtp"
+	"github.com/getsentry/sentry-go"
 	"github.com/mnako/letters"
 )
 
@@ -88,6 +90,13 @@ type WebhookPayload struct {
 func (mp *MessageProcessor) ProcessMessage(r io.Reader) error {
 	startTime := time.Now()
 
+	// Start Sentry transaction for message processing (if Sentry is initialized)
+	var transaction *sentry.Span
+	if sentry.CurrentHub().Client() != nil {
+		transaction = sentry.StartTransaction(context.Background(), "message.process")
+		defer transaction.Finish()
+	}
+
 	// Read the entire message
 	var buf bytes.Buffer
 	_, err := io.Copy(&buf, r)
@@ -95,6 +104,8 @@ func (mp *MessageProcessor) ProcessMessage(r io.Reader) error {
 		if mp.config.Metrics != nil {
 			mp.config.Metrics.IncrementMessageParsingFailed()
 		}
+		// Report to Sentry
+		reportToSentry(fmt.Errorf("failed to read message: %w", err))
 		return fmt.Errorf("failed to read message: %w", err)
 	}
 
@@ -111,6 +122,8 @@ func (mp *MessageProcessor) ProcessMessage(r io.Reader) error {
 		if mp.config.Metrics != nil {
 			mp.config.Metrics.IncrementMessageParsingFailed()
 		}
+		// Report to Sentry
+		reportToSentry(fmt.Errorf("failed to parse message: %w", err))
 		return fmt.Errorf("failed to parse message: %w", err)
 	}
 
@@ -146,11 +159,20 @@ func (mp *MessageProcessor) ProcessMessage(r io.Reader) error {
 func (mp *MessageProcessor) sendWebhook(payload *WebhookPayload) error {
 	startTime := time.Now()
 
+	// Start Sentry transaction for webhook sending (if Sentry is initialized)
+	var transaction *sentry.Span
+	if sentry.CurrentHub().Client() != nil {
+		transaction = sentry.StartTransaction(context.Background(), "webhook.send")
+		defer transaction.Finish()
+	}
+
 	jsonData, err := json.Marshal(payload)
 	if err != nil {
 		if mp.config.Metrics != nil {
 			mp.config.Metrics.IncrementWebhookFailed()
 		}
+		// Report to Sentry
+		reportToSentry(fmt.Errorf("failed to marshal payload: %w", err))
 		return fmt.Errorf("failed to marshal payload: %w", err)
 	}
 
@@ -159,6 +181,8 @@ func (mp *MessageProcessor) sendWebhook(payload *WebhookPayload) error {
 		if mp.config.Metrics != nil {
 			mp.config.Metrics.IncrementWebhookFailed()
 		}
+		// Report to Sentry
+		reportToSentry(fmt.Errorf("failed to create request: %w", err))
 		return fmt.Errorf("failed to create request: %w", err)
 	}
 
@@ -184,6 +208,8 @@ func (mp *MessageProcessor) sendWebhook(payload *WebhookPayload) error {
 		if mp.config.Metrics != nil {
 			mp.config.Metrics.IncrementWebhookFailed()
 		}
+		// Report to Sentry
+		reportToSentry(fmt.Errorf("webhook request failed: %w", err))
 		return fmt.Errorf("webhook request failed: %w", err)
 	}
 	defer func() {
@@ -201,6 +227,8 @@ func (mp *MessageProcessor) sendWebhook(payload *WebhookPayload) error {
 		if mp.config.Metrics != nil {
 			mp.config.Metrics.IncrementWebhookFailed()
 		}
+		// Report to Sentry
+		reportToSentry(fmt.Errorf("webhook returned error status: %d", resp.StatusCode))
 		return fmt.Errorf("webhook returned error status: %d", resp.StatusCode)
 	}
 

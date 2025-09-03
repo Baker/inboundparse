@@ -216,6 +216,8 @@ func TestSession_Data_WithMetrics_Failure2(t *testing.T) {
 	metrics := NewMetricsDisabled()
 	config := &ServerConfig{
 		Metrics:   metrics,
+		Verbose:   true,
+		WebhookURL: "http://invalid-url:9999",
 	}
 	
 	backend := &Backend{config: config}

@@ -57,6 +57,8 @@ func NewSMTPServer(config *ServerConfig) (*SMTPServer, error) {
 		log.Printf("Loading TLS certificate from %s and %s", config.CertFile, config.KeyFile)
 		cert, err := tls.LoadX509KeyPair(config.CertFile, config.KeyFile)
 		if err != nil {
+			// Report to Sentry
+			reportToSentry(fmt.Errorf("failed to load TLS certificate: %w", err))
 			return nil, fmt.Errorf("failed to load TLS certificate: %w", err)
 		}
 		tlsServer = smtp.NewServer(backend)
