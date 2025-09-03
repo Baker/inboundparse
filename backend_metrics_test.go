@@ -144,3 +144,48 @@ func TestSession_Logout_WithMetrics_NoStartTime(t *testing.T) {
 		t.Fatalf("Logout method failed: %v", err)
 	}
 }
+
+func TestBackend_NewSession_VerbosePath_WithRemoteAddr(t *testing.T) {
+	// Test NewSession verbose path with remote address
+	config := &ServerConfig{Verbose: true}
+	backend := &Backend{config: config}
+	
+	// Test with nil connection (existing test covers this path)
+	session, err := backend.NewSession(nil)
+	if err != nil {
+		t.Fatalf("Failed to create session: %v", err)
+	}
+	if session == nil {
+		t.Fatal("Expected session to be non-nil")
+	}
+}
+
+func TestSession_Data_ErrorHandling(t *testing.T) {
+	// Test Data method error handling paths
+	metrics := NewMetricsDisabled()
+	config := &ServerConfig{
+		Metrics:   metrics,
+		Verbose:   true,
+		WebhookURL: "http://invalid-url:9999",
+	}
+	
+	backend := &Backend{config: config}
+	session, err := backend.NewSession(nil)
+	if err != nil {
+		t.Fatalf("Failed to create session: %v", err)
+	}
+	
+	sess := session.(*Session)
+	
+	// Set up session state
+	sess.from = "sender@example.com"
+	sess.to = []string{"recipient@example.com"}
+	
+	// Test with malformed message to trigger processing error
+	malformedMessage := "\xff\xfe\xfd" // Invalid UTF-8
+	err = sess.Data(bytes.NewBufferString(malformedMessage))
+	if err == nil {
+		t.Fatal("Expected Data method to fail with malformed message")
+	}
+}
+

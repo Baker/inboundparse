@@ -235,3 +235,94 @@ func TestCheckDKIMAlignment(t *testing.T) {
 		t.Fatal("strict should fail")
 	}
 }
+
+func TestCheckDMARC_PolicyNone(t *testing.T) {
+	// Test DMARC with PolicyNone (monitor only)
+	defer func() { dmarcLookupFn = dmarc.Lookup; dkimVerifyFn = dkim.Verify; spfCheckHostFn = spf.CheckHost }()
+	
+	dmarcLookupFn = func(domain string) (*dmarc.Record, error) {
+		if domain == "example.com" {
+			rec := &dmarc.Record{Policy: dmarc.PolicyNone, SPFAlignment: dmarc.AlignmentRelaxed, DKIMAlignment: dmarc.AlignmentRelaxed}
+			return rec, nil
+		}
+		return nil, errors.New("not found")
+	}
+	spfCheckHostFn = func(ip net.IP, domain, sender string) (spf.Result, string, error) { return spf.Pass, "mx", nil }
+	dkimVerifyFn = func(r io.Reader) ([]*dkim.Verification, error) {
+		return []*dkim.Verification{{Domain: "example.com", Err: nil}}, nil
+	}
+	
+	mp := &MessageProcessor{from: "sender@example.com", testRemoteIP: net.IPv4(1, 2, 3, 4), config: &ServerConfig{EnableSPF: true, EnableDKIM: true, EnableDMARC: true}}
+	headers := letters.Headers{From: []*mail.Address{{Address: "user@example.com"}}}
+	res := mp.checkDMARC("raw", headers, nil, nil)
+	
+	// With PolicyNone, should report result but not reject
+	if res.Result != "pass" && res.Result != "fail" {
+		t.Fatalf("expected pass or fail result, got %v", res.Result)
+	}
+}
+
+func TestCheckDMARC_PolicyQuarantine(t *testing.T) {
+	// Test DMARC with PolicyQuarantine
+	defer func() { dmarcLookupFn = dmarc.Lookup; dkimVerifyFn = dkim.Verify; spfCheckHostFn = spf.CheckHost }()
+	
+	dmarcLookupFn = func(domain string) (*dmarc.Record, error) {
+		if domain == "example.com" {
+			rec := &dmarc.Record{Policy: dmarc.PolicyQuarantine, SPFAlignment: dmarc.AlignmentRelaxed, DKIMAlignment: dmarc.AlignmentRelaxed}
+			return rec, nil
+		}
+		return nil, errors.New("not found")
+	}
+	spfCheckHostFn = func(ip net.IP, domain, sender string) (spf.Result, string, error) { return spf.Pass, "mx", nil }
+	dkimVerifyFn = func(r io.Reader) ([]*dkim.Verification, error) {
+		return []*dkim.Verification{{Domain: "example.com", Err: nil}}, nil
+	}
+	
+	mp := &MessageProcessor{from: "sender@example.com", testRemoteIP: net.IPv4(1, 2, 3, 4), config: &ServerConfig{EnableSPF: true, EnableDKIM: true, EnableDMARC: true}}
+	headers := letters.Headers{From: []*mail.Address{{Address: "user@example.com"}}}
+	res := mp.checkDMARC("raw", headers, nil, nil)
+	
+	if res.Result != "pass" {
+		t.Fatalf("expected pass result, got %v", res.Result)
+	}
+}
+
+func TestGetRemoteIP_WithTestIP(t *testing.T) {
+	// Test getRemoteIP with testRemoteIP set
+	mp := &MessageProcessor{testRemoteIP: net.IPv4(1, 2, 3, 4)}
+	ip := mp.getRemoteIP()
+	if ip == nil {
+		t.Fatal("expected non-nil IP")
+	}
+	if !ip.Equal(net.IPv4(1, 2, 3, 4)) {
+		t.Fatalf("expected 1.2.3.4, got %v", ip)
+	}
+}
+
+func TestGetRemoteIP_WithConnection(t *testing.T) {
+	// Test getRemoteIP with connection
+	// This is harder to test without a real connection, but we can test the nil case
+	mp := &MessageProcessor{conn: nil}
+	ip := mp.getRemoteIP()
+	if ip != nil {
+		t.Fatal("expected nil IP when no connection")
+	}
+}
+
+func TestExtractDomainFromEmail_EdgeCases(t *testing.T) {
+	mp := &MessageProcessor{}
+	cases := []struct{ in, want string }{
+		{"", ""},
+		{"@", ""},
+		{"user@", ""},
+		{"@domain.com", "domain.com"}, // The function actually extracts domain from this
+		{"user@domain", "domain"},
+		{"user@domain.com", "domain.com"},
+		{"user@sub.domain.com", "sub.domain.com"},
+	}
+	for _, c := range cases {
+		if got := mp.extractDomainFromEmail(c.in); got != c.want {
+			t.Fatalf("extractDomainFromEmail(%q)=%q want %q", c.in, got, c.want)
+		}
+	}
+}

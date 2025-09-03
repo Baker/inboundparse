@@ -108,7 +108,6 @@ jobs:
 
       - name: ✅ Enforce coverage threshold
         uses: vladopajic/go-test-coverage@v2
-        continue-on-error: true
         with:
           profile: cover.out
           config: ./.github/.testcoverage.yml

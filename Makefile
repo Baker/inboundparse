@@ -90,7 +90,7 @@ verify-deps: ## Verify and report dependency status
 	@echo "Verifying dependencies..."
 	go mod verify
 	@echo "Outdated modules:"
-	@go list -u -m all | grep -v "^inboundparse " | grep -E "\[[^\]]*\]$" || true
+	@go list -u -m all | grep -v "^inboundparse " | grep -E "\[[^\]]*\]$$" || true
 
 coverage: ## Run tests with coverage and print summary
 	@echo "Running tests with coverage..."

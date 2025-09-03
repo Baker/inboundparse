@@ -557,3 +557,96 @@ func TestPerformAuthenticationChecksWithMetrics_AuthFailures(t *testing.T) {
 		t.Error("Expected DMARC result to be populated")
 	}
 }
+
+func TestProcessMessage_AuthenticationChecks(t *testing.T) {
+	// Test ProcessMessage with authentication checks enabled
+	metrics := NewMetricsDisabled()
+	hs := &recordingHandler{t: t}
+	ts := httptest.NewServer(hs)
+	defer ts.Close()
+
+	cfg := &ServerConfig{
+		WebhookURL: ts.URL, 
+		EnableSPF: true, 
+		EnableDKIM: true, 
+		EnableDMARC: true, 
+		Verbose: true,
+		Metrics: metrics,
+	}
+	mp := &MessageProcessor{
+		config: cfg, 
+		from: "sender@example.com", 
+		to: []string{"rcpt@example.com"}, 
+		testRemoteIP: net.IPv4(1, 1, 1, 1),
+	}
+
+	email := "From: Alice <alice@example.com>\r\nTo: Bob <bob@example.com>\r\nDate: Mon, 2 Jan 2006 15:04:05 -0700\r\nSubject: Hi\r\nMessage-ID: <id@local>\r\n\r\nHello"
+	err := mp.ProcessMessage(bytes.NewBufferString(email))
+	if err != nil {
+		t.Fatalf("unexpected: %v", err)
+	}
+
+	var payload WebhookPayload
+	if err := json.Unmarshal(hs.got, &payload); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if payload.Subject != "Hi" {
+		t.Fatalf("subject got %q", payload.Subject)
+	}
+}
+
+func TestSendWebhook_RequestCreationError(t *testing.T) {
+	// Test webhook request creation error
+	metrics := NewMetricsDisabled()
+	mp := &MessageProcessor{
+		config: &ServerConfig{
+			WebhookURL: "http://[::1]:namedport", // Invalid URL
+			Metrics:    metrics,
+		},
+	}
+	
+	payload := &WebhookPayload{}
+	err := mp.sendWebhook(payload)
+	if err == nil {
+		t.Fatal("expected request creation error")
+	}
+}
+
+func TestSendWebhook_ClientDoError(t *testing.T) {
+	// Test webhook client.Do error
+	metrics := NewMetricsDisabled()
+	mp := &MessageProcessor{
+		config: &ServerConfig{
+			WebhookURL: "http://invalid-host-that-does-not-exist:9999",
+			Metrics:    metrics,
+		},
+	}
+	
+	payload := &WebhookPayload{}
+	err := mp.sendWebhook(payload)
+	if err == nil {
+		t.Fatal("expected client.Do error")
+	}
+}
+
+func TestSendWebhook_StatusError(t *testing.T) {
+	// Test webhook status error (400+ status codes)
+	metrics := NewMetricsDisabled()
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { 
+		w.WriteHeader(400) // Bad Request
+	}))
+	defer ts.Close()
+	
+	mp := &MessageProcessor{
+		config: &ServerConfig{
+			WebhookURL: ts.URL,
+			Metrics:    metrics,
+		},
+	}
+	
+	payload := &WebhookPayload{}
+	err := mp.sendWebhook(payload)
+	if err == nil {
+		t.Fatal("expected status error")
+	}
+}
