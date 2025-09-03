@@ -14,12 +14,14 @@ A modern SMTP server that receives emails from any domain without authentication
 - **Verbose Logging**: Enable extra logs with `-verbose`
 - **Multiple Ports**: Listens on 25 by default; TLS listener on 587 when certs are provided
 - **PROXY protocol**: Accepts PROXY protocol connections (e.g., from load balancers)
+- **Prometheus Metrics**: Optional metrics collection and monitoring
+- **Sentry Integration**: Optional error tracking and performance monitoring
+- **Health Checks**: Built-in health endpoint for load balancers
 
 ## Quick Start
 
 ### Build and Run
 
-```bash
 # Install dependencies
 go mod tidy
 
@@ -64,6 +66,26 @@ Usage of ./inboundparse:
         TLS private key file path (optional)
   -verbose
         Enable verbose logging (default false)
+  -enable-metrics
+        Enable Prometheus metrics collection (default false)
+  -metrics-addr string
+        Metrics server listen address (default "0.0.0.0:9090")
+  -metrics-api-key string
+        Metrics API key
+  -metrics-username string
+        Metrics username
+  -metrics-password string
+        Metrics password
+  -enable-sentry
+        Enable Sentry error tracking (default false)
+  -sentry-dsn string
+        Sentry DSN for error tracking
+  -sentry-env string
+        Sentry environment (default "production")
+  -sentry-release string
+        Sentry release version
+```
+        Enable verbose logging (default false)
 ```
 
 ### Environment Variables
@@ -86,6 +108,19 @@ You can also configure using environment variables:
 - `ENABLE_DKIM` - Enable DKIM validation (default: true)
 - `ENABLE_DMARC` - Enable DMARC validation (default: true)
 - `VERBOSE` - Enable verbose logging (default: false)
+
+#### Metrics Configuration
+- `ENABLE_METRICS` - Enable Prometheus metrics collection (default: false)
+- `METRICS_ADDR` - Metrics server listen address (default: "0.0.0.0:9090")
+- `METRICS_API_KEY` - Metrics API key
+- `METRICS_USERNAME` - Metrics username
+- `METRICS_PASSWORD` - Metrics password
+
+#### Sentry Configuration
+- `ENABLE_SENTRY` - Enable Sentry error tracking (default: false)
+- `SENTRY_DSN` - Sentry DSN for error tracking
+- `SENTRY_ENV` - Sentry environment (default: "production")
+- `SENTRY_RELEASE` - Sentry release version
 
 ## Webhook Payload
 
@@ -128,7 +163,80 @@ The service sends a JSON payload to your webhook similar to:
 ### DMARC (Domain-based Message Authentication, Reporting & Conformance)
 - **result**: `pass`, `fail`, `none`
 - **raw**: Human-readable description of DMARC check
-- **policy**: The DMARC policy (`none`, `quarantine`, `reject`)
+- **error**: Error message if lookup failed
+
+## Observability
+
+InboundParse includes comprehensive observability features for monitoring and debugging:
+
+### Prometheus Metrics
+
+Enable metrics collection with `--enable-metrics` or `ENABLE_METRICS=true`:
+
+```bash
+# Enable metrics
+./inboundparse --enable-metrics --webhook=http://localhost:8080/api/webhook
+
+# Access metrics
+curl http://localhost:9090/metrics
+```
+
+**Key Metrics:**
+- SMTP connections and sessions
+- Message processing rates and failures
+- Webhook request duration and success rates
+- Authentication check results (SPF, DKIM, DMARC)
+- Server uptime and performance
+
+### Sentry Error Tracking
+
+Enable error tracking with `--enable-sentry` or `ENABLE_SENTRY=true`:
+
+```bash
+# Enable Sentry
+./inboundparse \
+  --enable-sentry \
+  --sentry-dsn="https://your-dsn@sentry.io/project-id" \
+  --sentry-env="production" \
+  --webhook=http://localhost:8080/api/webhook
+```
+
+**Features:**
+- Automatic error capture and reporting
+- Performance monitoring for key operations
+- Custom tags for service identification
+- Release tracking for version-based analysis
+
+### Health Checks
+
+Built-in health endpoint for load balancers:
+
+```bash
+curl http://localhost:9090/health
+```
+
+**Response:**
+```json
+{
+  "status": "healthy",
+  "timestamp": "2024-01-01T12:00:00Z"
+}
+```
+
+### Complete Observability Stack
+
+```bash
+./inboundparse \
+  --enable-metrics \
+  --enable-sentry \
+  --sentry-dsn="https://your-dsn@sentry.io/project-id" \
+  --sentry-env="production" \
+  --webhook=http://localhost:8080/api/webhook
+```
+
+See [OBSERVABILITY.md](OBSERVABILITY.md) for detailed configuration and monitoring setup.
+
+## Docker Usaget`)
 - **error**: Error message if lookup failed
 
 ## Docker Usage

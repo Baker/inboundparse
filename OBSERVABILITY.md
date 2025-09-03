@@ -9,6 +9,7 @@ The InboundParse server now includes comprehensive observability features:
 - **Prometheus Metrics**: Detailed metrics exposed on `/metrics` endpoint
 - **Optional Metrics**: Metrics collection can be enabled/disabled as needed
 - **Health Checks**: Health endpoint at `/health` for load balancer health checks
+- **Sentry Integration**: Optional error tracking and performance monitoring
 - **Grafana Dashboards**: Pre-configured dashboards for visualization
 - **Docker Compose**: Complete monitoring stack with Prometheus and Grafana
 
@@ -54,11 +55,19 @@ The InboundParse server now includes comprehensive observability features:
 
 - `METRICS_ADDR`: Metrics server listen address (default: `0.0.0.0:9090`)
 - `ENABLE_METRICS`: Enable Prometheus metrics collection (default: `false`)
+- `ENABLE_SENTRY`: Enable Sentry error tracking (default: `false`)
+- `SENTRY_DSN`: Sentry DSN for error tracking
+- `SENTRY_ENV`: Sentry environment (default: `production`)
+- `SENTRY_RELEASE`: Sentry release version
 
 ### Command Line Flags
 
 - `--metrics-addr`: Metrics server listen address
 - `--enable-metrics`: Enable Prometheus metrics collection
+- `--enable-sentry`: Enable Sentry error tracking
+- `--sentry-dsn`: Sentry DSN for error tracking
+- `--sentry-env`: Sentry environment (production, staging, development)
+- `--sentry-release`: Sentry release version
 
 ## Running with Observability
 
@@ -85,6 +94,33 @@ This will start:
 - **Prometheus**: `http://localhost:9091`
 - **Grafana**: `http://localhost:3000` (admin/admin)
 - **Test Webhook**: `http://localhost:8080`
+- **Sentry**: Configure via environment variables or command line flags
+
+### Complete Observability Stack
+
+For comprehensive monitoring, you can run both Prometheus metrics and Sentry error tracking:
+
+```bash
+# Full observability setup
+docker run -d \
+  -e ENABLE_METRICS=true \
+  -e METRICS_ADDR="0.0.0.0:9090" \
+  -e ENABLE_SENTRY=true \
+  -e SENTRY_DSN="https://your-dsn@sentry.io/project-id" \
+  -e SENTRY_ENV="production" \
+  -e SENTRY_RELEASE="v1.2.3" \
+  -e WEBHOOK_URL="https://your-app.com/webhook" \
+  -p 25:25 \
+  -p 587:587 \
+  -p 9090:9090 \
+  inboundparse
+```
+
+This provides:
+- **Prometheus**: Quantitative metrics and alerting
+- **Sentry**: Error tracking and performance monitoring
+- **Grafana**: Visualization and dashboards
+- **Health Checks**: Load balancer integration
 
 ### Grafana Dashboard
 
@@ -162,6 +198,78 @@ docker run -e ENABLE_METRICS=true inboundparse
 
 When metrics are disabled, the metrics server will not start and no metrics will be collected, reducing resource usage.
 
+## Sentry Integration
+
+Sentry provides comprehensive error tracking and performance monitoring for the InboundParse server.
+
+### Features
+
+- **Error Tracking**: Automatic capture of application errors and exceptions
+- **Performance Monitoring**: Transaction tracking for key operations
+- **Custom Tags**: Automatic tagging with service and component information
+- **Release Tracking**: Version-based error grouping and performance analysis
+
+### Error Tracking
+
+Sentry automatically captures:
+
+- Message parsing errors
+- Webhook sending failures
+- TLS certificate loading errors
+- SMTP session processing errors
+- HTTP request failures
+
+### Performance Monitoring
+
+Sentry tracks performance for:
+
+- Message processing operations
+- Webhook sending operations
+
+### Configuration
+
+Sentry is completely optional and disabled by default. To enable:
+
+```bash
+# Using command line flags
+./inboundparse \
+  --enable-sentry \
+  --sentry-dsn="https://your-dsn@sentry.io/project-id" \
+  --sentry-env="production" \
+  --sentry-release="v1.2.3"
+
+# Using environment variables
+export ENABLE_SENTRY=true
+export SENTRY_DSN="https://your-dsn@sentry.io/project-id"
+export SENTRY_ENV="production"
+export SENTRY_RELEASE="v1.2.3"
+./inboundparse
+```
+
+### Docker Setup
+
+```bash
+docker run -d \
+  -e ENABLE_SENTRY=true \
+  -e SENTRY_DSN="https://your-dsn@sentry.io/project-id" \
+  -e SENTRY_ENV="production" \
+  -e SENTRY_RELEASE="v1.2.3" \
+  -p 25:25 \
+  -p 587:587 \
+  inboundparse
+```
+
+### Custom Tags
+
+All Sentry events include:
+
+- `service`: "inboundparse"
+- `component`: "smtp-server"
+
+### Performance Sampling
+
+Sentry samples 10% of transactions by default to avoid overwhelming the service while still providing meaningful performance insights.
+
 ## Health Checks
 
 The health endpoint at `/health` returns:
@@ -195,12 +303,22 @@ This can be used by load balancers and orchestration systems for health checks.
 2. Check that the metrics server is running on the correct port
 3. Ensure Prometheus is configured to scrape the metrics endpoint
 
+### Sentry Issues
+
+1. Verify Sentry is enabled with `--enable-sentry` flag or `ENABLE_SENTRY=true`
+2. Check that a valid DSN is provided with `--sentry-dsn` or `SENTRY_DSN`
+3. Ensure the Sentry project is properly configured
+4. Check network connectivity to Sentry servers
+5. Verify Sentry release version if using release tracking
+
 ## Performance Considerations
 
 - Metrics collection has minimal overhead
 - Prometheus scraping interval can be adjusted based on needs
-- Metrics collection has minimal overhead when enabled
 - Consider using Prometheus remote storage for long-term retention
+- Sentry performance monitoring samples 10% of transactions by default
+- Sentry error reporting has minimal impact on application performance
+- Both metrics and Sentry can be disabled to reduce resource usage
 
 ## Security Considerations
 
@@ -208,6 +326,8 @@ This can be used by load balancers and orchestration systems for health checks.
 - Consider restricting access to the metrics port in production
 - Health endpoint is safe to expose publicly
 - Metrics endpoint is safe to expose internally
+- Sentry DSN contains sensitive information and should be kept secure
+- Sentry data is transmitted over HTTPS and is secure by default
 
 ## Future Enhancements
 
@@ -218,3 +338,47 @@ Potential future observability enhancements:
 - Log aggregation and analysis
 - Advanced alerting with PagerDuty/Slack integration
 - Performance profiling and optimization insights
+- Sentry integration with custom dashboards
+- Enhanced Sentry alerting rules
+- Integration with log aggregation systems (ELK stack)
+
+## Quick Reference
+
+### Environment Variables
+
+```bash
+# Metrics
+ENABLE_METRICS=true
+METRICS_ADDR=0.0.0.0:9090
+
+# Sentry
+ENABLE_SENTRY=true
+SENTRY_DSN=https://your-dsn@sentry.io/project-id
+SENTRY_ENV=production
+SENTRY_RELEASE=v1.2.3
+```
+
+### Command Line Flags
+
+```bash
+# Metrics
+--enable-metrics
+--metrics-addr=0.0.0.0:9090
+
+# Sentry
+--enable-sentry
+--sentry-dsn=https://your-dsn@sentry.io/project-id
+--sentry-env=production
+--sentry-release=v1.2.3
+```
+
+### Docker Compose
+
+```yaml
+environment:
+  - ENABLE_METRICS=true
+  - ENABLE_SENTRY=true
+  - SENTRY_DSN=https://your-dsn@sentry.io/project-id
+  - SENTRY_ENV=production
+  - SENTRY_RELEASE=v1.2.3
+```
