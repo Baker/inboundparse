@@ -11,23 +11,26 @@ import (
 )
 
 var (
-	listenAddr     = flag.String("listen", "0.0.0.0:25", "SMTP server listen address")
-	listenAddrTLS  = flag.String("listen-tls", "0.0.0.0:587", "SMTP server listen address for TLS")
-	webhookURL     = flag.String("webhook", "", "Webhook URL to send email data to")
-	webhookUser    = flag.String("webhook-user", "", "Basic auth username for webhook")
-	webhookPass    = flag.String("webhook-pass", "", "Basic auth password for webhook")
-	serverName     = flag.String("name", "mx.inboundparse.com", "SMTP server name")
-	maxMessageSize = flag.Int64("max-size", 10*1024*1024, "Maximum message size in bytes")
-	readTimeout    = flag.Int("read-timeout", 30, "Read timeout in seconds")
-	writeTimeout   = flag.Int("write-timeout", 30, "Write timeout in seconds")
-	enableSPF      = flag.Bool("enable-spf", true, "Enable SPF validation")
-	enableDKIM     = flag.Bool("enable-dkim", true, "Enable DKIM validation")
-	enableDMARC    = flag.Bool("enable-dmarc", true, "Enable DMARC validation")
-	certFile       = flag.String("cert-file", "", "TLS certificate file")
-	keyFile        = flag.String("key-file", "", "TLS key file")
-	verbose        = flag.Bool("verbose", false, "Enable verbose logging")
-	metricsAddr    = flag.String("metrics-addr", "0.0.0.0:9090", "Metrics server listen address")
-	enableMetrics  = flag.Bool("enable-metrics", false, "Enable Prometheus metrics collection")
+	listenAddr      = flag.String("listen", "0.0.0.0:25", "SMTP server listen address")
+	listenAddrTLS   = flag.String("listen-tls", "0.0.0.0:587", "SMTP server listen address for TLS")
+	webhookURL      = flag.String("webhook", "", "Webhook URL to send email data to")
+	webhookUser     = flag.String("webhook-user", "", "Basic auth username for webhook")
+	webhookPass     = flag.String("webhook-pass", "", "Basic auth password for webhook")
+	serverName      = flag.String("name", "mx.inboundparse.com", "SMTP server name")
+	maxMessageSize  = flag.Int64("max-size", 10*1024*1024, "Maximum message size in bytes")
+	readTimeout     = flag.Int("read-timeout", 30, "Read timeout in seconds")
+	writeTimeout    = flag.Int("write-timeout", 30, "Write timeout in seconds")
+	enableSPF       = flag.Bool("enable-spf", true, "Enable SPF validation")
+	enableDKIM      = flag.Bool("enable-dkim", true, "Enable DKIM validation")
+	enableDMARC     = flag.Bool("enable-dmarc", true, "Enable DMARC validation")
+	certFile        = flag.String("cert-file", "", "TLS certificate file")
+	keyFile         = flag.String("key-file", "", "TLS key file")
+	verbose         = flag.Bool("verbose", false, "Enable verbose logging")
+	metricsAddr     = flag.String("metrics-addr", "0.0.0.0:9090", "Metrics server listen address")
+	enableMetrics   = flag.Bool("enable-metrics", false, "Enable Prometheus metrics collection")
+	metricsApiKey   = flag.String("metrics-api-key", "", "Metrics API key")
+	metricsUsername = flag.String("metrics-username", "", "Metrics username")
+	metricsPassword = flag.String("metrics-password", "", "Metrics password")
 )
 
 func loadConfig() {
@@ -77,6 +80,15 @@ func loadConfig() {
 	if env := os.Getenv("ENABLE_METRICS"); env != "" {
 		*enableMetrics = env == "true"
 	}
+	if env := os.Getenv("METRICS_API_KEY"); env != "" {
+		*metricsApiKey = env
+	}
+	if env := os.Getenv("METRICS_USERNAME"); env != "" {
+		*metricsUsername = env
+	}
+	if env := os.Getenv("METRICS_PASSWORD"); env != "" {
+		*metricsPassword = env
+	}
 }
 
 func initializeMetrics() *Metrics {
@@ -92,8 +104,48 @@ func initializeMetrics() *Metrics {
 	// Start metrics server
 	go func() {
 		mux := http.NewServeMux()
-		mux.Handle("/metrics", MetricsHandler())
-		mux.Handle("/health", HealthHandler())
+
+		// Add authentication middleware for metrics endpoints
+		authMiddleware := func(next http.Handler) http.Handler {
+			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				// If no auth configured, allow access
+				hasBasicAuth := *metricsUsername != "" && *metricsPassword != ""
+				apiKey := *metricsApiKey
+				hasApiKey := apiKey != ""
+
+				// If neither auth method is configured, allow access
+				if !hasBasicAuth && !hasApiKey {
+					next.ServeHTTP(w, r)
+					return
+				}
+
+				// Check API key first (header: X-API-Key)
+				if hasApiKey {
+					if reqApiKey := r.Header.Get("X-API-Key"); reqApiKey != "" {
+						if reqApiKey == apiKey {
+							next.ServeHTTP(w, r)
+							return
+						}
+					}
+				}
+
+				// Check basic auth
+				if hasBasicAuth {
+					username, password, ok := r.BasicAuth()
+					if ok && username == *webhookUser && password == *webhookPass {
+						next.ServeHTTP(w, r)
+						return
+					}
+				}
+
+				// Authentication failed
+				w.Header().Set("WWW-Authenticate", `Basic realm="Metrics"`)
+				http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			})
+		}
+
+		mux.Handle("/metrics", authMiddleware(MetricsHandler()))
+		mux.Handle("/health", authMiddleware(HealthHandler()))
 
 		log.Printf("Starting metrics server on %s", *metricsAddr)
 		server := &http.Server{
@@ -102,8 +154,10 @@ func initializeMetrics() *Metrics {
 			ReadTimeout:  10 * time.Second,
 			WriteTimeout: 10 * time.Second,
 			IdleTimeout:  120 * time.Second,
+			ErrorLog:     log.New(os.Stderr, "metrics-server: ", log.LstdFlags),
 		}
-		if err := server.ListenAndServe(); err != nil {
+
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Printf("Metrics server error: %v", err)
 		}
 	}()
