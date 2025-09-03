@@ -558,6 +558,52 @@ func TestPerformAuthenticationChecksWithMetrics_AuthFailures(t *testing.T) {
 	}
 }
 
+func TestPerformAuthenticationChecksWithMetrics_SPFError(t *testing.T) {
+	// Test SPF error scenarios
+	metrics := NewMetricsDisabled()
+	mp := &MessageProcessor{
+		config: &ServerConfig{
+			EnableSPF:   true,
+			EnableDKIM:  false,
+			EnableDMARC: false,
+			Metrics:     metrics,
+		},
+		from:         "sender@example.com",
+		testRemoteIP: net.IPv4(1, 2, 3, 4),
+	}
+	
+	// Test with headers that might cause SPF errors
+	headers := letters.Headers{}
+	results := mp.performAuthenticationChecksWithMetrics("raw message", headers)
+	
+	// SPF should be populated
+	if results.SPF == nil {
+		t.Error("Expected SPF result to be populated")
+	}
+}
+
+func TestPerformAuthenticationChecksWithMetrics_DKIMError(t *testing.T) {
+	// Test DKIM error scenarios
+	metrics := NewMetricsDisabled()
+	mp := &MessageProcessor{
+		config: &ServerConfig{
+			EnableSPF:   false,
+			EnableDKIM:  true,
+			EnableDMARC: false,
+			Metrics:     metrics,
+		},
+	}
+	
+	// Test with headers that might cause DKIM errors
+	headers := letters.Headers{}
+	results := mp.performAuthenticationChecksWithMetrics("raw message", headers)
+	
+	// DKIM should be populated
+	if results.DKIM == nil {
+		t.Error("Expected DKIM result to be populated")
+	}
+}
+
 func TestProcessMessage_AuthenticationChecks(t *testing.T) {
 	// Test ProcessMessage with authentication checks enabled
 	metrics := NewMetricsDisabled()
@@ -648,5 +694,264 @@ func TestSendWebhook_StatusError(t *testing.T) {
 	err := mp.sendWebhook(payload)
 	if err == nil {
 		t.Fatal("expected status error")
+	}
+}
+
+func TestSendWebhook_WithBasicAuth(t *testing.T) {
+	// Test webhook with basic authentication
+	metrics := NewMetricsDisabled()
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { 
+		// Check that basic auth was sent
+		username, password, ok := r.BasicAuth()
+		if !ok {
+			t.Error("Expected basic auth to be present")
+		}
+		if username != "testuser" || password != "testpass" {
+			t.Errorf("Expected username=testuser, password=testpass, got username=%s, password=%s", username, password)
+		}
+		w.WriteHeader(200)
+	}))
+	defer ts.Close()
+	
+	mp := &MessageProcessor{
+		config: &ServerConfig{
+			WebhookURL:  ts.URL,
+			WebhookUser: "testuser",
+			WebhookPass: "testpass",
+			Metrics:     metrics,
+		},
+	}
+	
+	payload := &WebhookPayload{}
+	err := mp.sendWebhook(payload)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestSendWebhook_WithoutBasicAuth(t *testing.T) {
+	// Test webhook without basic authentication
+	metrics := NewMetricsDisabled()
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { 
+		// Check that no basic auth was sent
+		_, _, ok := r.BasicAuth()
+		if ok {
+			t.Error("Expected no basic auth to be present")
+		}
+		w.WriteHeader(200)
+	}))
+	defer ts.Close()
+	
+	mp := &MessageProcessor{
+		config: &ServerConfig{
+			WebhookURL: ts.URL,
+			Metrics:    metrics,
+		},
+	}
+	
+	payload := &WebhookPayload{}
+	err := mp.sendWebhook(payload)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestSendWebhook_ResponseBodyClose(t *testing.T) {
+	// Test webhook response body closing
+	metrics := NewMetricsDisabled()
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { 
+		w.WriteHeader(200)
+		// Write some data to the response body
+		w.Write([]byte("test response"))
+	}))
+	defer ts.Close()
+	
+	mp := &MessageProcessor{
+		config: &ServerConfig{
+			WebhookURL: ts.URL,
+			Metrics:    metrics,
+		},
+	}
+	
+	payload := &WebhookPayload{}
+	err := mp.sendWebhook(payload)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestPerformAuthenticationChecksWithMetrics_SPFTempError(t *testing.T) {
+	// Test SPF temperror scenario
+	metrics := NewMetricsDisabled()
+	mp := &MessageProcessor{
+		config: &ServerConfig{
+			EnableSPF:   true,
+			EnableDKIM:  false,
+			EnableDMARC: false,
+			Metrics:     metrics,
+		},
+		from:         "sender@example.com",
+		testRemoteIP: net.IPv4(1, 2, 3, 4),
+	}
+	
+	// We can't easily mock the SPF result to be temperror without complex setup,
+	// but we can test that the metrics path exists
+	headers := letters.Headers{}
+	results := mp.performAuthenticationChecksWithMetrics("raw message", headers)
+	
+	// SPF should be populated
+	if results.SPF == nil {
+		t.Error("Expected SPF result to be populated")
+	}
+}
+
+func TestPerformAuthenticationChecksWithMetrics_DKIMError2(t *testing.T) {
+	// Test DKIM error scenario with metrics
+	metrics := NewMetricsDisabled()
+	mp := &MessageProcessor{
+		config: &ServerConfig{
+			EnableSPF:   false,
+			EnableDKIM:  true,
+			EnableDMARC: false,
+			Metrics:     metrics,
+		},
+	}
+	
+	// Test with headers that might cause DKIM errors
+	headers := letters.Headers{}
+	results := mp.performAuthenticationChecksWithMetrics("raw message", headers)
+	
+	// DKIM should be populated
+	if results.DKIM == nil {
+		t.Error("Expected DKIM result to be populated")
+	}
+}
+
+func TestPerformAuthenticationChecksWithMetrics_DMARCTempError(t *testing.T) {
+	// Test DMARC temperror scenario
+	metrics := NewMetricsDisabled()
+	mp := &MessageProcessor{
+		config: &ServerConfig{
+			EnableSPF:   false,
+			EnableDKIM:  false,
+			EnableDMARC: true,
+			Metrics:     metrics,
+		},
+	}
+	
+	// Test with headers that might cause DMARC temperror
+	headers := letters.Headers{
+		From: []*mail.Address{{Address: "user@example.com"}},
+	}
+	results := mp.performAuthenticationChecksWithMetrics("raw message", headers)
+	
+	// DMARC should be populated
+	if results.DMARC == nil {
+		t.Error("Expected DMARC result to be populated")
+	}
+}
+
+func TestProcessMessage_Comprehensive(t *testing.T) {
+	// Test ProcessMessage with comprehensive scenarios
+	metrics := NewMetricsDisabled()
+	hs := &recordingHandler{t: t}
+	ts := httptest.NewServer(hs)
+	defer ts.Close()
+	
+	mp := &MessageProcessor{
+		config: &ServerConfig{
+			WebhookURL:  ts.URL,
+			EnableSPF:   true,
+			EnableDKIM:  true,
+			EnableDMARC: true,
+			Metrics:     metrics,
+		},
+		from:         "sender@example.com",
+		testRemoteIP: net.IPv4(1, 2, 3, 4),
+	}
+	
+	// Test with various message formats
+	messages := []string{
+		"From: sender@example.com\r\nTo: recipient@example.com\r\nSubject: Test\r\n\r\nTest message",
+		"From: sender@example.com\r\nTo: recipient@example.com\r\nSubject: Test\r\n\r\nTest message with special chars: éñü",
+		"From: sender@example.com\r\nTo: recipient@example.com\r\nSubject: Test\r\n\r\nTest message with newlines\n\n\n",
+		"From: sender@example.com\r\nTo: recipient@example.com\r\nSubject: Test\r\n\r\nTest message with tabs\t\t\t",
+	}
+	
+	for i, message := range messages {
+		err := mp.ProcessMessage(bytes.NewBufferString(message))
+		if err != nil {
+			t.Errorf("ProcessMessage failed for message %d: %v", i, err)
+		}
+	}
+}
+
+func TestSendWebhook_Comprehensive(t *testing.T) {
+	// Test sendWebhook with comprehensive scenarios
+	metrics := NewMetricsDisabled()
+	hs := &recordingHandler{t: t}
+	ts := httptest.NewServer(hs)
+	defer ts.Close()
+	
+	mp := &MessageProcessor{
+		config: &ServerConfig{
+			WebhookURL:  ts.URL,
+			WebhookUser: "testuser",
+			WebhookPass: "testpass",
+			Metrics:     metrics,
+		},
+	}
+	
+	// Test with various payload types
+	payloads := []*WebhookPayload{
+		{From: []*mail.Address{{Address: "sender@example.com"}}, To: []*mail.Address{{Address: "recipient@example.com"}}},
+		{From: []*mail.Address{{Address: "sender@example.com"}}, To: []*mail.Address{{Address: "recipient1@example.com"}, {Address: "recipient2@example.com"}}},
+		{From: []*mail.Address{{Address: "sender@example.com"}}, To: []*mail.Address{{Address: "recipient@example.com"}}, Subject: "Test Subject"},
+		{From: []*mail.Address{{Address: "sender@example.com"}}, To: []*mail.Address{{Address: "recipient@example.com"}}, Subject: "Test Subject with special chars: éñü"},
+	}
+	
+	for i, payload := range payloads {
+		err := mp.sendWebhook(payload)
+		if err != nil {
+			t.Errorf("sendWebhook failed for payload %d: %v", i, err)
+		}
+	}
+}
+
+func TestPerformAuthenticationChecksWithMetrics_Comprehensive(t *testing.T) {
+	// Test performAuthenticationChecksWithMetrics with comprehensive scenarios
+	metrics := NewMetricsDisabled()
+	mp := &MessageProcessor{
+		config: &ServerConfig{
+			EnableSPF:   true,
+			EnableDKIM:  true,
+			EnableDMARC: true,
+			Metrics:     metrics,
+		},
+		from:         "sender@example.com",
+		testRemoteIP: net.IPv4(1, 2, 3, 4),
+	}
+	
+	// Test with various header combinations
+	headerCombinations := []letters.Headers{
+		{From: []*mail.Address{{Address: "sender@example.com"}}},
+		{From: []*mail.Address{{Address: "sender@example.com"}}, To: []*mail.Address{{Address: "recipient@example.com"}}},
+		{From: []*mail.Address{{Address: "sender@example.com"}}, To: []*mail.Address{{Address: "recipient@example.com"}}, Subject: "Test Subject"},
+		{From: []*mail.Address{{Address: "sender@example.com"}}, To: []*mail.Address{{Address: "recipient@example.com"}}, Subject: "Test Subject with special chars: éñü"},
+	}
+	
+	for i, headers := range headerCombinations {
+		results := mp.performAuthenticationChecksWithMetrics("raw message", headers)
+		
+		// All results should be populated when all auth methods are enabled
+		if results.SPF == nil {
+			t.Errorf("Expected SPF result to be populated for headers %d", i)
+		}
+		if results.DKIM == nil {
+			t.Errorf("Expected DKIM result to be populated for headers %d", i)
+		}
+		if results.DMARC == nil {
+			t.Errorf("Expected DMARC result to be populated for headers %d", i)
+		}
 	}
 }

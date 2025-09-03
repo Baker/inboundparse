@@ -227,3 +227,98 @@ func TestSMTPServer_Stop_WithErrors(t *testing.T) {
 		t.Fatalf("Stop() should not error on unstarted server: %v", err)
 	}
 }
+
+func TestSMTPServer_Start_WithTLS_ErrorHandling(t *testing.T) {
+	// Test Start method with TLS server and error handling
+	cert, key := writeSelfSignedCert(t)
+	config := &ServerConfig{
+		ListenAddr:    "127.0.0.1:0",
+		ListenAddrTLS: "127.0.0.1:0",
+		CertFile:      cert,
+		KeyFile:       key,
+		ServerName:    "localhost",
+		ReadTimeout:   1,
+		WriteTimeout:  1,
+	}
+	
+	server, err := NewSMTPServer(config)
+	if err != nil {
+		t.Fatalf("Failed to create server: %v", err)
+	}
+	
+	// Test that Start method can be called and handles errors gracefully
+	done := make(chan error, 1)
+	go func() { done <- server.Start() }()
+	
+	// Give it a moment to start
+	time.Sleep(50 * time.Millisecond)
+	
+	// Stop the server
+	err = server.Stop()
+	if err != nil {
+		t.Fatalf("Stop failed: %v", err)
+	}
+	
+	// Wait for start to complete
+	select {
+	case <-time.After(time.Second):
+		t.Fatal("Start did not complete in time")
+	case <-done:
+		// Start completed (either successfully or with error)
+	}
+}
+
+func TestListenAndServeWithProxy_ErrorHandling(t *testing.T) {
+	// Test listenAndServeWithProxy error handling
+	config := &ServerConfig{
+		ListenAddr: "127.0.0.1:0",
+		ServerName: "test",
+	}
+	
+	server, err := NewSMTPServer(config)
+	if err != nil {
+		t.Fatalf("Failed to create server: %v", err)
+	}
+	
+	// Test with invalid address to trigger error handling
+	err = server.listenAndServeWithProxy(server.server, "invalid-address")
+	if err == nil {
+		t.Fatal("Expected error for invalid address")
+	}
+}
+
+func TestSMTPServer_Start_PlainOnly_ErrorHandling(t *testing.T) {
+	// Test Start method with plain server only and error handling
+	config := &ServerConfig{
+		ListenAddr:   "127.0.0.1:0",
+		ServerName:   "test",
+		ReadTimeout:  1,
+		WriteTimeout: 1,
+	}
+	
+	server, err := NewSMTPServer(config)
+	if err != nil {
+		t.Fatalf("Failed to create server: %v", err)
+	}
+	
+	// Test that Start method can be called and handles errors gracefully
+	done := make(chan error, 1)
+	go func() { done <- server.Start() }()
+	
+	// Give it a moment to start
+	time.Sleep(50 * time.Millisecond)
+	
+	// Stop the server
+	err = server.Stop()
+	if err != nil {
+		t.Fatalf("Stop failed: %v", err)
+	}
+	
+	// Wait for start to complete
+	select {
+	case <-time.After(time.Second):
+		t.Fatal("Start did not complete in time")
+	case <-done:
+		// Start completed (either successfully or with error)
+	}
+}
