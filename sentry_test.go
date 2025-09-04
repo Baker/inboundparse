@@ -2,6 +2,8 @@ package main
 
 import (
 	"bytes"
+	"errors"
+	"fmt"
 	"net/mail"
 	"testing"
 )
@@ -122,4 +124,44 @@ func TestSentryIntegration_WebhookSending(t *testing.T) {
 	if err == nil {
 		t.Fatal("Expected sendWebhook to fail with invalid URL")
 	}
+}
+
+func TestReportToSentry(t *testing.T) {
+	// Test reportToSentry function
+	// This should not panic when Sentry is not initialized
+	
+	// Test with nil error
+	reportToSentry(nil)
+	
+	// Test with actual error
+	err := errors.New("test error")
+	reportToSentry(err)
+	
+	// Test with wrapped error
+	wrappedErr := fmt.Errorf("wrapped error: %w", err)
+	reportToSentry(wrappedErr)
+	
+	// Test with different error types
+	reportToSentry(errors.New("simple error"))
+	reportToSentry(fmt.Errorf("formatted error: %s", "test"))
+	reportToSentry(fmt.Errorf("multi-level wrapped: %w", wrappedErr))
+}
+
+func TestReportToSentry_EdgeCases(t *testing.T) {
+	// Test reportToSentry with various edge cases
+	
+	// Test with empty error message
+	reportToSentry(errors.New(""))
+	
+	// Test with very long error message
+	longMsg := string(make([]byte, 1000))
+	for i := range longMsg {
+		longMsg = longMsg[:i] + "a" + longMsg[i+1:]
+	}
+	reportToSentry(errors.New(longMsg))
+	
+	// Test with special characters
+	reportToSentry(errors.New("error with special chars: éñü"))
+	reportToSentry(errors.New("error with newlines\n\n\n"))
+	reportToSentry(errors.New("error with tabs\t\t\t"))
 }
