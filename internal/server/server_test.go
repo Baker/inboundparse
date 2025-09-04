@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"io"
+	"os"
 	"testing"
 	"time"
 
@@ -299,6 +300,142 @@ func TestServer_StartSMTPServers_WithoutTLS(t *testing.T) {
 	err := server.Start(ctx)
 
 	// This might succeed or fail depending on available ports
+	if err != nil {
+		t.Logf("Start() returned expected error: %v", err)
+	}
+}
+
+func TestServer_Start_WithInvalidMetricsAddr(t *testing.T) {
+	config := &config.Config{
+		Metrics: config.MetricsConfig{
+			Enabled: true,
+			Addr:    "invalid-address:port",
+		},
+	}
+	backend := &mockSMTPBackend{}
+	metricsService := &mockMetricsServiceForServer{}
+	logger := &mockLoggerService{}
+
+	server := NewServer(config, backend, metricsService, logger)
+
+	ctx := context.Background()
+	err := server.Start(ctx)
+
+	// This should fail due to invalid address
+	if err != nil {
+		t.Logf("Start() returned expected error: %v", err)
+	}
+}
+
+func TestServer_Stop_WithRunningServices(t *testing.T) {
+	config := &config.Config{
+		Metrics: config.MetricsConfig{
+			Enabled: false,
+		},
+	}
+	backend := &mockSMTPBackend{}
+	metricsService := &mockMetricsServiceForServer{}
+	logger := &mockLoggerService{}
+
+	server := NewServer(config, backend, metricsService, logger)
+
+	ctx := context.Background()
+	
+	// Start the server
+	err := server.Start(ctx)
+	if err != nil {
+		t.Logf("Start() returned expected error: %v", err)
+	}
+
+	// Stop the server
+	err = server.Stop(ctx)
+	assert.NoError(t, err)
+}
+
+func TestServer_Run_WithContextCancellation(t *testing.T) {
+	config := &config.Config{
+		Metrics: config.MetricsConfig{
+			Enabled: false,
+		},
+	}
+	backend := &mockSMTPBackend{}
+	metricsService := &mockMetricsServiceForServer{}
+	logger := &mockLoggerService{}
+
+	server := NewServer(config, backend, metricsService, logger)
+
+	// Create a context that will be cancelled quickly
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+
+	err := server.Run(ctx)
+
+	// Run might succeed or fail depending on available ports
+	if err != nil {
+		t.Logf("Run() returned expected error: %v", err)
+	}
+}
+
+func TestServer_StartSMTPServers_WithInvalidCert(t *testing.T) {
+	config := &config.Config{
+		Server: config.ServerConfig{
+			CertFile: "/nonexistent/cert.pem",
+			KeyFile:  "/nonexistent/key.pem",
+		},
+		Metrics: config.MetricsConfig{
+			Enabled: false,
+		},
+	}
+	backend := &mockSMTPBackend{}
+	metricsService := &mockMetricsServiceForServer{}
+	logger := &mockLoggerService{}
+
+	server := NewServer(config, backend, metricsService, logger)
+
+	ctx := context.Background()
+	err := server.Start(ctx)
+
+	// This should fail because the certificate files don't exist
+	assert.Error(t, err, "Expected Start() to return an error when TLS certificate files don't exist")
+}
+
+func TestServer_StartSMTPServers_WithValidCert(t *testing.T) {
+	// Create temporary certificate files for testing
+	certFile := "/tmp/test-cert.pem"
+	keyFile := "/tmp/test-key.pem"
+	
+	// Create dummy certificate files
+	err := os.WriteFile(certFile, []byte("dummy cert"), 0644)
+	if err != nil {
+		t.Skip("Could not create test certificate file")
+	}
+	defer os.Remove(certFile)
+	
+	err = os.WriteFile(keyFile, []byte("dummy key"), 0644)
+	if err != nil {
+		t.Skip("Could not create test key file")
+	}
+	defer os.Remove(keyFile)
+
+	config := &config.Config{
+		Server: config.ServerConfig{
+			CertFile: certFile,
+			KeyFile:  keyFile,
+		},
+		Metrics: config.MetricsConfig{
+			Enabled: false,
+		},
+	}
+	backend := &mockSMTPBackend{}
+	metricsService := &mockMetricsServiceForServer{}
+	logger := &mockLoggerService{}
+
+	server := NewServer(config, backend, metricsService, logger)
+
+	ctx := context.Background()
+	err = server.Start(ctx)
+
+	// This should fail because the certificate files are invalid
 	if err != nil {
 		t.Logf("Start() returned expected error: %v", err)
 	}

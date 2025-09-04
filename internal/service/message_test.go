@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
 )
 
 // mockWebhookService is a mock implementation of WebhookService
@@ -301,4 +303,130 @@ type errorReader struct {
 
 func (e *errorReader) Read(p []byte) (n int, err error) {
 	return 0, e.err
+}
+
+func TestMessageProcessor_ProcessMessage_WithAttachments(t *testing.T) {
+	webhookService := &mockWebhookService{}
+	authService := &mockAuthService{}
+	metricsService := &mockMetricsServiceForMessage{}
+	remoteIP := net.IPv4(127, 0, 0, 1)
+
+	processor := NewMessageProcessor(webhookService, authService, metricsService, remoteIP).(*messageProcessor)
+
+	// Set up webhook service to capture payload
+	var capturedPayload *WebhookPayload
+	webhookService.sendWebhookFunc = func(ctx context.Context, payload *WebhookPayload) error {
+		capturedPayload = payload
+		return nil
+	}
+
+	// Create message with attachments
+	messageData := `From: test@example.com
+To: recipient@example.com
+Subject: Test with attachments
+Content-Type: multipart/mixed; boundary="boundary123"
+
+--boundary123
+Content-Type: text/plain
+
+This is the message body.
+
+--boundary123
+Content-Type: text/plain
+Content-Disposition: attachment; filename="test.txt"
+
+This is an attachment.
+
+--boundary123--
+`
+	reader := strings.NewReader(messageData)
+
+	ctx := context.Background()
+	err := processor.ProcessMessage(ctx, reader)
+
+	assert.NoError(t, err)
+	assert.NotNil(t, capturedPayload)
+	assert.Equal(t, "test@example.com", capturedPayload.From[0].Address)
+	assert.Equal(t, "recipient@example.com", capturedPayload.To[0].Address)
+	assert.Equal(t, "Test with attachments", capturedPayload.Subject)
+}
+
+func TestMessageProcessor_ProcessMessage_WithHTMLContent(t *testing.T) {
+	webhookService := &mockWebhookService{}
+	authService := &mockAuthService{}
+	metricsService := &mockMetricsServiceForMessage{}
+	remoteIP := net.IPv4(127, 0, 0, 1)
+
+	processor := NewMessageProcessor(webhookService, authService, metricsService, remoteIP).(*messageProcessor)
+
+	// Set up webhook service to capture payload
+	var capturedPayload *WebhookPayload
+	webhookService.sendWebhookFunc = func(ctx context.Context, payload *WebhookPayload) error {
+		capturedPayload = payload
+		return nil
+	}
+
+	// Create HTML message
+	messageData := `From: test@example.com
+To: recipient@example.com
+Subject: HTML Test
+Content-Type: text/html
+
+<html>
+<body>
+<h1>Hello World</h1>
+<p>This is an HTML email.</p>
+</body>
+</html>
+`
+	reader := strings.NewReader(messageData)
+
+	ctx := context.Background()
+	err := processor.ProcessMessage(ctx, reader)
+
+	assert.NoError(t, err)
+	assert.NotNil(t, capturedPayload)
+	assert.Equal(t, "test@example.com", capturedPayload.From[0].Address)
+	assert.Equal(t, "recipient@example.com", capturedPayload.To[0].Address)
+	assert.Equal(t, "HTML Test", capturedPayload.Subject)
+}
+
+func TestMessageProcessor_ProcessMessage_WithEmptyMessage(t *testing.T) {
+	webhookService := &mockWebhookService{}
+	authService := &mockAuthService{}
+	metricsService := &mockMetricsServiceForMessage{}
+	remoteIP := net.IPv4(127, 0, 0, 1)
+
+	processor := NewMessageProcessor(webhookService, authService, metricsService, remoteIP).(*messageProcessor)
+
+	// Create empty message
+	messageData := ""
+	reader := strings.NewReader(messageData)
+
+	ctx := context.Background()
+	err := processor.ProcessMessage(ctx, reader)
+
+	// Should return an error for empty message
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to parse email")
+}
+
+func TestMessageProcessor_ProcessMessage_WithInvalidMessage(t *testing.T) {
+	webhookService := &mockWebhookService{}
+	authService := &mockAuthService{}
+	metricsService := &mockMetricsServiceForMessage{}
+	remoteIP := net.IPv4(127, 0, 0, 1)
+
+	processor := NewMessageProcessor(webhookService, authService, metricsService, remoteIP).(*messageProcessor)
+
+	// Create invalid message
+	messageData := "This is not a valid email message"
+	reader := strings.NewReader(messageData)
+
+	ctx := context.Background()
+	err := processor.ProcessMessage(ctx, reader)
+
+	// Should return an error for invalid message
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to parse email")
 }

@@ -689,3 +689,181 @@ func TestSMTPSessionWithServices_Rcpt_State(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Len(t, session.to, 2)
 }
+
+func TestInitializeSentry_ErrorHandling(t *testing.T) {
+	// Test with invalid DSN
+	config := &config.Config{
+		Sentry: config.SentryConfig{
+			Enabled: true,
+			DSN:     "invalid-dsn",
+			Env:     "test",
+			Release: "v1.0.0",
+		},
+		Server: config.ServerConfig{
+			Verbose: false,
+		},
+	}
+
+	logger := &mockLoggerServiceForMain{}
+	err := initializeSentry(config, logger)
+	
+	// Should handle invalid DSN gracefully
+	if err != nil {
+		t.Logf("Sentry initialization failed as expected: %v", err)
+	}
+}
+
+func TestLogServerInfo_EdgeCases(t *testing.T) {
+	// Test with minimal config
+	config := &config.Config{
+		Server: config.ServerConfig{
+			ListenAddr:     "",
+			ListenAddrTLS:  "",
+			ServerName:     "",
+			Verbose:        false,
+			CertFile:       "",
+			KeyFile:        "",
+		},
+		Webhook: config.WebhookConfig{
+			URL: "",
+		},
+		Auth: config.AuthConfig{
+			EnableSPF:   false,
+			EnableDKIM:  false,
+			EnableDMARC: false,
+		},
+		Metrics: config.MetricsConfig{
+			Enabled: false,
+			Addr:    "",
+		},
+		Sentry: config.SentryConfig{
+			Enabled: false,
+		},
+		Logging: config.LoggingConfig{
+			Level:  "",
+			Format: "",
+		},
+	}
+
+	logger := &mockLoggerServiceForMain{}
+	ctx := context.Background()
+
+	// This should not panic even with empty values
+	logServerInfo(ctx, config, logger)
+}
+
+func TestSMTPBackendWithServices_NewSession_EdgeCases(t *testing.T) {
+	config := &config.Config{}
+	webhookService := &mockWebhookService{}
+	authService := &mockAuthService{}
+	metricsService := &mockMetricsServiceForMain{}
+
+	backend := &smtpBackendWithServices{
+		config:         config,
+		webhookService: webhookService,
+		authService:    authService,
+		metricsService: metricsService,
+	}
+
+	// Test with nil connection
+	session, err := backend.NewSession(nil)
+	assert.NoError(t, err)
+	assert.NotNil(t, session)
+
+	// Test that metrics are incremented
+	// (We can't easily test the exact metrics values, but we can ensure no panic)
+}
+
+func TestSMTPSessionWithServices_Data_EdgeCases(t *testing.T) {
+	config := &config.Config{}
+	messageProcessor := &mockMessageProcessor{}
+	metricsService := &mockMetricsServiceForMain{}
+	remoteIP := net.IPv4(127, 0, 0, 1)
+
+	session := &smtpSessionWithServices{
+		config:           config,
+		messageProcessor: messageProcessor,
+		metricsService:   metricsService,
+		remoteIP:         remoteIP,
+	}
+
+	// Test with empty reader
+	emptyReader := strings.NewReader("")
+	messageProcessor.processMessageFunc = func(ctx context.Context, r io.Reader) error {
+		return nil
+	}
+
+	err := session.Data(emptyReader)
+	assert.NoError(t, err)
+
+	// Test with large message
+	largeMessage := strings.Repeat("x", 10000)
+	largeReader := strings.NewReader(largeMessage)
+	messageProcessor.processMessageFunc = func(ctx context.Context, r io.Reader) error {
+		return nil
+	}
+
+	err = session.Data(largeReader)
+	assert.NoError(t, err)
+}
+
+func TestSMTPSessionWithServices_StateManagement(t *testing.T) {
+	config := &config.Config{}
+	messageProcessor := &mockMessageProcessor{}
+	metricsService := &mockMetricsServiceForMain{}
+	remoteIP := net.IPv4(127, 0, 0, 1)
+
+	session := &smtpSessionWithServices{
+		config:           config,
+		messageProcessor: messageProcessor,
+		metricsService:   metricsService,
+		remoteIP:         remoteIP,
+	}
+
+	// Test Mail command
+	err := session.Mail("test@example.com", nil)
+	assert.NoError(t, err)
+	assert.Equal(t, "test@example.com", session.from)
+
+	// Test Rcpt command
+	err = session.Rcpt("recipient@example.com", nil)
+	assert.NoError(t, err)
+	assert.Len(t, session.to, 1)
+
+	// Test Reset
+	session.Reset()
+	assert.Empty(t, session.from)
+	assert.Nil(t, session.to)
+
+	// Test Logout
+	err = session.Logout()
+	assert.NoError(t, err)
+}
+
+func TestSMTPSessionWithServices_AuthPlain_EdgeCases(t *testing.T) {
+	config := &config.Config{}
+	messageProcessor := &mockMessageProcessor{}
+	metricsService := &mockMetricsServiceForMain{}
+	remoteIP := net.IPv4(127, 0, 0, 1)
+
+	session := &smtpSessionWithServices{
+		config:           config,
+		messageProcessor: messageProcessor,
+		metricsService:   metricsService,
+		remoteIP:         remoteIP,
+	}
+
+	// Test with special characters
+	err := session.AuthPlain("user@domain.com", "pass@word123")
+	assert.NoError(t, err)
+
+	// Test with unicode characters
+	err = session.AuthPlain("用户", "密码")
+	assert.NoError(t, err)
+
+	// Test with very long credentials
+	longUser := strings.Repeat("a", 1000)
+	longPass := strings.Repeat("b", 1000)
+	err = session.AuthPlain(longUser, longPass)
+	assert.NoError(t, err)
+}

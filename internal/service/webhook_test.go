@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/mail"
+	"strings"
 	"testing"
 	"time"
 
@@ -179,4 +180,123 @@ func TestWebhookService_SendWebhook_ContextCancellation(t *testing.T) {
 
 	err := webhookService.SendWebhook(ctx, payload)
 	assert.Error(t, err, "SendWebhook() expected error for context cancellation")
+}
+
+func TestWebhookService_SendWebhook_WithAuth(t *testing.T) {
+	// Create test server with auth
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Check basic auth
+		username, password, ok := r.BasicAuth()
+		if !ok || username != "testuser" || password != "testpass" {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+
+		// Check content type
+		if r.Header.Get("Content-Type") != "application/json" {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("OK"))
+	}))
+	defer server.Close()
+
+	webhookService := NewWebhookService(server.URL, "testuser", "testpass")
+	payload := &WebhookPayload{
+		From:      []*mail.Address{{Address: "test@example.com"}},
+		To:        []*mail.Address{{Address: "recipient@example.com"}},
+		Subject:   "Test Subject",
+		Body:      "Test Body",
+		Headers:   map[string]string{"Message-ID": "test-id"},
+		RemoteIP:  "127.0.0.1",
+		Timestamp: time.Now(),
+	}
+
+	ctx := context.Background()
+	err := webhookService.SendWebhook(ctx, payload)
+	assert.NoError(t, err)
+}
+
+func TestWebhookService_SendWebhook_WithInvalidAuth(t *testing.T) {
+	// Create test server with auth
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Check basic auth
+		username, password, ok := r.BasicAuth()
+		if !ok || username != "testuser" || password != "testpass" {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("OK"))
+	}))
+	defer server.Close()
+
+	webhookService := NewWebhookService(server.URL, "wronguser", "wrongpass")
+	payload := &WebhookPayload{
+		From:      []*mail.Address{{Address: "test@example.com"}},
+		To:        []*mail.Address{{Address: "recipient@example.com"}},
+		Subject:   "Test Subject",
+		Body:      "Test Body",
+		Headers:   map[string]string{"Message-ID": "test-id"},
+		RemoteIP:  "127.0.0.1",
+		Timestamp: time.Now(),
+	}
+
+	ctx := context.Background()
+	err := webhookService.SendWebhook(ctx, payload)
+	assert.Error(t, err)
+}
+
+func TestWebhookService_SendWebhook_WithLargePayload(t *testing.T) {
+	// Create test server
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("OK"))
+	}))
+	defer server.Close()
+
+	webhookService := NewWebhookService(server.URL, "", "")
+	
+	// Create large payload
+	largeBody := strings.Repeat("x", 10000)
+	payload := &WebhookPayload{
+		From:      []*mail.Address{{Address: "test@example.com"}},
+		To:        []*mail.Address{{Address: "recipient@example.com"}},
+		Subject:   "Test Subject",
+		Body:      largeBody,
+		Headers:   map[string]string{"Message-ID": "test-id"},
+		RemoteIP:  "127.0.0.1",
+		Timestamp: time.Now(),
+	}
+
+	ctx := context.Background()
+	err := webhookService.SendWebhook(ctx, payload)
+	assert.NoError(t, err)
+}
+
+func TestWebhookService_SendWebhook_WithEmptyPayload(t *testing.T) {
+	// Create test server
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("OK"))
+	}))
+	defer server.Close()
+
+	webhookService := NewWebhookService(server.URL, "", "")
+	payload := &WebhookPayload{
+		From:      []*mail.Address{},
+		To:        []*mail.Address{},
+		Subject:   "",
+		Body:      "",
+		Headers:   map[string]string{},
+		RemoteIP:  "",
+		Timestamp: time.Now(),
+	}
+
+	ctx := context.Background()
+	err := webhookService.SendWebhook(ctx, payload)
+	assert.NoError(t, err)
 }

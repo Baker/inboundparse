@@ -303,3 +303,147 @@ func TestAuthService_ExtractDomainFromMessage_EdgeCases(t *testing.T) {
 		})
 	}
 }
+
+func TestAuthService_PerformAuthenticationChecks_WithRealSPF(t *testing.T) {
+	// Test with SPF enabled and a real domain
+	authService := NewAuthService(true, false, false)
+	ctx := context.Background()
+
+	message := []byte("From: test@google.com\r\nTo: recipient@example.com\r\nSubject: Test\r\n\r\nTest message")
+	remoteIP := net.IPv4(8, 8, 8, 8) // Google's DNS server
+
+	result, err := authService.PerformAuthenticationChecks(ctx, message, remoteIP)
+	assert.NoError(t, err)
+	assert.NotNil(t, result)
+	assert.NotNil(t, result.SPF)
+	assert.Nil(t, result.DKIM)
+	assert.Nil(t, result.DMARC)
+}
+
+func TestAuthService_PerformAuthenticationChecks_WithRealDKIM(t *testing.T) {
+	// Test with DKIM enabled
+	authService := NewAuthService(false, true, false)
+	ctx := context.Background()
+
+	message := []byte("From: test@example.com\r\nTo: recipient@example.com\r\nSubject: Test\r\n\r\nTest message")
+	remoteIP := net.IPv4(127, 0, 0, 1)
+
+	result, err := authService.PerformAuthenticationChecks(ctx, message, remoteIP)
+	assert.NoError(t, err)
+	assert.NotNil(t, result)
+	assert.Nil(t, result.SPF)
+	assert.NotNil(t, result.DKIM)
+	assert.Nil(t, result.DMARC)
+}
+
+func TestAuthService_PerformAuthenticationChecks_WithRealDMARC(t *testing.T) {
+	// Test with DMARC enabled
+	authService := NewAuthService(false, false, true)
+	ctx := context.Background()
+
+	message := []byte("From: test@example.com\r\nTo: recipient@example.com\r\nSubject: Test\r\n\r\nTest message")
+	remoteIP := net.IPv4(127, 0, 0, 1)
+
+	result, err := authService.PerformAuthenticationChecks(ctx, message, remoteIP)
+	assert.NoError(t, err)
+	assert.NotNil(t, result)
+	assert.Nil(t, result.SPF)
+	assert.Nil(t, result.DKIM)
+	assert.NotNil(t, result.DMARC)
+}
+
+func TestAuthService_PerformAuthenticationChecks_WithAllEnabled(t *testing.T) {
+	// Test with all authentication methods enabled
+	authService := NewAuthService(true, true, true)
+	ctx := context.Background()
+
+	message := []byte("From: test@example.com\r\nTo: recipient@example.com\r\nSubject: Test\r\n\r\nTest message")
+	remoteIP := net.IPv4(127, 0, 0, 1)
+
+	result, err := authService.PerformAuthenticationChecks(ctx, message, remoteIP)
+	assert.NoError(t, err)
+	assert.NotNil(t, result)
+	assert.NotNil(t, result.SPF)
+	assert.NotNil(t, result.DKIM)
+	assert.NotNil(t, result.DMARC)
+}
+
+func TestAuthService_CheckSPF_WithValidDomain(t *testing.T) {
+	authService := &authService{enableSPF: true}
+	
+	message := []byte("From: test@google.com\r\nTo: recipient@example.com\r\nSubject: Test\r\n\r\nTest message")
+	remoteIP := net.IPv4(8, 8, 8, 8) // Google's DNS server
+
+	result, err := authService.checkSPF(message, remoteIP)
+	assert.NoError(t, err)
+	assert.NotEmpty(t, result)
+}
+
+func TestAuthService_CheckDKIM_WithValidMessage(t *testing.T) {
+	authService := &authService{enableDKIM: true}
+	
+	message := []byte("From: test@example.com\r\nTo: recipient@example.com\r\nSubject: Test\r\n\r\nTest message")
+
+	result, err := authService.checkDKIM(message)
+	assert.NoError(t, err)
+	assert.NotEmpty(t, result)
+}
+
+func TestAuthService_CheckDMARC_WithValidMessage(t *testing.T) {
+	authService := &authService{enableDMARC: true}
+	
+	message := []byte("From: test@example.com\r\nTo: recipient@example.com\r\nSubject: Test\r\n\r\nTest message")
+
+	result, policy, err := authService.checkDMARC(message)
+	assert.NoError(t, err)
+	assert.NotEmpty(t, result)
+	assert.NotEmpty(t, policy)
+}
+
+func TestAuthService_ExtractDomainFromMessage_WithComplexEmail(t *testing.T) {
+	authService := &authService{}
+
+	tests := []struct {
+		name     string
+		message  []byte
+		want     string
+		wantErr  bool
+	}{
+		{
+			name:     "email with display name and angle brackets",
+			message:  []byte("From: \"John Doe\" <john.doe@example.com>\r\nTo: recipient@example.com\r\nSubject: Test\r\n\r\nTest message"),
+			want:     "example.com",
+			wantErr:  false,
+		},
+		{
+			name:     "email with multiple recipients",
+			message:  []byte("From: sender@example.com\r\nTo: user1@example.com, user2@test.com\r\nSubject: Test\r\n\r\nTest message"),
+			want:     "example.com",
+			wantErr:  false,
+		},
+		{
+			name:     "email with reply-to header",
+			message:  []byte("From: sender@example.com\r\nReply-To: reply@example.com\r\nTo: recipient@example.com\r\nSubject: Test\r\n\r\nTest message"),
+			want:     "example.com",
+			wantErr:  false,
+		},
+		{
+			name:     "email with return-path header",
+			message:  []byte("Return-Path: <bounce@example.com>\r\nFrom: sender@example.com\r\nTo: recipient@example.com\r\nSubject: Test\r\n\r\nTest message"),
+			want:     "example.com",
+			wantErr:  false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := authService.extractDomainFromMessage(tt.message)
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
