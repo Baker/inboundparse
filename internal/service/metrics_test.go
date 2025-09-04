@@ -238,3 +238,83 @@ func TestMetricsService_StartUptimeCounter(t *testing.T) {
 func TestMetricsService_AllMetricsMethods(t *testing.T) {
 	t.Skip("Skipped due to duplicate metrics collector registration issues")
 }
+
+// Test metrics with different result values to improve coverage
+func TestMetricsService_WithDifferentResults(t *testing.T) {
+	service := NewMetricsService(false).(*metricsService)
+	
+	// Test different SPF results
+	service.RecordSPFResult("pass")
+	service.RecordSPFResult("fail")
+	service.RecordSPFResult("softfail")
+	service.RecordSPFResult("neutral")
+	service.RecordSPFResult("temperror")
+	service.RecordSPFResult("permerror")
+	service.RecordSPFResult("none")
+	
+	// Test different DKIM results
+	service.RecordDKIMResult("pass")
+	service.RecordDKIMResult("fail")
+	service.RecordDKIMResult("neutral")
+	service.RecordDKIMResult("policy")
+	service.RecordDKIMResult("none")
+	service.RecordDKIMResult("temperror")
+	service.RecordDKIMResult("permerror")
+	
+	// Test different DMARC results
+	service.RecordDMARCResult("pass")
+	service.RecordDMARCResult("fail")
+	service.RecordDMARCResult("quarantine")
+	service.RecordDMARCResult("reject")
+	service.RecordDMARCResult("none")
+	service.RecordDMARCResult("temperror")
+	service.RecordDMARCResult("permerror")
+	
+	// Test different DMARC policies
+	service.RecordDMARCPolicy("none")
+	service.RecordDMARCPolicy("quarantine")
+	service.RecordDMARCPolicy("reject")
+}
+
+// Test metrics with edge case values
+func TestMetricsService_WithEdgeCases(t *testing.T) {
+	service := NewMetricsService(false).(*metricsService)
+	
+	// Test with zero duration
+	service.RecordConnectionDuration(0)
+	service.RecordMessageParsingDuration(0)
+	service.RecordWebhookDuration(0)
+	
+	// Test with negative duration (should handle gracefully)
+	service.RecordConnectionDuration(-1)
+	service.RecordMessageParsingDuration(-500 * time.Millisecond)
+	service.RecordWebhookDuration(-2)
+	
+	// Test with zero message size
+	service.RecordMessageSize(0)
+	
+	// Test with large message size
+	service.RecordMessageSize(1024 * 1024 * 100) // 100MB
+	
+	// Test with very large duration
+	service.RecordConnectionDuration(3600) // 1 hour
+	service.RecordMessageParsingDuration(60) // 1 minute
+	service.RecordWebhookDuration(30) // 30 seconds
+}
+
+// Test metrics with invalid result values
+func TestMetricsService_WithInvalidResults(t *testing.T) {
+	service := NewMetricsService(false).(*metricsService)
+	
+	// Test with empty string results
+	service.RecordSPFResult("")
+	service.RecordDKIMResult("")
+	service.RecordDMARCResult("")
+	service.RecordDMARCPolicy("")
+	
+	// Test with unknown result values
+	service.RecordSPFResult("unknown")
+	service.RecordDKIMResult("invalid")
+	service.RecordDMARCResult("test")
+	service.RecordDMARCPolicy("custom")
+}

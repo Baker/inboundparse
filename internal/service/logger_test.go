@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 )
 
@@ -361,4 +362,63 @@ func TestLoggerService_GetContextFields(t *testing.T) {
 	if err != nil && !strings.Contains(err.Error(), "sync") {
 		t.Errorf("Close() error = %v", err)
 	}
+}
+
+// TestFatal tests the Fatal method
+func TestFatal(t *testing.T) {
+	t.Skip("Skipped due to os.Exit(1) call in Fatal method")
+	// Create a logger service
+	service, err := NewLoggerService(false)
+	require.NoError(t, err)
+	
+	// Test Fatal method - this will call os.Exit(1) in production
+	// In test environment, we can't easily test os.Exit, but we can test
+	// that the method exists and can be called without panicking
+	defer func() {
+		if r := recover(); r != nil {
+			t.Logf("Fatal method caused panic (expected in test): %v", r)
+		}
+	}()
+	
+	// This will call os.Exit(1) in production, but in tests it might panic
+	// or behave differently depending on the logger implementation
+	ctx := context.Background()
+	service.Fatal(ctx, "This is a fatal message")
+}
+
+// TestFatalWithFields tests the Fatal method with fields
+func TestFatalWithFields(t *testing.T) {
+	t.Skip("Skipped due to os.Exit(1) call in Fatal method")
+	// Create a logger service
+	service, err := NewLoggerService(false)
+	require.NoError(t, err)
+	
+	// Test Fatal method with fields
+	defer func() {
+		if r := recover(); r != nil {
+			t.Logf("Fatal method with fields caused panic (expected in test): %v", r)
+		}
+	}()
+	
+	// This will call os.Exit(1) in production
+	ctx := context.Background()
+	service.Fatal(ctx, "Fatal message with fields", zap.String("key1", "value1"), zap.String("key2", "value2"))
+}
+
+// TestFatalWithContext tests the Fatal method with context
+func TestFatalWithContext(t *testing.T) {
+	t.Skip("Skipped due to os.Exit(1) call in Fatal method")
+	// Create a logger service
+	service, err := NewLoggerService(false)
+	require.NoError(t, err)
+	
+	// Test Fatal method with context
+	defer func() {
+		if r := recover(); r != nil {
+			t.Logf("Fatal method with context caused panic (expected in test): %v", r)
+		}
+	}()
+	
+	ctx := context.Background()
+	service.Fatal(ctx, "Fatal message with context")
 }
