@@ -134,7 +134,7 @@ func (a *authService) extractDomainFromMessage(message []byte) (string, error) {
 	for _, line := range lines {
 		if strings.HasPrefix(strings.ToLower(line), "from:") {
 			email := strings.TrimSpace(strings.TrimPrefix(line, "From:"))
-			
+
 			// Handle display name format: "Display Name <email@domain.com>"
 			if strings.Contains(email, "<") && strings.Contains(email, ">") {
 				start := strings.Index(email, "<")
@@ -143,7 +143,7 @@ func (a *authService) extractDomainFromMessage(message []byte) (string, error) {
 					email = email[start+1 : end]
 				}
 			}
-			
+
 			// Extract domain from email
 			if idx := strings.LastIndex(email, "@"); idx != -1 {
 				domain := email[idx+1:]
