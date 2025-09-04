@@ -7,6 +7,8 @@ import (
 	"net/mail"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestWebhookService_SendWebhook(t *testing.T) {
@@ -126,8 +128,10 @@ func TestWebhookService_SendWebhook(t *testing.T) {
 			ctx := context.Background()
 			err := webhookService.SendWebhook(ctx, tt.payload)
 
-			if (err != nil) != tt.wantErr {
-				t.Errorf("SendWebhook() error = %v, wantErr %v", err, tt.wantErr)
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
 			}
 		})
 	}
@@ -147,9 +151,7 @@ func TestWebhookService_SendWebhook_InvalidURL(t *testing.T) {
 
 	ctx := context.Background()
 	err := webhookService.SendWebhook(ctx, payload)
-	if err == nil {
-		t.Error("SendWebhook() expected error for invalid URL")
-	}
+	assert.Error(t, err, "SendWebhook() expected error for invalid URL")
 }
 
 func TestWebhookService_SendWebhook_ContextCancellation(t *testing.T) {
@@ -176,7 +178,5 @@ func TestWebhookService_SendWebhook_ContextCancellation(t *testing.T) {
 	defer cancel()
 
 	err := webhookService.SendWebhook(ctx, payload)
-	if err == nil {
-		t.Error("SendWebhook() expected error for context cancellation")
-	}
+	assert.Error(t, err, "SendWebhook() expected error for context cancellation")
 }

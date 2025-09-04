@@ -11,6 +11,7 @@ import (
 	"github.com/emersion/go-smtp"
 	"github.com/inboundparse/inboundparse/internal/config"
 	"github.com/inboundparse/inboundparse/internal/service"
+	"github.com/stretchr/testify/assert"
 	"go.uber.org/zap"
 )
 
@@ -75,8 +76,8 @@ func TestInitializeSentry(t *testing.T) {
 			
 			// In test environment, Sentry initialization might fail due to network issues
 			// but the function should handle it gracefully
-			if tt.expectError && err == nil {
-				t.Error("Expected error but got none")
+			if tt.expectError {
+				assert.Error(t, err, "Expected error but got none")
 			}
 		})
 	}
@@ -153,13 +154,12 @@ func TestSMTPBackendWithServices_NewSession(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			session, err := backend.NewSession(tt.conn)
-			if (err != nil) != tt.expectError {
-				t.Errorf("NewSession() error = %v, wantErr %v", err, tt.expectError)
-				return
+			if tt.expectError {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
 			}
-			if session == nil {
-				t.Error("NewSession() returned nil session")
-			}
+			assert.NotNil(t, session, "NewSession() returned nil session")
 		})
 	}
 }
@@ -200,8 +200,10 @@ func TestSMTPSessionWithServices_AuthPlain(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			err := session.AuthPlain(tt.username, tt.password)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("AuthPlain() error = %v, wantErr %v", err, tt.wantErr)
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
 			}
 		})
 	}
@@ -240,12 +242,12 @@ func TestSMTPSessionWithServices_Mail(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			err := session.Mail(tt.from, nil)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("Mail() error = %v, wantErr %v", err, tt.wantErr)
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
 			}
-			if session.from != tt.from {
-				t.Errorf("Mail() from = %v, want %v", session.from, tt.from)
-			}
+			assert.Equal(t, tt.from, session.from)
 		})
 	}
 }
@@ -283,11 +285,14 @@ func TestSMTPSessionWithServices_Rcpt(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			err := session.Rcpt(tt.to, nil)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("Rcpt() error = %v, wantErr %v", err, tt.wantErr)
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
 			}
-			if len(session.to) == 0 || session.to[len(session.to)-1] != tt.to {
-				t.Errorf("Rcpt() to = %v, want %v", session.to, []string{tt.to})
+			if !tt.wantErr {
+				assert.NotEmpty(t, session.to)
+				assert.Equal(t, tt.to, session.to[len(session.to)-1])
 			}
 		})
 	}
@@ -336,8 +341,10 @@ func TestSMTPSessionWithServices_Data(t *testing.T) {
 			reader := strings.NewReader(tt.messageData)
 			err := session.Data(reader)
 
-			if (err != nil) != tt.wantErr {
-				t.Errorf("Data() error = %v, wantErr %v", err, tt.wantErr)
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
 			}
 		})
 	}
@@ -363,12 +370,8 @@ func TestSMTPSessionWithServices_Reset(t *testing.T) {
 	// Reset the session
 	session.Reset()
 
-	if session.from != "" {
-		t.Errorf("Reset() from = %v, want empty string", session.from)
-	}
-	if session.to != nil {
-		t.Errorf("Reset() to = %v, want nil", session.to)
-	}
+	assert.Empty(t, session.from, "Reset() should clear from field")
+	assert.Nil(t, session.to, "Reset() should clear to field")
 }
 
 func TestSMTPSessionWithServices_Logout(t *testing.T) {
@@ -385,9 +388,7 @@ func TestSMTPSessionWithServices_Logout(t *testing.T) {
 	}
 
 	err := session.Logout()
-	if err != nil {
-		t.Errorf("Logout() error = %v", err)
-	}
+	assert.NoError(t, err)
 }
 
 // Mock implementations for testing
@@ -493,9 +494,7 @@ func TestInitializeSentry_WithoutDSN(t *testing.T) {
 	err := initializeSentry(config, logger)
 	
 	// Should not error when DSN is empty
-	if err != nil {
-		t.Errorf("initializeSentry() error = %v, expected no error", err)
-	}
+	assert.NoError(t, err, "initializeSentry() should not error when DSN is empty")
 }
 
 func TestInitializeSentry_Disabled(t *testing.T) {
@@ -515,9 +514,7 @@ func TestInitializeSentry_Disabled(t *testing.T) {
 	err := initializeSentry(config, logger)
 	
 	// Should not error when disabled
-	if err != nil {
-		t.Errorf("initializeSentry() error = %v, expected no error", err)
-	}
+	assert.NoError(t, err, "initializeSentry() should not error when disabled")
 }
 
 func TestLogServerInfo_Comprehensive(t *testing.T) {
@@ -573,12 +570,8 @@ func TestSMTPBackendWithServices_NewSession_WithRemoteIP(t *testing.T) {
 
 	// Test with nil connection
 	session, err := backend.NewSession(nil)
-	if err != nil {
-		t.Errorf("NewSession() error = %v", err)
-	}
-	if session == nil {
-		t.Error("NewSession() returned nil session")
-	}
+	assert.NoError(t, err)
+	assert.NotNil(t, session, "NewSession() returned nil session")
 }
 
 func TestSMTPSessionWithServices_Data_ErrorHandling(t *testing.T) {
@@ -602,9 +595,7 @@ func TestSMTPSessionWithServices_Data_ErrorHandling(t *testing.T) {
 	reader := strings.NewReader("From: test@example.com\r\nTo: recipient@example.com\r\nSubject: Test\r\n\r\nTest message")
 	err := session.Data(reader)
 
-	if err == nil {
-		t.Error("Expected error from Data() when message processor fails")
-	}
+	assert.Error(t, err, "Expected error from Data() when message processor fails")
 }
 
 func TestSMTPSessionWithServices_Data_Success(t *testing.T) {
@@ -628,9 +619,7 @@ func TestSMTPSessionWithServices_Data_Success(t *testing.T) {
 	reader := strings.NewReader("From: test@example.com\r\nTo: recipient@example.com\r\nSubject: Test\r\n\r\nTest message")
 	err := session.Data(reader)
 
-	if err != nil {
-		t.Errorf("Data() error = %v", err)
-	}
+	assert.NoError(t, err)
 }
 
 func TestSMTPSessionWithServices_Reset_State(t *testing.T) {
@@ -653,12 +642,8 @@ func TestSMTPSessionWithServices_Reset_State(t *testing.T) {
 	// Reset the session
 	session.Reset()
 
-	if session.from != "" {
-		t.Errorf("Reset() from = %v, want empty string", session.from)
-	}
-	if session.to != nil {
-		t.Errorf("Reset() to = %v, want nil", session.to)
-	}
+	assert.Empty(t, session.from, "Reset() should clear from field")
+	assert.Nil(t, session.to, "Reset() should clear to field")
 }
 
 func TestSMTPSessionWithServices_Mail_State(t *testing.T) {
@@ -676,12 +661,8 @@ func TestSMTPSessionWithServices_Mail_State(t *testing.T) {
 
 	// Test Mail command
 	err := session.Mail("test@example.com", nil)
-	if err != nil {
-		t.Errorf("Mail() error = %v", err)
-	}
-	if session.from != "test@example.com" {
-		t.Errorf("Mail() from = %v, want test@example.com", session.from)
-	}
+	assert.NoError(t, err)
+	assert.Equal(t, "test@example.com", session.from)
 }
 
 func TestSMTPSessionWithServices_Rcpt_State(t *testing.T) {
@@ -699,19 +680,12 @@ func TestSMTPSessionWithServices_Rcpt_State(t *testing.T) {
 
 	// Test Rcpt command
 	err := session.Rcpt("recipient@example.com", nil)
-	if err != nil {
-		t.Errorf("Rcpt() error = %v", err)
-	}
-	if len(session.to) != 1 || session.to[0] != "recipient@example.com" {
-		t.Errorf("Rcpt() to = %v, want [recipient@example.com]", session.to)
-	}
+	assert.NoError(t, err)
+	assert.Len(t, session.to, 1)
+	assert.Equal(t, "recipient@example.com", session.to[0])
 
 	// Test multiple recipients
 	err = session.Rcpt("another@example.com", nil)
-	if err != nil {
-		t.Errorf("Rcpt() error = %v", err)
-	}
-	if len(session.to) != 2 {
-		t.Errorf("Rcpt() to length = %v, want 2", len(session.to))
-	}
+	assert.NoError(t, err)
+	assert.Len(t, session.to, 2)
 }

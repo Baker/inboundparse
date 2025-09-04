@@ -5,6 +5,8 @@ import (
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestNewMetricsService(t *testing.T) {
@@ -25,9 +27,7 @@ func TestNewMetricsService(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			service := NewMetricsService(tt.enabled)
-			if service == nil {
-				t.Error("NewMetricsService() returned nil")
-			}
+			assert.NotNil(t, service, "NewMetricsService() returned nil")
 		})
 	}
 }
@@ -80,9 +80,7 @@ func TestMetricsService_Enabled(t *testing.T) {
 
 	// Test close
 	err := service.Close()
-	if err != nil {
-		t.Errorf("Close() error = %v", err)
-	}
+	assert.NoError(t, err)
 }
 
 func TestMetricsService_ConnectionMetrics(t *testing.T) {
@@ -180,45 +178,32 @@ func TestMetricsService_Close(t *testing.T) {
 	service := NewMetricsService(false).(*metricsService)
 
 	err := service.Close()
-	if err != nil {
-		t.Errorf("Close() error = %v", err)
-	}
+	assert.NoError(t, err)
 }
 
 func TestMetricsHandler(t *testing.T) {
 	handler := MetricsHandler()
-	if handler == nil {
-		t.Error("MetricsHandler() returned nil")
-	}
+	assert.NotNil(t, handler, "MetricsHandler() returned nil")
 
 	// Test that the handler responds to requests
 	req := httptest.NewRequest("GET", "/metrics", nil)
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, req)
 
-	if w.Code != http.StatusOK {
-		t.Errorf("MetricsHandler() status code = %v, want %v", w.Code, http.StatusOK)
-	}
+	assert.Equal(t, http.StatusOK, w.Code, "MetricsHandler() status code")
 }
 
 func TestHealthHandler(t *testing.T) {
 	handler := HealthHandler()
-	if handler == nil {
-		t.Error("HealthHandler() returned nil")
-	}
+	assert.NotNil(t, handler, "HealthHandler() returned nil")
 
 	// Test that the handler responds to requests
 	req := httptest.NewRequest("GET", "/health", nil)
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, req)
 
-	if w.Code != http.StatusOK {
-		t.Errorf("HealthHandler() status code = %v, want %v", w.Code, http.StatusOK)
-	}
-
-	if w.Body.String() != "OK" {
-		t.Errorf("HealthHandler() body = %v, want %v", w.Body.String(), "OK")
-	}
+	assert.Equal(t, http.StatusOK, w.Code, "HealthHandler() status code")
+	assert.Equal(t, "OK", w.Body.String(), "HealthHandler() body")
 }
 
 func TestMetricsService_UptimeCounter(t *testing.T) {

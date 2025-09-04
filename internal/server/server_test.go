@@ -9,6 +9,7 @@ import (
 	"github.com/emersion/go-smtp"
 	"github.com/inboundparse/inboundparse/internal/config"
 	"github.com/inboundparse/inboundparse/internal/service"
+	"github.com/stretchr/testify/assert"
 	"go.uber.org/zap"
 )
 
@@ -77,9 +78,7 @@ func TestNewServer(t *testing.T) {
 	logger := &mockLoggerService{}
 
 	server := NewServer(config, backend, metricsService, logger)
-	if server == nil {
-		t.Error("NewServer() returned nil")
-	}
+	assert.NotNil(t, server, "NewServer() returned nil")
 }
 
 func TestServer_Start_WithoutMetrics(t *testing.T) {
@@ -149,9 +148,7 @@ func TestServer_Start_WithTLS(t *testing.T) {
 	err := server.Start(ctx)
 
 	// This should fail because the certificate files don't exist
-	if err == nil {
-		t.Error("Expected Start() to return an error when TLS certificate files don't exist")
-	}
+	assert.Error(t, err, "Expected Start() to return an error when TLS certificate files don't exist")
 }
 
 func TestServer_Stop(t *testing.T) {
@@ -166,9 +163,7 @@ func TestServer_Stop(t *testing.T) {
 	err := server.Stop(ctx)
 
 	// Stop should work even if nothing was started
-	if err != nil {
-		t.Errorf("Stop() error = %v", err)
-	}
+	assert.NoError(t, err)
 }
 
 func TestServer_Run(t *testing.T) {
@@ -258,9 +253,7 @@ func TestServer_Stop_WithNilServices(t *testing.T) {
 	ctx := context.Background()
 	err := server.Stop(ctx)
 
-	if err != nil {
-		t.Errorf("Stop() error = %v", err)
-	}
+	assert.NoError(t, err)
 }
 
 func TestServer_StartSMTPServers_WithTLS(t *testing.T) {
@@ -283,9 +276,7 @@ func TestServer_StartSMTPServers_WithTLS(t *testing.T) {
 	err := server.Start(ctx)
 
 	// This should fail because the certificate files don't exist
-	if err == nil {
-		t.Error("Expected Start() to return an error when TLS certificate files don't exist")
-	}
+	assert.Error(t, err, "Expected Start() to return an error when TLS certificate files don't exist")
 }
 
 func TestServer_StartSMTPServers_WithoutTLS(t *testing.T) {

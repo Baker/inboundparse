@@ -4,6 +4,9 @@ import (
 	"context"
 	"net"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestAuthService_PerformAuthenticationChecks(t *testing.T) {
@@ -92,42 +95,27 @@ func TestAuthService_PerformAuthenticationChecks(t *testing.T) {
 			ctx := context.Background()
 
 			result, err := authService.PerformAuthenticationChecks(ctx, tt.message, tt.remoteIP)
-			if err != nil {
-				t.Errorf("PerformAuthenticationChecks() error = %v", err)
-				return
-			}
+			require.NoError(t, err)
 
 			// Check SPF result
 			if tt.wantSPF {
-				if result.SPF == nil {
-					t.Error("Expected SPF result, got nil")
-				}
+				assert.NotNil(t, result.SPF, "Expected SPF result, got nil")
 			} else {
-				if result.SPF != nil {
-					t.Error("Expected no SPF result, got result")
-				}
+				assert.Nil(t, result.SPF, "Expected no SPF result, got result")
 			}
 
 			// Check DKIM result
 			if tt.wantDKIM {
-				if result.DKIM == nil {
-					t.Error("Expected DKIM result, got nil")
-				}
+				assert.NotNil(t, result.DKIM, "Expected DKIM result, got nil")
 			} else {
-				if result.DKIM != nil {
-					t.Error("Expected no DKIM result, got result")
-				}
+				assert.Nil(t, result.DKIM, "Expected no DKIM result, got result")
 			}
 
 			// Check DMARC result
 			if tt.wantDMARC {
-				if result.DMARC == nil {
-					t.Error("Expected DMARC result, got nil")
-				}
+				assert.NotNil(t, result.DMARC, "Expected DMARC result, got nil")
 			} else {
-				if result.DMARC != nil {
-					t.Error("Expected no DMARC result, got result")
-				}
+				assert.Nil(t, result.DMARC, "Expected no DMARC result, got result")
 			}
 		})
 	}
@@ -176,13 +164,12 @@ func TestAuthService_ExtractDomainFromMessage(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			authService := &authService{}
 			got, err := authService.extractDomainFromMessage(tt.message)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("extractDomainFromMessage() error = %v, wantErr %v", err, tt.wantErr)
-				return
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
 			}
-			if got != tt.want {
-				t.Errorf("extractDomainFromMessage() = %v, want %v", got, tt.want)
-			}
+			assert.Equal(t, tt.want, got)
 		})
 	}
 }
@@ -213,11 +200,11 @@ func TestAuthService_CheckSPF_ErrorCases(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result, err := authService.checkSPF(tt.message, tt.remoteIP)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("checkSPF() error = %v, wantErr %v", err, tt.wantErr)
-			}
-			if tt.wantErr && result != "none" {
-				t.Errorf("checkSPF() result = %v, want none", result)
+			if tt.wantErr {
+				assert.Error(t, err)
+				assert.Equal(t, "none", result)
+			} else {
+				assert.NoError(t, err)
 			}
 		})
 	}
@@ -246,14 +233,12 @@ func TestAuthService_CheckDMARC_ErrorCases(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result, policy, err := authService.checkDMARC(tt.message)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("checkDMARC() error = %v, wantErr %v", err, tt.wantErr)
-			}
-			if tt.wantErr && result != "none" {
-				t.Errorf("checkDMARC() result = %v, want none", result)
-			}
-			if tt.wantErr && policy != "" {
-				t.Errorf("checkDMARC() policy = %v, want empty", policy)
+			if tt.wantErr {
+				assert.Error(t, err)
+				assert.Equal(t, "none", result)
+				assert.Empty(t, policy)
+			} else {
+				assert.NoError(t, err)
 			}
 		})
 	}
@@ -309,13 +294,12 @@ func TestAuthService_ExtractDomainFromMessage_EdgeCases(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := authService.extractDomainFromMessage(tt.message)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("extractDomainFromMessage() error = %v, wantErr %v", err, tt.wantErr)
-				return
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
 			}
-			if got != tt.want {
-				t.Errorf("extractDomainFromMessage() = %v, want %v", got, tt.want)
-			}
+			assert.Equal(t, tt.want, got)
 		})
 	}
 }

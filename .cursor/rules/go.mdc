@@ -200,7 +200,6 @@ go/[project]/
 ├── configs/               # Configuration schemas
 ├── go.mod                 # Module definition
 ├── go.sum                 # Dependency checksums
-├── BUILD                  # Pants build file
 └── README.md              # Project documentation
 ```
 
