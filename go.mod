@@ -1,10 +1,11 @@
-module inboundparse
+module github.com/inboundparse/inboundparse
 
-go 1.24.5
+go 1.24.2
 
 require (
 	github.com/emersion/go-msgauth v0.7.0
 	github.com/emersion/go-smtp v0.24.0
+	github.com/getsentry/sentry-go v0.35.1
 	github.com/joho/godotenv v1.5.1
 	github.com/mnako/letters v0.2.5
 	github.com/pires/go-proxyproto v0.8.1
@@ -16,13 +17,14 @@ require (
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/emersion/go-sasl v0.0.0-20241020182733-b788ff22d5a6 // indirect
-	github.com/getsentry/sentry-go v0.35.1 // indirect
 	github.com/klauspost/compress v1.17.9 // indirect
 	github.com/miekg/dns v1.1.68 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/prometheus/client_model v0.6.1 // indirect
 	github.com/prometheus/common v0.55.0 // indirect
 	github.com/prometheus/procfs v0.15.1 // indirect
+	go.uber.org/multierr v1.10.0 // indirect
+	go.uber.org/zap v1.27.0 // indirect
 	golang.org/x/crypto v0.41.0 // indirect
 	golang.org/x/mod v0.27.0 // indirect
 	golang.org/x/net v0.43.0 // indirect
