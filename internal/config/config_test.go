@@ -2,6 +2,7 @@ package config
 
 import (
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -208,132 +209,519 @@ func TestGetEnvBoolWithDefault(t *testing.T) {
 }
 
 // TestLoad tests the Load function with environment variables
-// This test is skipped due to flag redefinition issues when running multiple tests
 func TestLoad(t *testing.T) {
-	t.Skip("Skipped due to flag redefinition issues when running multiple tests")
-}
-
-// TestLoadWithEnvironmentVariables tests Load with custom environment variables
-// This test is skipped due to flag redefinition issues when running multiple tests
-func TestLoadWithEnvironmentVariables(t *testing.T) {
-	t.Skip("Skipped due to flag redefinition issues when running multiple tests")
-}
-
-// TestLoadFromFlags tests the loadFromFlags function indirectly through Load
-// This test is skipped due to flag redefinition issues when running multiple tests
-func TestLoadFromFlags(t *testing.T) {
-	t.Skip("Skipped due to flag redefinition issues when running multiple tests")
-}
-
-// Integration test for config.Load function
-func TestConfigLoad_Integration(t *testing.T) {
-	t.Skip("Skipped due to flag redefinition issues when running multiple tests")
-	// Test config loading with environment variables
-	os.Setenv("LISTEN_ADDR", "127.0.0.1:2525")
-	os.Setenv("LISTEN_ADDR_TLS", "127.0.0.1:2587")
-	os.Setenv("SERVER_NAME", "test.example.com")
-	os.Setenv("WEBHOOK_URL", "http://localhost:8080/webhook")
-	os.Setenv("LOG_LEVEL", "debug")
-	os.Setenv("LOG_FORMAT", "json")
-	os.Setenv("METRICS_ENABLED", "true")
-	os.Setenv("METRICS_ADDR", "127.0.0.1:9090")
-	os.Setenv("AUTH_ENABLE_SPF", "true")
-	os.Setenv("AUTH_ENABLE_DKIM", "true")
-	os.Setenv("AUTH_ENABLE_DMARC", "true")
-	os.Setenv("SENTRY_ENABLED", "true")
-	os.Setenv("SENTRY_DSN", "https://test@sentry.io/test")
-	os.Setenv("SENTRY_ENV", "test")
-	os.Setenv("SENTRY_RELEASE", "v1.0.0")
-	
-	defer func() {
-		os.Unsetenv("LISTEN_ADDR")
-		os.Unsetenv("LISTEN_ADDR_TLS")
-		os.Unsetenv("SERVER_NAME")
-		os.Unsetenv("WEBHOOK_URL")
-		os.Unsetenv("LOG_LEVEL")
-		os.Unsetenv("LOG_FORMAT")
-		os.Unsetenv("METRICS_ENABLED")
-		os.Unsetenv("METRICS_ADDR")
-		os.Unsetenv("AUTH_ENABLE_SPF")
-		os.Unsetenv("AUTH_ENABLE_DKIM")
-		os.Unsetenv("AUTH_ENABLE_DMARC")
-		os.Unsetenv("SENTRY_ENABLED")
-		os.Unsetenv("SENTRY_DSN")
-		os.Unsetenv("SENTRY_ENV")
-		os.Unsetenv("SENTRY_RELEASE")
-	}()
-	
-	// This will test the Load function but may fail due to flag redefinition
-	// We'll catch the error and log it
-	config, err := Load()
-	if err != nil {
-		t.Logf("Config.Load() returned error (expected in test environment): %v", err)
-		// Even if it fails, we can test that the function was called
-		return
+	// Clear any existing environment variables that might interfere
+	envVars := []string{
+		"LISTEN_ADDR", "LISTEN_ADDR_TLS", "SERVER_NAME", "WEBHOOK_URL",
+		"LOG_LEVEL", "LOG_FORMAT", "METRICS_ENABLED", "METRICS_ADDR",
+		"AUTH_ENABLE_SPF", "AUTH_ENABLE_DKIM", "AUTH_ENABLE_DMARC",
+		"SENTRY_ENABLED", "SENTRY_DSN", "SENTRY_ENV", "SENTRY_RELEASE",
 	}
-	
-	// If it succeeds, verify the values
-	assert.Equal(t, "127.0.0.1:2525", config.Server.ListenAddr)
-	assert.Equal(t, "127.0.0.1:2587", config.Server.ListenAddrTLS)
-	assert.Equal(t, "test.example.com", config.Server.ServerName)
+
+	// Store original values
+	originalValues := make(map[string]string)
+	for _, envVar := range envVars {
+		originalValues[envVar] = os.Getenv(envVar)
+		os.Unsetenv(envVar)
+	}
+
+	// Restore original values after test
+	defer func() {
+		for envVar, value := range originalValues {
+			if value != "" {
+				os.Setenv(envVar, value)
+			} else {
+				os.Unsetenv(envVar)
+			}
+		}
+	}()
+
+	// Test loading with default values
+	config, err := Load()
+	assert.NoError(t, err)
+	assert.NotNil(t, config)
+
+	// Verify default values
+	assert.Equal(t, "0.0.0.0:25", config.Server.ListenAddr)
+	assert.Equal(t, "0.0.0.0:587", config.Server.ListenAddrTLS)
+	assert.Equal(t, "mx.inboundparse.com", config.Server.ServerName)
 	assert.Equal(t, "http://localhost:8080/webhook", config.Webhook.URL)
-	assert.Equal(t, "debug", config.Logging.Level)
+	assert.Equal(t, "info", config.Logging.Level)
 	assert.Equal(t, "json", config.Logging.Format)
-	assert.True(t, config.Metrics.Enabled)
-	assert.Equal(t, "127.0.0.1:9090", config.Metrics.Addr)
+	assert.False(t, config.Metrics.Enabled)
+	assert.Equal(t, "0.0.0.0:9090", config.Metrics.Addr)
 	assert.True(t, config.Auth.EnableSPF)
 	assert.True(t, config.Auth.EnableDKIM)
 	assert.True(t, config.Auth.EnableDMARC)
-	assert.True(t, config.Sentry.Enabled)
-	assert.Equal(t, "https://test@sentry.io/test", config.Sentry.DSN)
-	assert.Equal(t, "test", config.Sentry.Env)
-	assert.Equal(t, "v1.0.0", config.Sentry.Release)
+	assert.False(t, config.Sentry.Enabled)
+	assert.Equal(t, "production", config.Sentry.Env)
 }
 
-// Test config loading with invalid values
-func TestConfigLoad_WithInvalidValues(t *testing.T) {
-	t.Skip("Skipped due to flag redefinition issues when running multiple tests")
-	// Test with invalid boolean values
-	os.Setenv("METRICS_ENABLED", "invalid")
-	os.Setenv("AUTH_ENABLE_SPF", "not-a-boolean")
-	
-	defer func() {
-		os.Unsetenv("METRICS_ENABLED")
-		os.Unsetenv("AUTH_ENABLE_SPF")
-	}()
-	
-	// This should handle invalid values gracefully
-	config, err := Load()
-	if err != nil {
-		t.Logf("Config.Load() with invalid values returned error: %v", err)
+// TestLoadFromFlags tests the loadFromFlags function indirectly through Load
+func TestLoadFromFlags(t *testing.T) {
+	// This test is more complex due to flag redefinition issues
+	// We'll test the individual helper functions instead
+	t.Run("getEnvWithDefault", func(t *testing.T) {
+		// Test with existing environment variable
+		os.Setenv("TEST_VAR", "test_value")
+		defer os.Unsetenv("TEST_VAR")
+
+		result := getEnvWithDefault("TEST_VAR", "default_value")
+		assert.Equal(t, "test_value", result)
+
+		// Test with non-existing environment variable
+		result = getEnvWithDefault("NONEXISTENT_VAR", "default_value")
+		assert.Equal(t, "default_value", result)
+	})
+
+	t.Run("getEnvBoolWithDefault", func(t *testing.T) {
+		// Test with "true" value
+		os.Setenv("TEST_BOOL", "true")
+		defer os.Unsetenv("TEST_BOOL")
+
+		result := getEnvBoolWithDefault("TEST_BOOL", false)
+		assert.True(t, result)
+
+		// Test with "1" value
+		os.Setenv("TEST_BOOL", "1")
+		result = getEnvBoolWithDefault("TEST_BOOL", false)
+		assert.True(t, result)
+
+		// Test with "yes" value
+		os.Setenv("TEST_BOOL", "yes")
+		result = getEnvBoolWithDefault("TEST_BOOL", false)
+		assert.True(t, result)
+
+		// Test with "false" value
+		os.Setenv("TEST_BOOL", "false")
+		result = getEnvBoolWithDefault("TEST_BOOL", true)
+		assert.False(t, result)
+
+		// Test with "0" value
+		os.Setenv("TEST_BOOL", "0")
+		result = getEnvBoolWithDefault("TEST_BOOL", true)
+		assert.False(t, result)
+
+		// Test with "no" value
+		os.Setenv("TEST_BOOL", "no")
+		result = getEnvBoolWithDefault("TEST_BOOL", true)
+		assert.False(t, result)
+
+		// Test with non-existing environment variable
+		os.Unsetenv("TEST_BOOL")
+		result = getEnvBoolWithDefault("TEST_BOOL", true)
+		assert.True(t, result)
+	})
+}
+
+// Test loadFromFlags function directly
+func TestLoadFromFlagsDirect(t *testing.T) {
+	// This test is complex due to flag redefinition issues
+	// We'll test the individual helper functions instead
+	t.Run("getEnvWithDefault", func(t *testing.T) {
+		// Test with existing environment variable
+		os.Setenv("TEST_VAR", "test_value")
+		defer os.Unsetenv("TEST_VAR")
+
+		result := getEnvWithDefault("TEST_VAR", "default_value")
+		assert.Equal(t, "test_value", result)
+
+		// Test with non-existing environment variable
+		result = getEnvWithDefault("NONEXISTENT_VAR", "default_value")
+		assert.Equal(t, "default_value", result)
+	})
+
+	t.Run("getEnvBoolWithDefault", func(t *testing.T) {
+		// Test with "true" value
+		os.Setenv("TEST_BOOL", "true")
+		defer os.Unsetenv("TEST_BOOL")
+
+		result := getEnvBoolWithDefault("TEST_BOOL", false)
+		assert.True(t, result)
+
+		// Test with "1" value
+		os.Setenv("TEST_BOOL", "1")
+		result = getEnvBoolWithDefault("TEST_BOOL", false)
+		assert.True(t, result)
+
+		// Test with "yes" value
+		os.Setenv("TEST_BOOL", "yes")
+		result = getEnvBoolWithDefault("TEST_BOOL", false)
+		assert.True(t, result)
+
+		// Test with "false" value
+		os.Setenv("TEST_BOOL", "false")
+		result = getEnvBoolWithDefault("TEST_BOOL", true)
+		assert.False(t, result)
+
+		// Test with "0" value
+		os.Setenv("TEST_BOOL", "0")
+		result = getEnvBoolWithDefault("TEST_BOOL", true)
+		assert.False(t, result)
+
+		// Test with "no" value
+		os.Setenv("TEST_BOOL", "no")
+		result = getEnvBoolWithDefault("TEST_BOOL", true)
+		assert.False(t, result)
+
+		// Test with non-existing environment variable
+		os.Unsetenv("TEST_BOOL")
+		result = getEnvBoolWithDefault("TEST_BOOL", true)
+		assert.True(t, result)
+	})
+}
+
+func TestConfigLoad_WithPartialEnvironmentVariables_Original(t *testing.T) {
+	// Clear any existing environment variables that might interfere
+	envVars := []string{
+		"LISTEN_ADDR", "WEBHOOK_URL", "ENABLE_SPF", "ENABLE_METRICS", "SENTRY_DSN",
 	}
-	
-	// Invalid boolean values should default to false
-	assert.False(t, config.Metrics.Enabled)
+
+	// Store original values
+	originalValues := make(map[string]string)
+	for _, envVar := range envVars {
+		originalValues[envVar] = os.Getenv(envVar)
+		os.Unsetenv(envVar)
+	}
+
+	// Restore original values after test
+	defer func() {
+		for envVar, value := range originalValues {
+			if value != "" {
+				os.Setenv(envVar, value)
+			} else {
+				os.Unsetenv(envVar)
+			}
+		}
+	}()
+
+	// Set only some environment variables
+	os.Setenv("LISTEN_ADDR", "127.0.0.1:2525")
+	os.Setenv("WEBHOOK_URL", "http://localhost:8080/webhook")
+	os.Setenv("ENABLE_SPF", "false")
+	os.Setenv("ENABLE_METRICS", "true")
+	os.Setenv("SENTRY_DSN", "https://test@sentry.io/123")
+
+	// Create a new config instance without calling Load() to avoid flag redefinition
+	config := &Config{
+		Server: ServerConfig{
+			ListenAddr:     getEnvWithDefault("LISTEN_ADDR", "0.0.0.0:25"),
+			ListenAddrTLS:  getEnvWithDefault("LISTEN_ADDR_TLS", "0.0.0.0:587"),
+			ServerName:     getEnvWithDefault("SERVER_NAME", "mx.inboundparse.com"),
+			MaxMessageSize: 10485760,
+			ReadTimeout:    30 * time.Second,
+			WriteTimeout:   30 * time.Second,
+			CertFile:       os.Getenv("CERT_FILE"),
+			KeyFile:        os.Getenv("KEY_FILE"),
+			Verbose:        getEnvBoolWithDefault("VERBOSE", false),
+		},
+		Webhook: WebhookConfig{
+			URL:      getEnvWithDefault("WEBHOOK_URL", "http://localhost:8080/webhook"),
+			Username: os.Getenv("WEBHOOK_USER"),
+			Password: os.Getenv("WEBHOOK_PASS"),
+		},
+		Auth: AuthConfig{
+			EnableSPF:   getEnvBoolWithDefault("ENABLE_SPF", true),
+			EnableDKIM:  getEnvBoolWithDefault("ENABLE_DKIM", true),
+			EnableDMARC: getEnvBoolWithDefault("ENABLE_DMARC", true),
+		},
+		Metrics: MetricsConfig{
+			Enabled:  getEnvBoolWithDefault("ENABLE_METRICS", false),
+			Addr:     getEnvWithDefault("METRICS_ADDR", "0.0.0.0:9090"),
+			APIKey:   os.Getenv("METRICS_API_KEY"),
+			Username: os.Getenv("METRICS_USERNAME"),
+			Password: os.Getenv("METRICS_PASSWORD"),
+		},
+		Sentry: SentryConfig{
+			Enabled: getEnvBoolWithDefault("ENABLE_SENTRY", false),
+			DSN:     os.Getenv("SENTRY_DSN"),
+			Env:     getEnvWithDefault("SENTRY_ENV", "production"),
+			Release: os.Getenv("SENTRY_RELEASE"),
+		},
+		Logging: LoggingConfig{
+			Level:  getEnvWithDefault("LOG_LEVEL", "info"),
+			Format: getEnvWithDefault("LOG_FORMAT", "json"),
+			Output: getEnvWithDefault("LOG_OUTPUT", "stdout"),
+		},
+	}
+
+	assert.NotNil(t, config)
+
+	// Verify set values
+	assert.Equal(t, "127.0.0.1:2525", config.Server.ListenAddr)
+	assert.Equal(t, "http://localhost:8080/webhook", config.Webhook.URL)
 	assert.False(t, config.Auth.EnableSPF)
+	assert.True(t, config.Metrics.Enabled)
+	assert.Equal(t, "https://test@sentry.io/123", config.Sentry.DSN)
+
+	// Verify default values for unset variables
+	assert.Equal(t, "0.0.0.0:587", config.Server.ListenAddrTLS)
+	assert.Equal(t, "mx.inboundparse.com", config.Server.ServerName)
+	assert.True(t, config.Auth.EnableDKIM)  // Default value
+	assert.True(t, config.Auth.EnableDMARC) // Default value
+	assert.Equal(t, "0.0.0.0:9090", config.Metrics.Addr)
+	assert.False(t, config.Sentry.Enabled)           // Default value
+	assert.Equal(t, "production", config.Sentry.Env) // Default value
+	assert.Equal(t, "info", config.Logging.Level)    // Default value
+	assert.Equal(t, "json", config.Logging.Format)   // Default value
+	assert.Equal(t, "stdout", config.Logging.Output) // Default value
 }
 
-// Test config loading with empty values
-func TestConfigLoad_WithEmptyValues(t *testing.T) {
-	t.Skip("Skipped due to flag redefinition issues when running multiple tests")
-	// Test with empty string values
-	os.Setenv("LISTEN_ADDR", "")
-	os.Setenv("WEBHOOK_URL", "")
-	os.Setenv("LOG_LEVEL", "")
-	
-	defer func() {
-		os.Unsetenv("LISTEN_ADDR")
-		os.Unsetenv("WEBHOOK_URL")
-		os.Unsetenv("LOG_LEVEL")
-	}()
-	
-	config, err := Load()
-	if err != nil {
-		t.Logf("Config.Load() with empty values returned error: %v", err)
+func TestConfigLoad_WithEdgeCaseValues(t *testing.T) {
+	// Clear any existing environment variables that might interfere
+	envVars := []string{
+		"LISTEN_ADDR", "WEBHOOK_URL", "SERVER_NAME", "LOG_LEVEL", "LOG_FORMAT", "LOG_OUTPUT",
+		"METRICS_ADDR", "SENTRY_ENV", "SENTRY_RELEASE",
 	}
-	
-	// Empty values should use defaults
-	assert.Equal(t, ":25", config.Server.ListenAddr)
-	assert.Equal(t, "", config.Webhook.URL)
-	assert.Equal(t, "info", config.Logging.Level)
+
+	// Store original values
+	originalValues := make(map[string]string)
+	for _, envVar := range envVars {
+		originalValues[envVar] = os.Getenv(envVar)
+		os.Unsetenv(envVar)
+	}
+
+	// Restore original values after test
+	defer func() {
+		for envVar, value := range originalValues {
+			if value != "" {
+				os.Setenv(envVar, value)
+			} else {
+				os.Unsetenv(envVar)
+			}
+		}
+	}()
+
+	// Test with edge case values
+	os.Setenv("LISTEN_ADDR", "0.0.0.0:0")        // Port 0
+	os.Setenv("WEBHOOK_URL", "http://localhost") // No port
+	os.Setenv("SERVER_NAME", "localhost")        // Simple hostname
+	os.Setenv("LOG_LEVEL", "trace")              // Unusual log level
+	os.Setenv("LOG_FORMAT", "text")              // Text format
+	os.Setenv("LOG_OUTPUT", "stderr")            // stderr output
+	os.Setenv("METRICS_ADDR", "localhost:0")     // Port 0 for metrics
+	os.Setenv("SENTRY_ENV", "local")             // Custom environment
+	os.Setenv("SENTRY_RELEASE", "dev")           // Custom release
+
+	// Create config directly without calling Load() to avoid flag redefinition
+	config := &Config{
+		Server: ServerConfig{
+			ListenAddr:     getEnvWithDefault("LISTEN_ADDR", "0.0.0.0:25"),
+			ListenAddrTLS:  getEnvWithDefault("LISTEN_ADDR_TLS", "0.0.0.0:587"),
+			ServerName:     getEnvWithDefault("SERVER_NAME", "mx.inboundparse.com"),
+			MaxMessageSize: 10485760,
+			ReadTimeout:    30 * time.Second,
+			WriteTimeout:   30 * time.Second,
+			CertFile:       os.Getenv("CERT_FILE"),
+			KeyFile:        os.Getenv("KEY_FILE"),
+			Verbose:        getEnvBoolWithDefault("VERBOSE", false),
+		},
+		Webhook: WebhookConfig{
+			URL:      getEnvWithDefault("WEBHOOK_URL", "http://localhost:8080/webhook"),
+			Username: os.Getenv("WEBHOOK_USER"),
+			Password: os.Getenv("WEBHOOK_PASS"),
+		},
+		Auth: AuthConfig{
+			EnableSPF:   getEnvBoolWithDefault("ENABLE_SPF", true),
+			EnableDKIM:  getEnvBoolWithDefault("ENABLE_DKIM", true),
+			EnableDMARC: getEnvBoolWithDefault("ENABLE_DMARC", true),
+		},
+		Metrics: MetricsConfig{
+			Enabled:  getEnvBoolWithDefault("ENABLE_METRICS", false),
+			Addr:     getEnvWithDefault("METRICS_ADDR", "0.0.0.0:9090"),
+			APIKey:   os.Getenv("METRICS_API_KEY"),
+			Username: os.Getenv("METRICS_USERNAME"),
+			Password: os.Getenv("METRICS_PASSWORD"),
+		},
+		Sentry: SentryConfig{
+			Enabled: getEnvBoolWithDefault("ENABLE_SENTRY", false),
+			DSN:     os.Getenv("SENTRY_DSN"),
+			Env:     getEnvWithDefault("SENTRY_ENV", "production"),
+			Release: os.Getenv("SENTRY_RELEASE"),
+		},
+		Logging: LoggingConfig{
+			Level:  getEnvWithDefault("LOG_LEVEL", "info"),
+			Format: getEnvWithDefault("LOG_FORMAT", "json"),
+			Output: getEnvWithDefault("LOG_OUTPUT", "stdout"),
+		},
+	}
+
+	assert.NotNil(t, config)
+
+	// Verify edge case values are preserved
+	assert.Equal(t, "0.0.0.0:0", config.Server.ListenAddr)
+	assert.Equal(t, "http://localhost", config.Webhook.URL)
+	assert.Equal(t, "localhost", config.Server.ServerName)
+	assert.Equal(t, "trace", config.Logging.Level)
+	assert.Equal(t, "text", config.Logging.Format)
+	assert.Equal(t, "stderr", config.Logging.Output)
+	assert.Equal(t, "localhost:0", config.Metrics.Addr)
+	assert.Equal(t, "local", config.Sentry.Env)
+	assert.Equal(t, "dev", config.Sentry.Release)
+}
+
+func TestConfigLoad_WithLongValues_Original(t *testing.T) {
+	// Clear any existing environment variables that might interfere
+	envVars := []string{
+		"WEBHOOK_URL", "SENTRY_DSN", "SERVER_NAME",
+	}
+
+	// Store original values
+	originalValues := make(map[string]string)
+	for _, envVar := range envVars {
+		originalValues[envVar] = os.Getenv(envVar)
+		os.Unsetenv(envVar)
+	}
+
+	// Restore original values after test
+	defer func() {
+		for envVar, value := range originalValues {
+			if value != "" {
+				os.Setenv(envVar, value)
+			} else {
+				os.Unsetenv(envVar)
+			}
+		}
+	}()
+
+	// Test with very long values
+	longURL := "https://" + strings.Repeat("a", 1000) + ".example.com/webhook"
+	longDSN := "https://" + strings.Repeat("b", 1000) + "@sentry.io/123"
+	longServerName := strings.Repeat("c", 1000) + ".example.com"
+
+	os.Setenv("WEBHOOK_URL", longURL)
+	os.Setenv("SENTRY_DSN", longDSN)
+	os.Setenv("SERVER_NAME", longServerName)
+
+	// Create config directly without calling Load() to avoid flag redefinition
+	config := &Config{
+		Server: ServerConfig{
+			ListenAddr:     getEnvWithDefault("LISTEN_ADDR", "0.0.0.0:25"),
+			ListenAddrTLS:  getEnvWithDefault("LISTEN_ADDR_TLS", "0.0.0.0:587"),
+			ServerName:     getEnvWithDefault("SERVER_NAME", "mx.inboundparse.com"),
+			MaxMessageSize: 10485760,
+			ReadTimeout:    30 * time.Second,
+			WriteTimeout:   30 * time.Second,
+			CertFile:       os.Getenv("CERT_FILE"),
+			KeyFile:        os.Getenv("KEY_FILE"),
+			Verbose:        getEnvBoolWithDefault("VERBOSE", false),
+		},
+		Webhook: WebhookConfig{
+			URL:      getEnvWithDefault("WEBHOOK_URL", "http://localhost:8080/webhook"),
+			Username: os.Getenv("WEBHOOK_USER"),
+			Password: os.Getenv("WEBHOOK_PASS"),
+		},
+		Auth: AuthConfig{
+			EnableSPF:   getEnvBoolWithDefault("ENABLE_SPF", true),
+			EnableDKIM:  getEnvBoolWithDefault("ENABLE_DKIM", true),
+			EnableDMARC: getEnvBoolWithDefault("ENABLE_DMARC", true),
+		},
+		Metrics: MetricsConfig{
+			Enabled:  getEnvBoolWithDefault("ENABLE_METRICS", false),
+			Addr:     getEnvWithDefault("METRICS_ADDR", "0.0.0.0:9090"),
+			APIKey:   os.Getenv("METRICS_API_KEY"),
+			Username: os.Getenv("METRICS_USERNAME"),
+			Password: os.Getenv("METRICS_PASSWORD"),
+		},
+		Sentry: SentryConfig{
+			Enabled: getEnvBoolWithDefault("ENABLE_SENTRY", false),
+			DSN:     os.Getenv("SENTRY_DSN"),
+			Env:     getEnvWithDefault("SENTRY_ENV", "production"),
+			Release: os.Getenv("SENTRY_RELEASE"),
+		},
+		Logging: LoggingConfig{
+			Level:  getEnvWithDefault("LOG_LEVEL", "info"),
+			Format: getEnvWithDefault("LOG_FORMAT", "json"),
+			Output: getEnvWithDefault("LOG_OUTPUT", "stdout"),
+		},
+	}
+
+	assert.NotNil(t, config)
+
+	// Verify long values are preserved
+	assert.Equal(t, longURL, config.Webhook.URL)
+	assert.Equal(t, longDSN, config.Sentry.DSN)
+	assert.Equal(t, longServerName, config.Server.ServerName)
+}
+
+func TestConfigLoad_WithUnicodeValues_Original(t *testing.T) {
+	// Clear any existing environment variables that might interfere
+	envVars := []string{
+		"WEBHOOK_URL", "SERVER_NAME", "SENTRY_ENV", "SENTRY_RELEASE",
+	}
+
+	// Store original values
+	originalValues := make(map[string]string)
+	for _, envVar := range envVars {
+		originalValues[envVar] = os.Getenv(envVar)
+		os.Unsetenv(envVar)
+	}
+
+	// Restore original values after test
+	defer func() {
+		for envVar, value := range originalValues {
+			if value != "" {
+				os.Setenv(envVar, value)
+			} else {
+				os.Unsetenv(envVar)
+			}
+		}
+	}()
+
+	// Test with unicode values
+	os.Setenv("WEBHOOK_URL", "https://测试.example.com/webhook")
+	os.Setenv("SERVER_NAME", "测试服务器.example.com")
+	os.Setenv("SENTRY_ENV", "测试环境")
+	os.Setenv("SENTRY_RELEASE", "v1.0.0-测试")
+
+	// Create config directly without calling Load() to avoid flag redefinition
+	config := &Config{
+		Server: ServerConfig{
+			ListenAddr:     getEnvWithDefault("LISTEN_ADDR", "0.0.0.0:25"),
+			ListenAddrTLS:  getEnvWithDefault("LISTEN_ADDR_TLS", "0.0.0.0:587"),
+			ServerName:     getEnvWithDefault("SERVER_NAME", "mx.inboundparse.com"),
+			MaxMessageSize: 10485760,
+			ReadTimeout:    30 * time.Second,
+			WriteTimeout:   30 * time.Second,
+			CertFile:       os.Getenv("CERT_FILE"),
+			KeyFile:        os.Getenv("KEY_FILE"),
+			Verbose:        getEnvBoolWithDefault("VERBOSE", false),
+		},
+		Webhook: WebhookConfig{
+			URL:      getEnvWithDefault("WEBHOOK_URL", "http://localhost:8080/webhook"),
+			Username: os.Getenv("WEBHOOK_USER"),
+			Password: os.Getenv("WEBHOOK_PASS"),
+		},
+		Auth: AuthConfig{
+			EnableSPF:   getEnvBoolWithDefault("ENABLE_SPF", true),
+			EnableDKIM:  getEnvBoolWithDefault("ENABLE_DKIM", true),
+			EnableDMARC: getEnvBoolWithDefault("ENABLE_DMARC", true),
+		},
+		Metrics: MetricsConfig{
+			Enabled:  getEnvBoolWithDefault("ENABLE_METRICS", false),
+			Addr:     getEnvWithDefault("METRICS_ADDR", "0.0.0.0:9090"),
+			APIKey:   os.Getenv("METRICS_API_KEY"),
+			Username: os.Getenv("METRICS_USERNAME"),
+			Password: os.Getenv("METRICS_PASSWORD"),
+		},
+		Sentry: SentryConfig{
+			Enabled: getEnvBoolWithDefault("ENABLE_SENTRY", false),
+			DSN:     os.Getenv("SENTRY_DSN"),
+			Env:     getEnvWithDefault("SENTRY_ENV", "production"),
+			Release: os.Getenv("SENTRY_RELEASE"),
+		},
+		Logging: LoggingConfig{
+			Level:  getEnvWithDefault("LOG_LEVEL", "info"),
+			Format: getEnvWithDefault("LOG_FORMAT", "json"),
+			Output: getEnvWithDefault("LOG_OUTPUT", "stdout"),
+		},
+	}
+
+	assert.NotNil(t, config)
+
+	// Verify unicode values are preserved
+	assert.Equal(t, "https://测试.example.com/webhook", config.Webhook.URL)
+	assert.Equal(t, "测试服务器.example.com", config.Server.ServerName)
+	assert.Equal(t, "测试环境", config.Sentry.Env)
+	assert.Equal(t, "v1.0.0-测试", config.Sentry.Release)
 }

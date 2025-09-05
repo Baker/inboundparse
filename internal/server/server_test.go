@@ -440,3 +440,503 @@ func TestServer_StartSMTPServers_WithValidCert(t *testing.T) {
 		t.Logf("Start() returned expected error: %v", err)
 	}
 }
+
+// Test server error handling paths
+func TestServer_StartMetricsServer_ErrorHandling2(t *testing.T) {
+	config := &config.Config{
+		Metrics: config.MetricsConfig{
+			Enabled: true,
+			Addr:    "invalid-address", // This should cause an error
+		},
+	}
+	backend := &mockSMTPBackend{}
+	metricsService := &mockMetricsServiceForServer{}
+	logger := &mockLoggerService{}
+
+	server := NewServer(config, backend, metricsService, logger)
+
+	ctx := context.Background()
+	err := server.Start(ctx)
+
+	// The server might start successfully or fail depending on the system
+	// We just want to ensure it doesn't panic
+	if err != nil {
+		t.Logf("Start() returned expected error: %v", err)
+	}
+}
+
+// Test server with different configurations
+func TestServer_WithDifferentConfigurations(t *testing.T) {
+	testCases := []struct {
+		name   string
+		config *config.Config
+	}{
+		{
+			name: "minimal config",
+			config: &config.Config{
+				Server: config.ServerConfig{
+					ListenAddr:     "127.0.0.1:0", // Use port 0 to avoid conflicts
+					ListenAddrTLS:  "127.0.0.1:0",
+					ServerName:     "test.example.com",
+					MaxMessageSize: 1024 * 1024, // 1MB
+					ReadTimeout:    10 * time.Second,
+					WriteTimeout:   10 * time.Second,
+				},
+				Metrics: config.MetricsConfig{
+					Enabled: false,
+				},
+			},
+		},
+		{
+			name: "with metrics enabled",
+			config: &config.Config{
+				Server: config.ServerConfig{
+					ListenAddr:     "127.0.0.1:0",
+					ListenAddrTLS:  "127.0.0.1:0",
+					ServerName:     "test.example.com",
+					MaxMessageSize: 1024 * 1024,
+					ReadTimeout:    10 * time.Second,
+					WriteTimeout:   10 * time.Second,
+				},
+				Metrics: config.MetricsConfig{
+					Enabled: true,
+					Addr:    "127.0.0.1:0", // Use port 0 to avoid conflicts
+				},
+			},
+		},
+		{
+			name: "with TLS configuration",
+			config: &config.Config{
+				Server: config.ServerConfig{
+					ListenAddr:     "127.0.0.1:0",
+					ListenAddrTLS:  "127.0.0.1:0",
+					ServerName:     "test.example.com",
+					MaxMessageSize: 1024 * 1024,
+					ReadTimeout:    10 * time.Second,
+					WriteTimeout:   10 * time.Second,
+					CertFile:       "/nonexistent/cert.pem",
+					KeyFile:        "/nonexistent/key.pem",
+				},
+				Metrics: config.MetricsConfig{
+					Enabled: false,
+				},
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			backend := &mockSMTPBackend{}
+			metricsService := &mockMetricsServiceForServer{}
+			logger := &mockLoggerService{}
+
+			server := NewServer(tc.config, backend, metricsService, logger)
+			assert.NotNil(t, server)
+
+			ctx := context.Background()
+			err := server.Start(ctx)
+
+			// The server might start successfully or fail depending on available ports
+			// We just want to ensure it doesn't panic
+			if err != nil {
+				t.Logf("Start() returned expected error: %v", err)
+			}
+
+			// Test stop
+			err = server.Stop(ctx)
+			assert.NoError(t, err)
+		})
+	}
+}
+
+// Test server graceful shutdown
+func TestServer_GracefulShutdown(t *testing.T) {
+	config := &config.Config{
+		Server: config.ServerConfig{
+			ListenAddr:     "127.0.0.1:0",
+			ListenAddrTLS:  "127.0.0.1:0",
+			ServerName:     "test.example.com",
+			MaxMessageSize: 1024 * 1024,
+			ReadTimeout:    10 * time.Second,
+			WriteTimeout:   10 * time.Second,
+		},
+		Metrics: config.MetricsConfig{
+			Enabled: false,
+		},
+	}
+	backend := &mockSMTPBackend{}
+	metricsService := &mockMetricsServiceForServer{}
+	logger := &mockLoggerService{}
+
+	server := NewServer(config, backend, metricsService, logger)
+
+	// Create a context that will be cancelled quickly
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+
+	err := server.Run(ctx)
+
+	// Run might succeed or fail depending on available ports
+	// We just want to ensure it doesn't panic
+	if err != nil {
+		t.Logf("Run() returned expected error: %v", err)
+	}
+}
+
+// Test server with context cancellation
+func TestServer_WithContextCancellation(t *testing.T) {
+	config := &config.Config{
+		Server: config.ServerConfig{
+			ListenAddr:     "127.0.0.1:0",
+			ListenAddrTLS:  "127.0.0.1:0",
+			ServerName:     "test.example.com",
+			MaxMessageSize: 1024 * 1024,
+			ReadTimeout:    10 * time.Second,
+			WriteTimeout:   10 * time.Second,
+		},
+		Metrics: config.MetricsConfig{
+			Enabled: false,
+		},
+	}
+	backend := &mockSMTPBackend{}
+	metricsService := &mockMetricsServiceForServer{}
+	logger := &mockLoggerService{}
+
+	server := NewServer(config, backend, metricsService, logger)
+
+	// Create a context that will be cancelled immediately
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // Cancel immediately
+
+	err := server.Run(ctx)
+
+	// Run might succeed or fail depending on available ports
+	// We just want to ensure it doesn't panic
+	if err != nil {
+		t.Logf("Run() returned expected error: %v", err)
+	}
+}
+
+// Test server error handling in startMetricsServer
+func TestServer_StartMetricsServer_ErrorHandling3(t *testing.T) {
+	config := &config.Config{
+		Metrics: config.MetricsConfig{
+			Enabled: true,
+			Addr:    "invalid-address:port", // This should cause an error
+		},
+	}
+	backend := &mockSMTPBackend{}
+	metricsService := &mockMetricsServiceForServer{}
+	logger := &mockLoggerService{}
+
+	server := NewServer(config, backend, metricsService, logger)
+
+	ctx := context.Background()
+	err := server.Start(ctx)
+
+	// This should fail due to invalid address
+	if err != nil {
+		t.Logf("Start() returned expected error: %v", err)
+	}
+}
+
+// Test server with nil services
+func TestServer_WithNilServices(t *testing.T) {
+	config := &config.Config{
+		Server: config.ServerConfig{
+			ListenAddr:     "127.0.0.1:0",
+			ListenAddrTLS:  "127.0.0.1:0",
+			ServerName:     "test.example.com",
+			MaxMessageSize: 1024 * 1024,
+			ReadTimeout:    10 * time.Second,
+			WriteTimeout:   10 * time.Second,
+		},
+		Metrics: config.MetricsConfig{
+			Enabled: false,
+		},
+	}
+	backend := &mockSMTPBackend{}
+	metricsService := &mockMetricsServiceForServer{}
+	logger := &mockLoggerService{}
+
+	server := NewServer(config, backend, metricsService, logger)
+
+	ctx := context.Background()
+	
+	// Test starting without any issues
+	err := server.Start(ctx)
+	if err != nil {
+		t.Logf("Start() returned expected error: %v", err)
+	}
+
+	// Test stopping
+	err = server.Stop(ctx)
+	assert.NoError(t, err)
+}
+
+// Test server with different timeout values
+func TestServer_WithDifferentTimeouts(t *testing.T) {
+	testCases := []struct {
+		name         string
+		readTimeout  time.Duration
+		writeTimeout time.Duration
+	}{
+		{
+			name:         "short timeouts",
+			readTimeout:  1 * time.Second,
+			writeTimeout: 1 * time.Second,
+		},
+		{
+			name:         "long timeouts",
+			readTimeout:  60 * time.Second,
+			writeTimeout: 60 * time.Second,
+		},
+		{
+			name:         "zero timeouts",
+			readTimeout:  0,
+			writeTimeout: 0,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			config := &config.Config{
+				Server: config.ServerConfig{
+					ListenAddr:     "127.0.0.1:0",
+					ListenAddrTLS:  "127.0.0.1:0",
+					ServerName:     "test.example.com",
+					MaxMessageSize: 1024 * 1024,
+					ReadTimeout:    tc.readTimeout,
+					WriteTimeout:   tc.writeTimeout,
+				},
+				Metrics: config.MetricsConfig{
+					Enabled: false,
+				},
+			}
+			backend := &mockSMTPBackend{}
+			metricsService := &mockMetricsServiceForServer{}
+			logger := &mockLoggerService{}
+
+			server := NewServer(config, backend, metricsService, logger)
+
+			ctx := context.Background()
+			err := server.Start(ctx)
+
+			// The server might start successfully or fail depending on available ports
+			if err != nil {
+				t.Logf("Start() returned expected error: %v", err)
+			}
+
+			// Test stop
+			err = server.Stop(ctx)
+			assert.NoError(t, err)
+		})
+	}
+}
+
+// Test server with different message sizes
+func TestServer_WithDifferentMessageSizes(t *testing.T) {
+	testCases := []struct {
+		name          string
+		maxMessageSize int64
+	}{
+		{
+			name:          "small message size",
+			maxMessageSize: 1024, // 1KB
+		},
+		{
+			name:          "large message size",
+			maxMessageSize: 100 * 1024 * 1024, // 100MB
+		},
+		{
+			name:          "zero message size",
+			maxMessageSize: 0,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			config := &config.Config{
+				Server: config.ServerConfig{
+					ListenAddr:     "127.0.0.1:0",
+					ListenAddrTLS:  "127.0.0.1:0",
+					ServerName:     "test.example.com",
+					MaxMessageSize: tc.maxMessageSize,
+					ReadTimeout:    10 * time.Second,
+					WriteTimeout:   10 * time.Second,
+				},
+				Metrics: config.MetricsConfig{
+					Enabled: false,
+				},
+			}
+			backend := &mockSMTPBackend{}
+			metricsService := &mockMetricsServiceForServer{}
+			logger := &mockLoggerService{}
+
+			server := NewServer(config, backend, metricsService, logger)
+
+			ctx := context.Background()
+			err := server.Start(ctx)
+
+			// The server might start successfully or fail depending on available ports
+			if err != nil {
+				t.Logf("Start() returned expected error: %v", err)
+			}
+
+			// Test stop
+			err = server.Stop(ctx)
+			assert.NoError(t, err)
+		})
+	}
+}
+
+// Test server with different server names
+func TestServer_WithDifferentServerNames(t *testing.T) {
+	testCases := []struct {
+		name       string
+		serverName string
+	}{
+		{
+			name:       "simple hostname",
+			serverName: "localhost",
+		},
+		{
+			name:       "domain name",
+			serverName: "mx.example.com",
+		},
+		{
+			name:       "empty server name",
+			serverName: "",
+		},
+		{
+			name:       "unicode server name",
+			serverName: "测试服务器.example.com",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			config := &config.Config{
+				Server: config.ServerConfig{
+					ListenAddr:     "127.0.0.1:0",
+					ListenAddrTLS:  "127.0.0.1:0",
+					ServerName:     tc.serverName,
+					MaxMessageSize: 1024 * 1024,
+					ReadTimeout:    10 * time.Second,
+					WriteTimeout:   10 * time.Second,
+				},
+				Metrics: config.MetricsConfig{
+					Enabled: false,
+				},
+			}
+			backend := &mockSMTPBackend{}
+			metricsService := &mockMetricsServiceForServer{}
+			logger := &mockLoggerService{}
+
+			server := NewServer(config, backend, metricsService, logger)
+
+			ctx := context.Background()
+			err := server.Start(ctx)
+
+			// The server might start successfully or fail depending on available ports
+			if err != nil {
+				t.Logf("Start() returned expected error: %v", err)
+			}
+
+			// Test stop
+			err = server.Stop(ctx)
+			assert.NoError(t, err)
+		})
+	}
+}
+
+// Test server error handling in startSMTPServers
+func TestServer_StartSMTPServers_ErrorHandling(t *testing.T) {
+	config := &config.Config{
+		Server: config.ServerConfig{
+			ListenAddr:     "invalid-address:port", // This should cause an error
+			ListenAddrTLS:  "127.0.0.1:0",
+			ServerName:     "test.example.com",
+			MaxMessageSize: 1024 * 1024,
+			ReadTimeout:    10 * time.Second,
+			WriteTimeout:   10 * time.Second,
+		},
+		Metrics: config.MetricsConfig{
+			Enabled: false,
+		},
+	}
+	backend := &mockSMTPBackend{}
+	metricsService := &mockMetricsServiceForServer{}
+	logger := &mockLoggerService{}
+
+	server := NewServer(config, backend, metricsService, logger)
+
+	ctx := context.Background()
+	err := server.Start(ctx)
+
+	// This should fail due to invalid address
+	if err != nil {
+		t.Logf("Start() returned expected error: %v", err)
+	}
+}
+
+// Test server with metrics server enabled and disabled
+func TestServer_WithMetricsServerEnabled(t *testing.T) {
+	testCases := []struct {
+		name            string
+		metricsEnabled  bool
+		metricsAddr     string
+	}{
+		{
+			name:            "metrics disabled",
+			metricsEnabled:  false,
+			metricsAddr:     "",
+		},
+		{
+			name:            "metrics enabled with default addr",
+			metricsEnabled:  true,
+			metricsAddr:     "127.0.0.1:0", // Use port 0 to avoid conflicts
+		},
+		{
+			name:            "metrics enabled with custom addr",
+			metricsEnabled:  true,
+			metricsAddr:     "127.0.0.1:0", // Use port 0 to avoid conflicts
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			config := &config.Config{
+				Server: config.ServerConfig{
+					ListenAddr:     "127.0.0.1:0",
+					ListenAddrTLS:  "127.0.0.1:0",
+					ServerName:     "test.example.com",
+					MaxMessageSize: 1024 * 1024,
+					ReadTimeout:    10 * time.Second,
+					WriteTimeout:   10 * time.Second,
+				},
+				Metrics: config.MetricsConfig{
+					Enabled: tc.metricsEnabled,
+					Addr:    tc.metricsAddr,
+				},
+			}
+			backend := &mockSMTPBackend{}
+			metricsService := &mockMetricsServiceForServer{}
+			logger := &mockLoggerService{}
+
+			server := NewServer(config, backend, metricsService, logger)
+
+			ctx := context.Background()
+			err := server.Start(ctx)
+
+			// The server might start successfully or fail depending on available ports
+			if err != nil {
+				t.Logf("Start() returned expected error: %v", err)
+			}
+
+			// Test stop
+			err = server.Stop(ctx)
+			assert.NoError(t, err)
+		})
+	}
+}

@@ -5,7 +5,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 )
 
@@ -43,46 +42,46 @@ func TestNewLoggerService(t *testing.T) {
 
 func TestLoggerService_WithContext(t *testing.T) {
 	tests := []struct {
-		name        string
-		ctx         context.Context
+		name          string
+		ctx           context.Context
 		correlationID string
-		requestID   string
-		userID      string
+		requestID     string
+		userID        string
 	}{
 		{
-			name:        "empty context",
-			ctx:         context.Background(),
+			name:          "empty context",
+			ctx:           context.Background(),
 			correlationID: "",
-			requestID:   "",
-			userID:      "",
+			requestID:     "",
+			userID:        "",
 		},
 		{
-			name:        "context with correlation ID",
-			ctx:         WithCorrelationID(context.Background(), "test-correlation-id"),
+			name:          "context with correlation ID",
+			ctx:           WithCorrelationID(context.Background(), "test-correlation-id"),
 			correlationID: "test-correlation-id",
-			requestID:   "",
-			userID:      "",
+			requestID:     "",
+			userID:        "",
 		},
 		{
-			name:        "context with request ID",
-			ctx:         WithRequestID(context.Background(), "test-request-id"),
+			name:          "context with request ID",
+			ctx:           WithRequestID(context.Background(), "test-request-id"),
 			correlationID: "",
-			requestID:   "test-request-id",
-			userID:      "",
+			requestID:     "test-request-id",
+			userID:        "",
 		},
 		{
-			name:        "context with user ID",
-			ctx:         WithUserID(context.Background(), "test-user-id"),
+			name:          "context with user ID",
+			ctx:           WithUserID(context.Background(), "test-user-id"),
 			correlationID: "",
-			requestID:   "",
-			userID:      "test-user-id",
+			requestID:     "",
+			userID:        "test-user-id",
 		},
 		{
-			name:        "context with all IDs",
-			ctx:         WithUserID(WithRequestID(WithCorrelationID(context.Background(), "test-correlation-id"), "test-request-id"), "test-user-id"),
+			name:          "context with all IDs",
+			ctx:           WithUserID(WithRequestID(WithCorrelationID(context.Background(), "test-correlation-id"), "test-request-id"), "test-user-id"),
 			correlationID: "test-correlation-id",
-			requestID:   "test-request-id",
-			userID:      "test-user-id",
+			requestID:     "test-request-id",
+			userID:        "test-user-id",
 		},
 	}
 
@@ -112,7 +111,7 @@ func TestLoggerService_With(t *testing.T) {
 			fields: []zap.Field{zap.String("key", "value")},
 		},
 		{
-			name:   "multiple fields",
+			name: "multiple fields",
 			fields: []zap.Field{
 				zap.String("key1", "value1"),
 				zap.Int("key2", 42),
@@ -295,12 +294,6 @@ func TestNewProductionLogger(t *testing.T) {
 	}
 }
 
-// TestLoggerService_Fatal is skipped because Fatal calls os.Exit() which terminates the test
-// In a real test environment, you'd need to use subprocess testing to test the exit behavior
-func TestLoggerService_Fatal_Skipped(t *testing.T) {
-	t.Skip("Fatal method calls os.Exit() which terminates the test process")
-}
-
 // Additional logger tests are skipped to avoid build issues
 
 func TestLoggerService_GetContextFields(t *testing.T) {
@@ -362,63 +355,4 @@ func TestLoggerService_GetContextFields(t *testing.T) {
 	if err != nil && !strings.Contains(err.Error(), "sync") {
 		t.Errorf("Close() error = %v", err)
 	}
-}
-
-// TestFatal tests the Fatal method
-func TestFatal(t *testing.T) {
-	t.Skip("Skipped due to os.Exit(1) call in Fatal method")
-	// Create a logger service
-	service, err := NewLoggerService(false)
-	require.NoError(t, err)
-	
-	// Test Fatal method - this will call os.Exit(1) in production
-	// In test environment, we can't easily test os.Exit, but we can test
-	// that the method exists and can be called without panicking
-	defer func() {
-		if r := recover(); r != nil {
-			t.Logf("Fatal method caused panic (expected in test): %v", r)
-		}
-	}()
-	
-	// This will call os.Exit(1) in production, but in tests it might panic
-	// or behave differently depending on the logger implementation
-	ctx := context.Background()
-	service.Fatal(ctx, "This is a fatal message")
-}
-
-// TestFatalWithFields tests the Fatal method with fields
-func TestFatalWithFields(t *testing.T) {
-	t.Skip("Skipped due to os.Exit(1) call in Fatal method")
-	// Create a logger service
-	service, err := NewLoggerService(false)
-	require.NoError(t, err)
-	
-	// Test Fatal method with fields
-	defer func() {
-		if r := recover(); r != nil {
-			t.Logf("Fatal method with fields caused panic (expected in test): %v", r)
-		}
-	}()
-	
-	// This will call os.Exit(1) in production
-	ctx := context.Background()
-	service.Fatal(ctx, "Fatal message with fields", zap.String("key1", "value1"), zap.String("key2", "value2"))
-}
-
-// TestFatalWithContext tests the Fatal method with context
-func TestFatalWithContext(t *testing.T) {
-	t.Skip("Skipped due to os.Exit(1) call in Fatal method")
-	// Create a logger service
-	service, err := NewLoggerService(false)
-	require.NoError(t, err)
-	
-	// Test Fatal method with context
-	defer func() {
-		if r := recover(); r != nil {
-			t.Logf("Fatal method with context caused panic (expected in test): %v", r)
-		}
-	}()
-	
-	ctx := context.Background()
-	service.Fatal(ctx, "Fatal message with context")
 }
