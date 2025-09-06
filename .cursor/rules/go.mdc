@@ -1,0 +1,497 @@
+---
+description: Go Style Guide
+globs: *.go,go.mod
+alwaysApply: false
+---
+You are an expert in Go, microservices architecture, and clean backend development practices. Your role is to ensure code is idiomatic, modular, testable, and aligned with modern best practices and design patterns.
+
+### General Responsibilities:
+- Guide the development of idiomatic, maintainable, and high-performance Go code.
+- Enforce modular design and separation of concerns through Clean Architecture.
+- Promote test-driven development, robust observability, and scalable patterns across services.
+
+### Architecture Patterns:
+- Apply **Clean Architecture** by structuring code into handlers/controllers, services/use cases, repositories/data access, and domain models.
+- Use **domain-driven design** principles where applicable.
+- Prioritize **interface-driven development** with explicit dependency injection.
+- Prefer **composition over inheritance**; favor small, purpose-specific interfaces.
+- Ensure that all public functions interact with interfaces, not concrete types, to enhance flexibility and testability.
+
+### Style
+- Follow the style guide at https://google.github.io/styleguide/go/guide
+- Follow the style decisions at https://google.github.io/styleguide/go/decisions
+- Follow the best practices at https://google.github.io/styleguide/go/best-practices
+
+## Settings
+- Go Version: 1.24.2
+- Line Length: 120 characters
+- Indent Size: 4 (tabs)
+- Import Grouping: stdlib, third-party, local
+- Error Handling: Explicit with context
+- Logging: Structured with zap
+- Tracing: OpenTelemetry
+- Testing: Table-driven with testify
+- Build System: Pants
+- Containerization: Docker
+- Monitoring: Prometheus + Grafana
+- Logging: JSON format with correlation IDs
+
+For more details, see the [Go documentation](https://golang.org/doc/).
+
+## Rules
+
+### Module Naming
+- **Pattern**: `module github.com/inboundparse/inboundparse`
+- **Severity**: error
+- **Message**: Module must follow InboundParse naming convention
+- **Description**: All Go modules must use the standard InboundParse module naming pattern
+
+### Go Version
+- **Pattern**: `go 1\.24\.2`
+- **Severity**: error
+- **Message**: Use Go 1.24.2 for all projects
+- **Description**: All projects must use Go 1.24.2 for consistency
+
+### Package Structure
+- **Pattern**: `package [a-z][a-z0-9_]*`
+- **Severity**: error
+- **Message**: Package names must be lowercase with underscores
+- **Description**: Package names should be descriptive and follow Go conventions
+
+### Error Handling
+- **Pattern**: `if err != nil \{`
+- **Severity**: error
+- **Message**: Always check and handle errors explicitly
+- **Description**: All errors must be checked and handled with proper context
+
+### Error Wrapping
+- **Pattern**: `fmt\.Errorf\(.*%w.*\)`
+- **Severity**: warning
+- **Message**: Use error wrapping with %w for context
+- **Description**: Wrap errors with context using fmt.Errorf and %w verb
+
+### Context Usage
+- **Pattern**: `context\.Context`
+- **Severity**: warning
+- **Message**: Use context.Context for request-scoped values
+- **Description**: Pass context through function calls for cancellation and timeouts
+
+### Interface Definitions
+- **Pattern**: `type [A-Z][a-zA-Z]* interface \{`
+- **Severity**: info
+- **Message**: Define interfaces for dependency injection
+- **Description**: Use interfaces to decouple implementation from usage
+
+### Struct Tags
+- **Pattern**: `json:"[a-z_]+"`
+- **Severity**: warning
+- **Message**: Use snake_case for JSON field names
+- **Description**: JSON field names should use snake_case convention
+
+### HTTP Handler Signatures
+- **Pattern**: `func \([^)]*\) [A-Z][a-zA-Z]*\(c \*gin\.Context\)`
+- **Severity**: warning
+- **Message**: HTTP handlers should use Gin context
+- **Description**: Use Gin framework for HTTP routing and handlers
+
+### Logging Setup
+- **Pattern**: `logger\.New\(`
+- **Severity**: warning
+- **Message**: Use structured logging with zap
+- **Description**: Use zap logger for structured logging
+
+### Tracing Setup
+- **Pattern**: `tracing\.InitTracer\(`
+- **Severity**: warning
+- **Message**: Initialize OpenTelemetry tracing
+- **Description**: Use OpenTelemetry for distributed tracing
+
+### Test Function Naming
+- **Pattern**: `func Test[A-Z][a-zA-Z]*\(t \*testing\.T\)`
+- **Severity**: error
+- **Message**: Test functions must start with Test
+- **Description**: All test functions must follow the Test[FunctionName] pattern
+
+### Test Table Driven
+- **Pattern**: `tests := \[\]struct \{`
+- **Severity**: info
+- **Message**: Consider using table-driven tests
+- **Description**: Use table-driven tests for comprehensive test coverage
+
+### Import Order
+- **Pattern**: `import \(`
+- **Severity**: warning
+- **Message**: Group imports: stdlib, third-party, local
+- **Description**: Organize imports in groups: standard library, third-party, local packages with a newline separating groups
+
+### Function Length
+- **Pattern**: `func [^(]+\([^)]*\) [^{]*\{`
+- **Severity**: info
+- **Message**: Consider function length and complexity
+- **Description**: Keep functions under 50 lines for readability. Consider breaking large functions into smaller, focused functions. Use tools like golangci-lint with cyclop or funlen rules for accurate detection.
+
+### Variable Naming
+- **Pattern**: `var [a-z][a-zA-Z0-9]*`
+- **Severity**: warning
+- **Message**: Use descriptive variable names
+- **Description**: Variables should have clear, descriptive names
+
+### Constants
+- **Pattern**: `const [a-zA-Z][a-zA-Z0-9]*`
+- **Severity**: warning
+- **Message**: Constant names should use MixedCaps like all other names in Go
+- **Description**: Exported constants start with uppercase, while unexported constants start with lowercase
+
+### Channel Usage
+- **Pattern**: `make\(chan [^,)]+\)`
+- **Severity**: warning
+- **Message**: Specify channel buffer size when needed
+- **Description**: Default to non-buffered channels and only use them when the concurrency case calls for it. Use buffered channels when appropriate to prevent deadlocks.
+
+### Goroutine Safety
+- **Pattern**: `go func\(\) \{`
+- **Severity**: warning
+- **Message**: Ensure goroutine safety with proper synchronization
+- **Description**: Use channels or sync primitives to guard shared state. Anonymous goroutines should have recovery code.
+
+### Resource Cleanup
+- **Pattern**: `defer [^)]+\.Close\(\)`
+- **Severity**: warning
+- **Message**: Use defer for resource cleanup
+- **Description**: Always defer Close() calls for resources
+
+### HTTP Status Codes
+- **Pattern**: `c\.Status\(http\.Status[A-Z]+\)`
+- **Severity**: warning
+- **Message**: Use proper HTTP status codes
+- **Description**: Use appropriate HTTP status codes for responses
+
+### Configuration Structs
+- **Pattern**: `type [A-Z][a-zA-Z]*Config struct \{`
+- **Severity**: info
+- **Message**: Use typed configuration structs
+- **Description**: Define configuration as typed structs with validation
+
+### Signal Handling
+- **Pattern**: `signal\.NotifyContext\(`
+- **Severity**: warning
+- **Message**: Use signal.NotifyContext for graceful shutdown
+- **Description**: Use context-based signal handling for graceful shutdown
+
+### Graceful Shutdown
+- **Pattern**: `srv\.Shutdown\(`
+- **Severity**: warning
+- **Message**: Implement graceful shutdown with timeout
+- **Description**: Use proper shutdown with context timeout
+
+## Project Structure Guidelines
+
+### Standard Layout
+```
+go/[project]/
+├── cmd/                   # Application entrypoints
+│   └── main.go
+├── internal/              # Private application code
+│   ├── server/            # HTTP server implementation
+│   ├── handler/           # HTTP handlers
+│   ├── service/           # Business logic
+│   └── repository/        # Data access layer
+├── pkg/                   # Public packages (if any)
+├── configs/               # Configuration schemas
+├── go.mod                 # Module definition
+├── go.sum                 # Dependency checksums
+└── README.md              # Project documentation
+```
+
+### Module Organization
+- **cmd/**: Contains main applications
+- **internal/**: Private code not exposed externally
+- **pkg/**: Public packages that can be imported by other modules
+- **configs/**: Configuration schemas and loading logic
+
+## Development Best Practices
+
+### Code Style
+- Follow `gofmt` formatting
+- Use `goimports` for import organization
+- Run `golangci-lint` for comprehensive linting
+- Keep line length under 120 characters. If a line feels too long, wrap it and indent with an extra tab.
+
+### Error Handling
+```go
+// Good
+if err != nil {
+    return fmt.Errorf("failed to process request: %w", err)
+}
+
+// Bad
+if err != nil {
+    return err
+}
+```
+
+### Context Usage
+```go
+// Good
+func (s *Service) Process(ctx context.Context, data []byte) error {
+    select {
+    case <-ctx.Done():
+        return ctx.Err()
+    default:
+        // Process data
+    }
+}
+
+// Bad
+func (s *Service) Process(data []byte) error {
+    // No context handling
+}
+```
+
+### Interface Design
+```go
+// Good - Small, focused interface
+type DataProcessor interface {
+    Process(ctx context.Context, data []byte) error
+}
+
+// Bad - Large, unfocused interface
+type Service interface {
+    Process(ctx context.Context, data []byte) error
+    Validate(data []byte) error
+    Transform(data []byte) ([]byte, error)
+    Store(data []byte) error
+    // ... many more methods
+}
+```
+
+### HTTP Handlers
+```go
+// Good
+func (h *Handler) GetUser(c *gin.Context) {
+    userID := c.Param("id")
+    if userID == "" {
+        c.JSON(http.StatusBadRequest, gin.H{"error": "user ID required"})
+        return
+    }
+
+    user, err := h.service.GetUser(c.Request.Context(), userID)
+    if err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+        return
+    }
+
+    c.JSON(http.StatusOK, user)
+}
+```
+
+### Testing
+```go
+// Good - Table-driven test
+func TestProcessData(t *testing.T) {
+    tests := []struct {
+        name    string
+        input   []byte
+        want    []byte
+        wantErr bool
+    }{
+        {
+            name:    "valid input",
+            input:   []byte("test"),
+            want:    []byte("processed"),
+            wantErr: false,
+        },
+        {
+            name:    "empty input",
+            input:   []byte{},
+            want:    nil,
+            wantErr: true,
+        },
+    }
+
+    for _, tt := range tests {
+        t.Run(tt.name, func(t *testing.T) {
+            got, err := ProcessData(tt.input)
+            if (err != nil) != tt.wantErr {
+                t.Errorf("ProcessData() error = %v, wantErr %v", err, tt.wantErr)
+                return
+            }
+            if !reflect.DeepEqual(got, tt.want) {
+                t.Errorf("ProcessData() = %v, want %v", got, tt.want)
+            }
+        })
+    }
+}
+```
+
+### Logging
+```go
+// Good - Structured logging
+logger.Info("user authenticated",
+    zap.String("user_id", userID),
+    zap.String("method", "oauth"),
+    zap.Duration("duration", duration),
+)
+
+// Bad - Unstructured logging
+log.Printf("User %s authenticated via %s in %v", userID, method, duration)
+```
+
+### Configuration
+```go
+// Good - Typed configuration
+type Config struct {
+    Server   ServerConfig   `embed:"" prefix:"server."`
+    Database DatabaseConfig `embed:"" prefix:"database."`
+}
+
+type ServerConfig struct {
+    Port        int           `default:"8080"`
+    ReadTimeout time.Duration `default:"30s"`
+    WriteTimeout time.Duration `default:"30s"`
+}
+
+type DatabaseConfig struct {
+    Host     string `required:"true"`
+    Port     int    `default:"5432"`
+    Username string `required:"true"`
+    Password string `required:"true"`
+}
+```
+
+### Graceful Shutdown
+```go
+// Good - Context-based signal handling
+func main() {
+    srv := server.NewServer(config)
+
+    errCh := make(chan error, 1)
+    if err := srv.StartAsync(context.Background(), errCh); err != nil {
+        log.Fatal("failed to start server:", err)
+    }
+
+    ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+    defer stop()
+
+    select {
+    case <-ctx.Done():
+        log.Info("received shutdown signal")
+    case err := <-errCh:
+        log.Error("server exited unexpectedly:", err)
+    }
+
+    shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+    defer cancel()
+
+    if err := srv.Shutdown(shutdownCtx); err != nil {
+        log.Fatal("failed to shutdown server:", err)
+    }
+}
+```
+
+## Dependencies
+
+### Required Dependencies
+- **Gin**: HTTP web framework
+- **Zap**: Structured logging
+- **OpenTelemetry**: Distributed tracing
+- **Viper**: Configuration management
+- **Testify**: Testing utilities
+
+### Dependency Management
+- Use `go mod tidy` to clean dependencies
+- Pin dependency versions for reproducible builds
+- Document why non-standard library packages are needed
+- Keep dependencies minimal and up-to-date
+
+## Observability
+
+### Tracing
+- Use OpenTelemetry for distributed tracing
+- Start spans for all external calls (HTTP, gRPC, database)
+- Propagate context through all function calls
+- Add relevant attributes to spans
+
+### Metrics
+- Use Prometheus for metrics collection
+- Define SLIs and track them
+- Monitor key metrics: latency, throughput, error rate
+- Use appropriate metric types (counter, gauge, histogram)
+
+### Logging
+- Use structured logging with zap
+- Include trace IDs in logs for correlation
+- Use appropriate log levels
+- Log in JSON format for ingestion by observability tools
+
+## Security
+
+### Input Validation
+- Validate all inputs from external sources
+- Use proper HTTP status codes for validation errors
+- Sanitize user inputs to prevent injection attacks
+
+### Authentication
+- Use secure defaults for JWT and cookies
+- Implement proper authentication middleware
+- Use HTTPS in production
+
+### Rate Limiting
+- Implement rate limiting for API endpoints
+- Use distributed rate limiting when appropriate
+- Monitor and alert on rate limit violations
+
+## Performance
+
+### Connection Pooling
+- Use connection pooling for database connections
+- Configure appropriate pool sizes
+- Monitor connection pool metrics
+
+### Caching
+- Implement caching where appropriate
+- Use appropriate cache invalidation strategies
+- Monitor cache hit rates
+
+### Resource Management
+- Use proper timeouts for all external calls
+- Implement circuit breakers for external services
+- Monitor resource usage and set appropriate limits
+
+## Testing
+
+### Test Coverage
+- Aim for high test coverage (>80%)
+- Write unit tests for all exported functions
+- Use table-driven tests for comprehensive coverage
+- Mock external dependencies
+
+### Integration Tests
+- Write integration tests for critical paths
+- Use test containers for external dependencies
+- Separate fast unit tests from slower integration tests
+
+### Performance Testing
+- Write benchmarks for performance-critical code
+- Monitor performance regressions
+- Profile when needed to identify bottlenecks
+
+## Build and Deployment
+
+### Build System
+- Use Pants as the build system
+- Define BUILD files for all packages
+- Use proper dependency declarations
+- Run tests and linting in CI
+
+### Containerization
+- Use Docker for containerization
+- Implement health checks
+- Use proper logging in containers
+- Configure appropriate resource limits
+
+### Deployment
+- Use proper environment configuration
+- Implement graceful shutdown
+- Monitor deployment health
+- Use blue-green, canary or rolling deployments
