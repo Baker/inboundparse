@@ -18,14 +18,14 @@ import (
 // mockLoggerService is a mock implementation of LoggerService for main tests
 type mockLoggerServiceForMain struct{}
 
-func (m *mockLoggerServiceForMain) Info(ctx context.Context, msg string, fields ...zap.Field) {}
+func (m *mockLoggerServiceForMain) Info(ctx context.Context, msg string, fields ...zap.Field)  {}
 func (m *mockLoggerServiceForMain) Error(ctx context.Context, msg string, fields ...zap.Field) {}
-func (m *mockLoggerServiceForMain) Warn(ctx context.Context, msg string, fields ...zap.Field) {}
+func (m *mockLoggerServiceForMain) Warn(ctx context.Context, msg string, fields ...zap.Field)  {}
 func (m *mockLoggerServiceForMain) Debug(ctx context.Context, msg string, fields ...zap.Field) {}
 func (m *mockLoggerServiceForMain) Fatal(ctx context.Context, msg string, fields ...zap.Field) {}
-func (m *mockLoggerServiceForMain) With(fields ...zap.Field) service.LoggerService { return m }
-func (m *mockLoggerServiceForMain) WithContext(ctx context.Context) service.LoggerService { return m }
-func (m *mockLoggerServiceForMain) Close() error { return nil }
+func (m *mockLoggerServiceForMain) With(fields ...zap.Field) service.LoggerService             { return m }
+func (m *mockLoggerServiceForMain) WithContext(ctx context.Context) service.LoggerService      { return m }
+func (m *mockLoggerServiceForMain) Close() error                                               { return nil }
 
 func TestInitializeSentry(t *testing.T) {
 	tests := []struct {
@@ -73,7 +73,7 @@ func TestInitializeSentry(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			logger := &mockLoggerServiceForMain{}
 			err := initializeSentry(tt.config, logger)
-			
+
 			// In test environment, Sentry initialization might fail due to network issues
 			// but the function should handle it gracefully
 			if tt.expectError {
@@ -86,12 +86,12 @@ func TestInitializeSentry(t *testing.T) {
 func TestLogServerInfo(t *testing.T) {
 	config := &config.Config{
 		Server: config.ServerConfig{
-			ListenAddr:     "0.0.0.0:25",
-			ListenAddrTLS:  "0.0.0.0:587",
-			ServerName:     "test.example.com",
-			Verbose:        true,
-			CertFile:       "/path/to/cert.pem",
-			KeyFile:        "/path/to/key.pem",
+			ListenAddr:    "0.0.0.0:25",
+			ListenAddrTLS: "0.0.0.0:587",
+			ServerName:    "test.example.com",
+			Verbose:       true,
+			CertFile:      "/path/to/cert.pem",
+			KeyFile:       "/path/to/key.pem",
 		},
 		Webhook: config.WebhookConfig{
 			URL: "http://localhost:8080/webhook",
@@ -162,6 +162,25 @@ func TestSMTPBackendWithServices_NewSession(t *testing.T) {
 			assert.NotNil(t, session, "NewSession() returned nil session")
 		})
 	}
+}
+
+func TestSMTPBackendWithServices_NewSession_IncrementsActiveSessions(t *testing.T) {
+	cfg := &config.Config{}
+	webhookService := &mockWebhookService{}
+	authService := &mockAuthService{}
+	metricsService := &mockMetricsServiceForMain{}
+
+	backend := &smtpBackendWithServices{
+		config:         cfg,
+		webhookService: webhookService,
+		authService:    authService,
+		metricsService: metricsService,
+	}
+
+	session, err := backend.NewSession(nil)
+	assert.NoError(t, err)
+	assert.NotNil(t, session)
+	assert.Equal(t, 1, metricsService.activeSessionsInc, "active sessions should be incremented once")
 }
 
 func TestSMTPSessionWithServices_AuthPlain(t *testing.T) {
@@ -350,6 +369,42 @@ func TestSMTPSessionWithServices_Data(t *testing.T) {
 	}
 }
 
+func TestSMTPSessionWithServices_Data_UpdatesMetrics(t *testing.T) {
+	cfg := &config.Config{}
+	mp := &mockMessageProcessor{}
+	metrics := &mockMetricsServiceForMain{}
+	remoteIP := net.IPv4(127, 0, 0, 1)
+
+	session := &smtpSessionWithServices{
+		config:           cfg,
+		messageProcessor: mp,
+		metricsService:   metrics,
+		remoteIP:         remoteIP,
+	}
+
+	t.Run("success increments SMTP messages", func(t *testing.T) {
+		mp.processMessageFunc = func(ctx context.Context, r io.Reader) error { return nil }
+		metrics.smtpMessagesInc = 0
+		metrics.messagesFailedInc = 0
+
+		err := session.Data(strings.NewReader("ok"))
+		assert.NoError(t, err)
+		assert.Equal(t, 1, metrics.smtpMessagesInc)
+		assert.Equal(t, 0, metrics.messagesFailedInc)
+	})
+
+	t.Run("failure increments messages failed", func(t *testing.T) {
+		mp.processMessageFunc = func(ctx context.Context, r io.Reader) error { return context.Canceled }
+		metrics.smtpMessagesInc = 0
+		metrics.messagesFailedInc = 0
+
+		err := session.Data(strings.NewReader("fail"))
+		assert.Error(t, err)
+		assert.Equal(t, 0, metrics.smtpMessagesInc)
+		assert.Equal(t, 1, metrics.messagesFailedInc)
+	})
+}
+
 func TestSMTPSessionWithServices_Reset(t *testing.T) {
 	config := &config.Config{}
 	messageProcessor := &mockMessageProcessor{}
@@ -389,6 +444,24 @@ func TestSMTPSessionWithServices_Logout(t *testing.T) {
 
 	err := session.Logout()
 	assert.NoError(t, err)
+}
+
+func TestSMTPSessionWithServices_Logout_DecrementsActiveSessions(t *testing.T) {
+	cfg := &config.Config{}
+	mp := &mockMessageProcessor{}
+	metrics := &mockMetricsServiceForMain{}
+	remoteIP := net.IPv4(127, 0, 0, 1)
+
+	session := &smtpSessionWithServices{
+		config:           cfg,
+		messageProcessor: mp,
+		metricsService:   metrics,
+		remoteIP:         remoteIP,
+	}
+
+	err := session.Logout()
+	assert.NoError(t, err)
+	assert.Equal(t, 1, metrics.activeSessionsDec, "active sessions should be decremented once")
 }
 
 // Test main function error paths
@@ -480,12 +553,12 @@ func TestMain_WithDifferentConfigurations(t *testing.T) {
 			name: "full config without metrics",
 			config: &config.Config{
 				Server: config.ServerConfig{
-					ListenAddr:     "0.0.0.0:25",
-					ListenAddrTLS:  "0.0.0.0:587",
-					ServerName:     "test.example.com",
-					Verbose:        true,
-					CertFile:       "/path/to/cert.pem",
-					KeyFile:        "/path/to/key.pem",
+					ListenAddr:    "0.0.0.0:25",
+					ListenAddrTLS: "0.0.0.0:587",
+					ServerName:    "test.example.com",
+					Verbose:       true,
+					CertFile:      "/path/to/cert.pem",
+					KeyFile:       "/path/to/key.pem",
 				},
 				Webhook: config.WebhookConfig{
 					URL:      "http://localhost:8080/webhook",
@@ -582,12 +655,12 @@ func TestMain_ContextHandling(t *testing.T) {
 	logger := &mockLoggerServiceForMain{}
 	config := &config.Config{
 		Server: config.ServerConfig{
-			ListenAddr:     "0.0.0.0:25",
-			ListenAddrTLS:  "0.0.0.0:587",
-			ServerName:     "test.example.com",
-			Verbose:        true,
-			CertFile:       "/path/to/cert.pem",
-			KeyFile:        "/path/to/key.pem",
+			ListenAddr:    "0.0.0.0:25",
+			ListenAddrTLS: "0.0.0.0:587",
+			ServerName:    "test.example.com",
+			Verbose:       true,
+			CertFile:      "/path/to/cert.pem",
+			KeyFile:       "/path/to/key.pem",
 		},
 		Webhook: config.WebhookConfig{
 			URL: "http://localhost:8080/webhook",
@@ -750,30 +823,35 @@ func (m *mockMessageProcessor) ProcessMessage(ctx context.Context, r io.Reader) 
 	return nil
 }
 
-type mockMetricsServiceForMain struct{}
+type mockMetricsServiceForMain struct {
+	activeSessionsInc int
+	activeSessionsDec int
+	smtpMessagesInc   int
+	messagesFailedInc int
+}
 
-func (m *mockMetricsServiceForMain) IncrementSMTPConnections() {}
-func (m *mockMetricsServiceForMain) IncrementActiveConnections() {}
-func (m *mockMetricsServiceForMain) DecrementActiveConnections() {}
-func (m *mockMetricsServiceForMain) RecordConnectionDuration(duration time.Duration) {}
-func (m *mockMetricsServiceForMain) IncrementSMTPMessages() {}
-func (m *mockMetricsServiceForMain) RecordMessageSize(size int64) {}
-func (m *mockMetricsServiceForMain) IncrementMessagesProcessed() {}
-func (m *mockMetricsServiceForMain) IncrementMessagesFailed() {}
+func (m *mockMetricsServiceForMain) IncrementSMTPConnections()                           {}
+func (m *mockMetricsServiceForMain) IncrementActiveConnections()                         {}
+func (m *mockMetricsServiceForMain) DecrementActiveConnections()                         {}
+func (m *mockMetricsServiceForMain) RecordConnectionDuration(duration time.Duration)     {}
+func (m *mockMetricsServiceForMain) IncrementSMTPMessages()                              { m.smtpMessagesInc++ }
+func (m *mockMetricsServiceForMain) RecordMessageSize(size int64)                        {}
+func (m *mockMetricsServiceForMain) IncrementMessagesProcessed()                         {}
+func (m *mockMetricsServiceForMain) IncrementMessagesFailed()                            { m.messagesFailedInc++ }
 func (m *mockMetricsServiceForMain) RecordMessageParsingDuration(duration time.Duration) {}
-func (m *mockMetricsServiceForMain) IncrementMessageParsingFailed() {}
-func (m *mockMetricsServiceForMain) IncrementWebhookRequests() {}
-func (m *mockMetricsServiceForMain) RecordWebhookDuration(duration time.Duration) {}
-func (m *mockMetricsServiceForMain) IncrementWebhookFailed() {}
-func (m *mockMetricsServiceForMain) IncrementAuthChecks() {}
-func (m *mockMetricsServiceForMain) IncrementSPFChecks() {}
-func (m *mockMetricsServiceForMain) IncrementDKIMChecks() {}
-func (m *mockMetricsServiceForMain) IncrementDMARCChecks() {}
-func (m *mockMetricsServiceForMain) IncrementAuthChecksFailed() {}
-func (m *mockMetricsServiceForMain) RecordSPFResult(result string) {}
-func (m *mockMetricsServiceForMain) RecordDKIMResult(result string) {}
-func (m *mockMetricsServiceForMain) RecordDMARCResult(result string) {}
-func (m *mockMetricsServiceForMain) RecordDMARCPolicy(policy string) {}
-func (m *mockMetricsServiceForMain) IncrementActiveSessions() {}
-func (m *mockMetricsServiceForMain) DecrementActiveSessions() {}
-func (m *mockMetricsServiceForMain) Close() error { return nil }
+func (m *mockMetricsServiceForMain) IncrementMessageParsingFailed()                      {}
+func (m *mockMetricsServiceForMain) IncrementWebhookRequests()                           {}
+func (m *mockMetricsServiceForMain) RecordWebhookDuration(duration time.Duration)        {}
+func (m *mockMetricsServiceForMain) IncrementWebhookFailed()                             {}
+func (m *mockMetricsServiceForMain) IncrementAuthChecks()                                {}
+func (m *mockMetricsServiceForMain) IncrementSPFChecks()                                 {}
+func (m *mockMetricsServiceForMain) IncrementDKIMChecks()                                {}
+func (m *mockMetricsServiceForMain) IncrementDMARCChecks()                               {}
+func (m *mockMetricsServiceForMain) IncrementAuthChecksFailed()                          {}
+func (m *mockMetricsServiceForMain) RecordSPFResult(result string)                       {}
+func (m *mockMetricsServiceForMain) RecordDKIMResult(result string)                      {}
+func (m *mockMetricsServiceForMain) RecordDMARCResult(result string)                     {}
+func (m *mockMetricsServiceForMain) RecordDMARCPolicy(policy string)                     {}
+func (m *mockMetricsServiceForMain) IncrementActiveSessions()                            { m.activeSessionsInc++ }
+func (m *mockMetricsServiceForMain) DecrementActiveSessions()                            { m.activeSessionsDec++ }
+func (m *mockMetricsServiceForMain) Close() error                                        { return nil }
