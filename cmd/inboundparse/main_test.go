@@ -353,7 +353,7 @@ func TestSMTPSessionWithServices_Data(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Set up message processor mock
-			messageProcessor.processMessageFunc = func(ctx context.Context, r io.Reader) error {
+			messageProcessor.processMessageFunc = func(ctx context.Context, r io.Reader, heloName string, mailFrom string) error {
 				return tt.processMessageError
 			}
 
@@ -383,7 +383,7 @@ func TestSMTPSessionWithServices_Data_UpdatesMetrics(t *testing.T) {
 	}
 
 	t.Run("success increments SMTP messages", func(t *testing.T) {
-		mp.processMessageFunc = func(ctx context.Context, r io.Reader) error { return nil }
+		mp.processMessageFunc = func(ctx context.Context, r io.Reader, heloName string, mailFrom string) error { return nil }
 		metrics.smtpMessagesInc = 0
 		metrics.messagesFailedInc = 0
 
@@ -394,7 +394,9 @@ func TestSMTPSessionWithServices_Data_UpdatesMetrics(t *testing.T) {
 	})
 
 	t.Run("failure increments messages failed", func(t *testing.T) {
-		mp.processMessageFunc = func(ctx context.Context, r io.Reader) error { return context.Canceled }
+		mp.processMessageFunc = func(ctx context.Context, r io.Reader, heloName string, mailFrom string) error {
+			return context.Canceled
+		}
 		metrics.smtpMessagesInc = 0
 		metrics.messagesFailedInc = 0
 
@@ -802,23 +804,23 @@ func (m *mockWebhookService) SendWebhook(ctx context.Context, payload *service.W
 }
 
 type mockAuthService struct {
-	performAuthChecksFunc func(ctx context.Context, message []byte, remoteIP net.IP) (*service.AuthResult, error)
+	performAuthChecksFunc func(ctx context.Context, message []byte, remoteIP net.IP, heloName string, mailFrom string) (*service.AuthResult, error)
 }
 
-func (m *mockAuthService) PerformAuthenticationChecks(ctx context.Context, message []byte, remoteIP net.IP) (*service.AuthResult, error) {
+func (m *mockAuthService) PerformAuthenticationChecks(ctx context.Context, message []byte, remoteIP net.IP, heloName string, mailFrom string) (*service.AuthResult, error) {
 	if m.performAuthChecksFunc != nil {
-		return m.performAuthChecksFunc(ctx, message, remoteIP)
+		return m.performAuthChecksFunc(ctx, message, remoteIP, heloName, mailFrom)
 	}
 	return &service.AuthResult{}, nil
 }
 
 type mockMessageProcessor struct {
-	processMessageFunc func(ctx context.Context, r io.Reader) error
+	processMessageFunc func(ctx context.Context, r io.Reader, heloName string, mailFrom string) error
 }
 
-func (m *mockMessageProcessor) ProcessMessage(ctx context.Context, r io.Reader) error {
+func (m *mockMessageProcessor) ProcessMessage(ctx context.Context, r io.Reader, heloName string, mailFrom string) error {
 	if m.processMessageFunc != nil {
-		return m.processMessageFunc(ctx, r)
+		return m.processMessageFunc(ctx, r, heloName, mailFrom)
 	}
 	return nil
 }

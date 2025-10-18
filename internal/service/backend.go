@@ -64,8 +64,15 @@ type smtpSession struct {
 	messageProcessor MessageProcessor
 	metricsService   MetricsService
 	remoteIP         net.IP
+	heloName         string
 	from             string
 	to               []string
+}
+
+// Hello handles the HELO/EHLO command
+func (s *smtpSession) Hello(heloName string) error {
+	s.heloName = heloName
+	return nil
 }
 
 // AuthPlain handles PLAIN authentication
@@ -89,8 +96,8 @@ func (s *smtpSession) Rcpt(to string, opts *smtp.RcptOptions) error {
 
 // Data handles the DATA command
 func (s *smtpSession) Data(r io.Reader) error {
-	// Process the message
-	err := s.messageProcessor.ProcessMessage(context.Background(), r)
+	// Process the message with HELO and envelope sender information
+	err := s.messageProcessor.ProcessMessage(context.Background(), r, s.heloName, s.from)
 	if err != nil {
 		// Record failed message
 		if s.metricsService != nil {
@@ -111,6 +118,7 @@ func (s *smtpSession) Data(r io.Reader) error {
 func (s *smtpSession) Reset() {
 	s.from = ""
 	s.to = nil
+	// Note: heloName persists across RSET commands per RFC 5321
 }
 
 // Logout handles the QUIT command

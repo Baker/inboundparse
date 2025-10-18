@@ -13,50 +13,50 @@ import (
 
 // mockMessageProcessor is a mock implementation of MessageProcessor
 type mockMessageProcessor struct {
-	processMessageFunc func(ctx context.Context, r io.Reader) error
+	processMessageFunc func(ctx context.Context, r io.Reader, heloName string, mailFrom string) error
 }
 
-func (m *mockMessageProcessor) ProcessMessage(ctx context.Context, r io.Reader) error {
+func (m *mockMessageProcessor) ProcessMessage(ctx context.Context, r io.Reader, heloName string, mailFrom string) error {
 	if m.processMessageFunc != nil {
-		return m.processMessageFunc(ctx, r)
+		return m.processMessageFunc(ctx, r, heloName, mailFrom)
 	}
 	return nil
 }
 
 // mockMetricsService is a mock implementation of MetricsService
 type mockMetricsService struct {
-	incrementActiveSessionsCalled    bool
-	decrementActiveSessionsCalled    bool
-	incrementSMTPMessagesCalled      bool
-	incrementMessagesFailedCalled    bool
+	incrementActiveSessionsCalled bool
+	decrementActiveSessionsCalled bool
+	incrementSMTPMessagesCalled   bool
+	incrementMessagesFailedCalled bool
 }
 
-func (m *mockMetricsService) IncrementSMTPConnections() {}
-func (m *mockMetricsService) IncrementActiveConnections() {}
-func (m *mockMetricsService) DecrementActiveConnections() {}
+func (m *mockMetricsService) IncrementSMTPConnections()                       {}
+func (m *mockMetricsService) IncrementActiveConnections()                     {}
+func (m *mockMetricsService) DecrementActiveConnections()                     {}
 func (m *mockMetricsService) RecordConnectionDuration(duration time.Duration) {}
 func (m *mockMetricsService) IncrementSMTPMessages() {
 	m.incrementSMTPMessagesCalled = true
 }
 func (m *mockMetricsService) RecordMessageSize(size int64) {}
-func (m *mockMetricsService) IncrementMessagesProcessed() {}
+func (m *mockMetricsService) IncrementMessagesProcessed()  {}
 func (m *mockMetricsService) IncrementMessagesFailed() {
 	m.incrementMessagesFailedCalled = true
 }
 func (m *mockMetricsService) RecordMessageParsingDuration(duration time.Duration) {}
-func (m *mockMetricsService) IncrementMessageParsingFailed() {}
-func (m *mockMetricsService) IncrementWebhookRequests() {}
-func (m *mockMetricsService) RecordWebhookDuration(duration time.Duration) {}
-func (m *mockMetricsService) IncrementWebhookFailed() {}
-func (m *mockMetricsService) IncrementAuthChecks() {}
-func (m *mockMetricsService) IncrementSPFChecks() {}
-func (m *mockMetricsService) IncrementDKIMChecks() {}
-func (m *mockMetricsService) IncrementDMARCChecks() {}
-func (m *mockMetricsService) IncrementAuthChecksFailed() {}
-func (m *mockMetricsService) RecordSPFResult(result string) {}
-func (m *mockMetricsService) RecordDKIMResult(result string) {}
-func (m *mockMetricsService) RecordDMARCResult(result string) {}
-func (m *mockMetricsService) RecordDMARCPolicy(policy string) {}
+func (m *mockMetricsService) IncrementMessageParsingFailed()                      {}
+func (m *mockMetricsService) IncrementWebhookRequests()                           {}
+func (m *mockMetricsService) RecordWebhookDuration(duration time.Duration)        {}
+func (m *mockMetricsService) IncrementWebhookFailed()                             {}
+func (m *mockMetricsService) IncrementAuthChecks()                                {}
+func (m *mockMetricsService) IncrementSPFChecks()                                 {}
+func (m *mockMetricsService) IncrementDKIMChecks()                                {}
+func (m *mockMetricsService) IncrementDMARCChecks()                               {}
+func (m *mockMetricsService) IncrementAuthChecksFailed()                          {}
+func (m *mockMetricsService) RecordSPFResult(result string)                       {}
+func (m *mockMetricsService) RecordDKIMResult(result string)                      {}
+func (m *mockMetricsService) RecordDMARCResult(result string)                     {}
+func (m *mockMetricsService) RecordDMARCPolicy(policy string)                     {}
 func (m *mockMetricsService) IncrementActiveSessions() {
 	m.incrementActiveSessionsCalled = true
 }
@@ -302,10 +302,10 @@ func TestSMTPSession_Data(t *testing.T) {
 			metricsService.incrementSMTPMessagesCalled = false
 			metricsService.incrementMessagesFailedCalled = false
 
-					// Set up message processor mock
-		messageProcessor.processMessageFunc = func(ctx context.Context, r io.Reader) error {
-			return tt.processMessageError
-		}
+			// Set up message processor mock
+			messageProcessor.processMessageFunc = func(ctx context.Context, r io.Reader, heloName string, mailFrom string) error {
+				return tt.processMessageError
+			}
 
 			reader := strings.NewReader(tt.messageData)
 			err := smtpSession.Data(reader)
@@ -414,7 +414,7 @@ func TestSMTPSession_Data_WithMetrics(t *testing.T) {
 	config := &config.Config{}
 	messageProcessor := &mockMessageProcessor{}
 	metricsService := &mockMetricsService{
-		incrementSMTPMessagesCalled: false,
+		incrementSMTPMessagesCalled:   false,
 		incrementMessagesFailedCalled: false,
 	}
 
@@ -427,26 +427,26 @@ func TestSMTPSession_Data_WithMetrics(t *testing.T) {
 	smtpSession := session.(*smtpSession)
 
 	tests := []struct {
-		name                string
-		messageData         string
-		processMessageError error
-		wantErr             bool
+		name                 string
+		messageData          string
+		processMessageError  error
+		wantErr              bool
 		expectSuccessMetrics bool
 		expectFailureMetrics bool
 	}{
 		{
-			name:                "successful message processing",
-			messageData:         "From: test@example.com\r\nTo: recipient@example.com\r\nSubject: Test\r\n\r\nTest message",
-			processMessageError: nil,
-			wantErr:             false,
+			name:                 "successful message processing",
+			messageData:          "From: test@example.com\r\nTo: recipient@example.com\r\nSubject: Test\r\n\r\nTest message",
+			processMessageError:  nil,
+			wantErr:              false,
 			expectSuccessMetrics: true,
 			expectFailureMetrics: false,
 		},
 		{
-			name:                "message processing error",
-			messageData:         "From: test@example.com\r\nTo: recipient@example.com\r\nSubject: Test\r\n\r\nTest message",
-			processMessageError: context.Canceled,
-			wantErr:             true,
+			name:                 "message processing error",
+			messageData:          "From: test@example.com\r\nTo: recipient@example.com\r\nSubject: Test\r\n\r\nTest message",
+			processMessageError:  context.Canceled,
+			wantErr:              true,
 			expectSuccessMetrics: false,
 			expectFailureMetrics: true,
 		},
@@ -459,7 +459,7 @@ func TestSMTPSession_Data_WithMetrics(t *testing.T) {
 			metricsService.incrementMessagesFailedCalled = false
 
 			// Set up message processor mock
-			messageProcessor.processMessageFunc = func(ctx context.Context, r io.Reader) error {
+			messageProcessor.processMessageFunc = func(ctx context.Context, r io.Reader, heloName string, mailFrom string) error {
 				return tt.processMessageError
 			}
 

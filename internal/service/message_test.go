@@ -25,32 +25,32 @@ func (m *mockWebhookService) SendWebhook(ctx context.Context, payload *WebhookPa
 
 // mockAuthService is a mock implementation of AuthService
 type mockAuthService struct {
-	performAuthChecksFunc func(ctx context.Context, message []byte, remoteIP net.IP) (*AuthResult, error)
+	performAuthChecksFunc func(ctx context.Context, message []byte, remoteIP net.IP, heloName string, mailFrom string) (*AuthResult, error)
 }
 
-func (m *mockAuthService) PerformAuthenticationChecks(ctx context.Context, message []byte, remoteIP net.IP) (*AuthResult, error) {
+func (m *mockAuthService) PerformAuthenticationChecks(ctx context.Context, message []byte, remoteIP net.IP, heloName string, mailFrom string) (*AuthResult, error) {
 	if m.performAuthChecksFunc != nil {
-		return m.performAuthChecksFunc(ctx, message, remoteIP)
+		return m.performAuthChecksFunc(ctx, message, remoteIP, heloName, mailFrom)
 	}
 	return &AuthResult{}, nil
 }
 
 // mockMetricsServiceForMessage is a mock implementation of MetricsService for message processor tests
 type mockMetricsServiceForMessage struct {
-	recordMessageSizeCalled              bool
-	incrementMessageParsingFailedCalled  bool
-	recordMessageParsingDurationCalled   bool
-	incrementWebhookFailedCalled         bool
-	incrementWebhookRequestsCalled       bool
-	recordWebhookDurationCalled          bool
-	incrementMessagesProcessedCalled     bool
+	recordMessageSizeCalled             bool
+	incrementMessageParsingFailedCalled bool
+	recordMessageParsingDurationCalled  bool
+	incrementWebhookFailedCalled        bool
+	incrementWebhookRequestsCalled      bool
+	recordWebhookDurationCalled         bool
+	incrementMessagesProcessedCalled    bool
 }
 
-func (m *mockMetricsServiceForMessage) IncrementSMTPConnections() {}
-func (m *mockMetricsServiceForMessage) IncrementActiveConnections() {}
-func (m *mockMetricsServiceForMessage) DecrementActiveConnections() {}
+func (m *mockMetricsServiceForMessage) IncrementSMTPConnections()                       {}
+func (m *mockMetricsServiceForMessage) IncrementActiveConnections()                     {}
+func (m *mockMetricsServiceForMessage) DecrementActiveConnections()                     {}
 func (m *mockMetricsServiceForMessage) RecordConnectionDuration(duration time.Duration) {}
-func (m *mockMetricsServiceForMessage) IncrementSMTPMessages() {}
+func (m *mockMetricsServiceForMessage) IncrementSMTPMessages()                          {}
 func (m *mockMetricsServiceForMessage) RecordMessageSize(size int64) {
 	m.recordMessageSizeCalled = true
 }
@@ -73,18 +73,18 @@ func (m *mockMetricsServiceForMessage) RecordWebhookDuration(duration time.Durat
 func (m *mockMetricsServiceForMessage) IncrementWebhookFailed() {
 	m.incrementWebhookFailedCalled = true
 }
-func (m *mockMetricsServiceForMessage) IncrementAuthChecks() {}
-func (m *mockMetricsServiceForMessage) IncrementSPFChecks() {}
-func (m *mockMetricsServiceForMessage) IncrementDKIMChecks() {}
-func (m *mockMetricsServiceForMessage) IncrementDMARCChecks() {}
-func (m *mockMetricsServiceForMessage) IncrementAuthChecksFailed() {}
-func (m *mockMetricsServiceForMessage) RecordSPFResult(result string) {}
-func (m *mockMetricsServiceForMessage) RecordDKIMResult(result string) {}
+func (m *mockMetricsServiceForMessage) IncrementAuthChecks()            {}
+func (m *mockMetricsServiceForMessage) IncrementSPFChecks()             {}
+func (m *mockMetricsServiceForMessage) IncrementDKIMChecks()            {}
+func (m *mockMetricsServiceForMessage) IncrementDMARCChecks()           {}
+func (m *mockMetricsServiceForMessage) IncrementAuthChecksFailed()      {}
+func (m *mockMetricsServiceForMessage) RecordSPFResult(result string)   {}
+func (m *mockMetricsServiceForMessage) RecordDKIMResult(result string)  {}
 func (m *mockMetricsServiceForMessage) RecordDMARCResult(result string) {}
 func (m *mockMetricsServiceForMessage) RecordDMARCPolicy(policy string) {}
-func (m *mockMetricsServiceForMessage) IncrementActiveSessions() {}
-func (m *mockMetricsServiceForMessage) DecrementActiveSessions() {}
-func (m *mockMetricsServiceForMessage) Close() error { return nil }
+func (m *mockMetricsServiceForMessage) IncrementActiveSessions()        {}
+func (m *mockMetricsServiceForMessage) DecrementActiveSessions()        {}
+func (m *mockMetricsServiceForMessage) Close() error                    { return nil }
 
 func TestNewMessageProcessor(t *testing.T) {
 	webhookService := &mockWebhookService{}
@@ -116,7 +116,7 @@ Message-ID: <test@example.com>
 This is a test email body.`
 
 	reader := strings.NewReader(messageData)
-	err := processor.ProcessMessage(context.Background(), reader)
+	err := processor.ProcessMessage(context.Background(), reader, "mail.example.com", "sender@example.com")
 
 	if err != nil {
 		t.Errorf("ProcessMessage() error = %v", err)
@@ -151,7 +151,7 @@ func TestMessageProcessor_ProcessMessage_ReadError(t *testing.T) {
 	// Create a reader that will return an error
 	errorReader := &errorReader{err: errors.New("read error")}
 
-	err := processor.ProcessMessage(context.Background(), errorReader)
+	err := processor.ProcessMessage(context.Background(), errorReader, "mail.example.com", "sender@example.com")
 
 	if err == nil {
 		t.Error("Expected ProcessMessage to return an error")
@@ -174,7 +174,7 @@ func TestMessageProcessor_ProcessMessage_ParseError(t *testing.T) {
 	messageData := `This is not a valid email message`
 
 	reader := strings.NewReader(messageData)
-	err := processor.ProcessMessage(context.Background(), reader)
+	err := processor.ProcessMessage(context.Background(), reader, "mail.example.com", "sender@example.com")
 
 	if err == nil {
 		t.Error("Expected ProcessMessage to return an error")
@@ -188,7 +188,7 @@ func TestMessageProcessor_ProcessMessage_ParseError(t *testing.T) {
 func TestMessageProcessor_ProcessMessage_AuthError(t *testing.T) {
 	webhookService := &mockWebhookService{}
 	authService := &mockAuthService{
-		performAuthChecksFunc: func(ctx context.Context, message []byte, remoteIP net.IP) (*AuthResult, error) {
+		performAuthChecksFunc: func(ctx context.Context, message []byte, remoteIP net.IP, heloName string, mailFrom string) (*AuthResult, error) {
 			return nil, errors.New("auth error")
 		},
 	}
@@ -207,7 +207,7 @@ Message-ID: <test@example.com>
 This is a test email body.`
 
 	reader := strings.NewReader(messageData)
-	err := processor.ProcessMessage(context.Background(), reader)
+	err := processor.ProcessMessage(context.Background(), reader, "mail.example.com", "sender@example.com")
 
 	// Auth errors should not cause the message processing to fail
 	if err != nil {
@@ -237,7 +237,7 @@ Message-ID: <test@example.com>
 This is a test email body.`
 
 	reader := strings.NewReader(messageData)
-	err := processor.ProcessMessage(context.Background(), reader)
+	err := processor.ProcessMessage(context.Background(), reader, "mail.example.com", "sender@example.com")
 
 	if err == nil {
 		t.Error("Expected ProcessMessage to return an error")
@@ -262,7 +262,7 @@ Message-ID: <test@example.com>
 This is a test email body.`
 
 	reader := strings.NewReader(messageData)
-	err := processor.ProcessMessage(context.Background(), reader)
+	err := processor.ProcessMessage(context.Background(), reader, "mail.example.com", "sender@example.com")
 
 	// Should still work without services
 	if err != nil {
@@ -289,7 +289,7 @@ Reply-To: noreply@example.com
 This is a test email body.`
 
 	reader := strings.NewReader(messageData)
-	err := processor.ProcessMessage(context.Background(), reader)
+	err := processor.ProcessMessage(context.Background(), reader, "mail.example.com", "sender@example.com")
 
 	if err != nil {
 		t.Errorf("ProcessMessage() error = %v", err)
@@ -342,7 +342,7 @@ This is an attachment.
 	reader := strings.NewReader(messageData)
 
 	ctx := context.Background()
-	err := processor.ProcessMessage(ctx, reader)
+	err := processor.ProcessMessage(ctx, reader, "mail.example.com", "sender@example.com")
 
 	assert.NoError(t, err)
 	assert.NotNil(t, capturedPayload)
@@ -382,7 +382,7 @@ Content-Type: text/html
 	reader := strings.NewReader(messageData)
 
 	ctx := context.Background()
-	err := processor.ProcessMessage(ctx, reader)
+	err := processor.ProcessMessage(ctx, reader, "mail.example.com", "sender@example.com")
 
 	assert.NoError(t, err)
 	assert.NotNil(t, capturedPayload)
@@ -404,7 +404,7 @@ func TestMessageProcessor_ProcessMessage_WithEmptyMessage(t *testing.T) {
 	reader := strings.NewReader(messageData)
 
 	ctx := context.Background()
-	err := processor.ProcessMessage(ctx, reader)
+	err := processor.ProcessMessage(ctx, reader, "mail.example.com", "sender@example.com")
 
 	// Should return an error for empty message
 	assert.Error(t, err)
@@ -424,7 +424,7 @@ func TestMessageProcessor_ProcessMessage_WithInvalidMessage(t *testing.T) {
 	reader := strings.NewReader(messageData)
 
 	ctx := context.Background()
-	err := processor.ProcessMessage(ctx, reader)
+	err := processor.ProcessMessage(ctx, reader, "mail.example.com", "sender@example.com")
 
 	// Should return an error for invalid message
 	assert.Error(t, err)

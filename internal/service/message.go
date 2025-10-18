@@ -35,7 +35,7 @@ func NewMessageProcessor(
 }
 
 // ProcessMessage processes an incoming email message
-func (mp *messageProcessor) ProcessMessage(ctx context.Context, r io.Reader) error {
+func (mp *messageProcessor) ProcessMessage(ctx context.Context, r io.Reader, heloName string, mailFrom string) error {
 	startTime := time.Now()
 
 	// Read the entire message
@@ -69,10 +69,10 @@ func (mp *messageProcessor) ProcessMessage(ctx context.Context, r io.Reader) err
 		mp.metricsService.RecordMessageParsingDuration(time.Since(startTime))
 	}
 
-	// Perform authentication checks
+	// Perform authentication checks with HELO and envelope sender
 	var authResult *AuthResult
 	if mp.authService != nil {
-		authResult, err = mp.authService.PerformAuthenticationChecks(ctx, messageData, mp.remoteIP)
+		authResult, err = mp.authService.PerformAuthenticationChecks(ctx, messageData, mp.remoteIP, heloName, mailFrom)
 		if err != nil {
 			// Log error but don't fail the message processing
 			// Authentication failures should not prevent message delivery
