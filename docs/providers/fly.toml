@@ -39,3 +39,7 @@ primary_region = 'iad'
   auto_extend_size_threshold = 80
   auto_extend_size_increment = "1GB"
   auto_extend_size_limit = "5GB"
+
+[metrics]
+  port = 9090
+  path = "/metrics"
