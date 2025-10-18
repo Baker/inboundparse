@@ -1,149 +1,145 @@
 # InboundParse - Modern Email to Webhook Gateway
 
-A production-ready SMTP server that receives emails from any domain without authentication and forwards them to webhooks with comprehensive email authentication validation, SSL/TLS support, and enterprise-grade observability.
+A SMTP server that receives emails from any domain without authentication and forwards them to webhooks with comprehensive email authentication validation, automatic SSL/TLS support and more. 
+
+> [!NOTE]
+> This is my first major Golang product, so I may not do things the **golang way**, but I am open to feedback. I have used this application privately for the last 6 months, and have received well over **100,000** of pieces of mail (mostly spam, but thats for another day).
+
 
 ## Features
 
 ### Core SMTP Functionality
-- **No SMTP Auth Required**: Accepts emails from any domain without username/password
-- **TLS Support**: Automatic SSL/TLS certificate management with Let's Encrypt
-- **Multiple Ports**: Listens on 25 (SMTP) and 587 (Submission) with optional TLS
-- **PROXY Protocol**: Accepts PROXY protocol connections (e.g., from load balancers)
-- **Message Size Limits**: Configurable maximum message size (default: 10MB)
 
-### Email Authentication
-- **SPF Validation**: Validates Sender Policy Framework records
-- **DKIM Validation**: Verifies DomainKeys Identified Mail signatures  
-- **DMARC Validation**: Evaluates DMARC policy and alignment
-- **Comprehensive Results**: Detailed authentication results in webhook payload
+- ✉️ **No SMTP Auth Required**: Accepts emails from any domain without username/password
+- 🔒 **TLS Support**: Automatic SSL/TLS certificate management with Let's Encrypt
+- 🔌 **Multiple Ports**: Listens on 25 (SMTP) and 587 (Submission) with optional TLS
+- 🛡️ **PROXY Protocol**: Accepts PROXY protocol connections (e.g., from load balancers)
+- 📏 **Message Size Limits**: Configurable maximum message size (default: 10MB)
+
+### Email Authentication (RFC Compliant)
+- 🧐 **SPF Validation (RFC 7208)**: Validates Sender Policy Framework with HELO and envelope sender
+- 🖊️ **DKIM Validation (RFC 6376)**: Verifies DomainKeys Identified Mail signatures with multi-signature support
+- 🕵️‍♂️ **DMARC Validation (RFC 7489)**: Evaluates DMARC policy with identifier alignment checking
+- 📝 **Comprehensive Results**: Detailed authentication results with domain, mechanism, and alignment data
 
 ### Observability & Monitoring
-- **Structured Logging**: JSON-formatted logs with configurable levels
-- **Prometheus Metrics**: Comprehensive metrics collection and monitoring
-- **Sentry Integration**: Error tracking and performance monitoring
-- **Health Checks**: Built-in health endpoint for load balancers
-- **Grafana Dashboards**: Pre-configured monitoring dashboards
+- 📋 **Structured Logging**: JSON-formatted logs with configurable levels
+- 📊 **Prometheus Metrics**: Comprehensive metrics collection and monitoring
+- 🛎️ **Sentry Integration**: Error tracking and performance monitoring
+- ❤️ **Health Checks**: Built-in health endpoint for load balancers
+- 📈 **Grafana Dashboards**: Pre-configured monitoring dashboards
 
 ### Deployment & Operations
-- **Docker Support**: Multi-stage Docker builds with Alpine Linux
-- **Docker Compose**: Complete development stack with monitoring
-- **Fly.io Ready**: Pre-configured for Fly.io deployment
-- **Automatic Certificates**: Let's Encrypt integration with DNS validation
-- **Environment Configuration**: Flexible configuration via environment variables
+- 🐳 **Docker Support**: Multi-stage Docker builds with Alpine Linux
+- 🧩 **Docker Compose**: Complete development stack with monitoring
+- 🚀 **Fly.io Ready**: Pre-configured for Fly.io deployment (more to come!)
+- 🔑 **Automatic Certificates**: Let's Encrypt integration with DNS validation
+- ⚙️ **Environment Configuration**: Flexible configuration via environment variables
 
 ### Webhook Integration
-- **HTTP Basic Auth**: Secure webhook authentication
-- **Rich Payload**: Complete email data including headers and attachments
-- **Error Handling**: Robust webhook delivery with retry logic
-- **Content Processing**: Parsed text and HTML content extraction
+- 🔐 **HTTP Basic Auth**: Secure webhook authentication
+- 📨 **Rich Payload**: Complete email data including headers and attachments
+- 🔁 **Error Handling**: Robust webhook delivery with retry logic
+- ✂️ **Content Processing**: Parsed text and HTML content extraction
 
 ## Quick Start
 
-### Using Make (Recommended)
+Welcome to **InboundParse**! Whether you're a developer, sysadmin, or open source enthusiast, getting started is easy. You can build and run the project with just a few commands. Contributions are welcome—see the bottom for how to get involved!
+
+---
+
+### 1. ⚡ Fastest Start with Make
+
+Most development and deployment tasks are automated with `make` for simplicity.
 
 ```bash
-# Install dependencies and build
-make deps build
+# Download Go dependencies & build the project
+make deps
 
-# Run on privileged port (requires root or sudo)
-make run
-
-# Run on non-privileged port for development
+# Development mode
 make run-dev
 
-# Run with custom webhook URL
-WEBHOOK_URL=https://your-app.com/webhook make run-dev
+# Copy the example environment file and customize your webhook target
+cp .env.example .env
+echo 'WEBHOOK_URL=https://your-app.com/webhook' >> .env # Recommend deleting the first WEBHOOK_URL to make it cleaner, but env should load last.
+make run-dev
 ```
 
-### Manual Build and Run
+---
+
+### 2. 👐 Manual Build & Run (for non-Make users)
 
 ```bash
-# Install dependencies
-go mod tidy
-
-# Build the binary
+# 1. Ensure Go ≥ 1.20 is installed
+go mod tidy      # Download dependencies
 go build -o inboundparse ./cmd/inboundparse/
 
-# Run with webhook URL
-./inboundparse -webhook=http://localhost:8080/api/webhook
+# 2. Start the server with a custom webhook endpoint
+./inboundparse -webhook=https://your-app.com/webhook
 ```
 
-### Docker Development Stack
+---
+
+### 3. 🐳 Full Local Dev Stack (Docker Compose, Monitoring, Visual Dashboards)
+
+Spin up the whole ecosystem: SMTP, metrics, dashboards, and log viewing, all with familiar tooling.
 
 ```bash
-# Start complete development environment with monitoring
+# Start SMTP server, Prometheus (metrics), and Grafana (dashboards)
 make up
 
-# View logs
+# View logs (all services)
 docker-compose -f docker-compose.dev.yml logs -f
 
-# Stop services
+# Stop all services
 make down
 
-# Restart services
+# Restart/dev workflow (down + up)
 make dev
 ```
 
-This starts:
-- InboundParse SMTP server (ports 25, 587, 9090)
-- Prometheus metrics collection (port 9091)
-- Grafana dashboards (port 3000, admin/admin)
+With the dev stack running, you'll have:
+- **InboundParse SMTP server** (`:25`, `:587`, `:9090`)
+- **Prometheus** for metrics (`:9091`)
+- **Grafana** dashboards (`:3000`, login `admin`/`admin`)
 
-### Command Line Options
+---
+
+### 4. 🛠️ Command Line Reference
+
+You can configure nearly everything via CLI flags (or use environment variables). Use `./inboundparse -h` to see all options.
 
 ```bash
 Usage of ./inboundparse:
-  -listen string
-        SMTP server listen address (default "0.0.0.0:25")
-  -listen-tls string
-        SMTP server listen address for TLS (default "0.0.0.0:587")
-  -webhook string
-        Webhook URL to send email data to (required)
-  -webhook-user string
-        Basic auth username for webhook
-  -webhook-pass string
-        Basic auth password for webhook
-  -name string
-        SMTP server name (default "mx.inboundparse.com")
-  -max-size int
-        Maximum message size in bytes (default 10485760)
-  -read-timeout int
-        Read timeout in seconds (default 30)
-  -write-timeout int
-        Write timeout in seconds (default 30)
-  -enable-spf
-        Enable SPF validation (default true)
-  -enable-dkim
-        Enable DKIM validation (default true)
-  -enable-dmarc
-        Enable DMARC validation (default true)
-  -cert-file string
-        TLS certificate file path (optional)
-  -key-file string
-        TLS private key file path (optional)
-  -verbose
-        Enable verbose logging (default false)
-  -enable-metrics
-        Enable Prometheus metrics collection (default false)
-  -metrics-addr string
-        Metrics server listen address (default "0.0.0.0:9090")
-  -metrics-api-key string
-        Metrics API key
-  -metrics-username string
-        Metrics username
-  -metrics-password string
-        Metrics password
-  -enable-sentry
-        Enable Sentry error tracking (default false)
-  -sentry-dsn string
-        Sentry DSN for error tracking
-  -sentry-env string
-        Sentry environment (default "production")
-  -sentry-release string
-        Sentry release version
+  -listen string            SMTP server listen address (default "0.0.0.0:25")
+  -listen-tls string        SMTP TLS listen address (default "0.0.0.0:587")
+  -webhook string           Webhook URL for email payloads (required)
+  -webhook-user string      Basic auth username for webhook (optional)
+  -webhook-pass string      Basic auth password for webhook (optional)
+  -name string              SMTP server name (default "mx.inboundparse.com")
+  -max-size int             Max message size bytes (default 10485760)
+  -read-timeout int         Read timeout (seconds, default 30)
+  -write-timeout int        Write timeout (seconds, default 30)
+  -enable-spf               Enable SPF validation (default true)
+  -enable-dkim              Enable DKIM validation (default true)
+  -enable-dmarc             Enable DMARC validation (default true)
+  -cert-file string         TLS cert file (optional)
+  -key-file string          TLS private key (optional)
+  -verbose                  Enable verbose logging (default false)
+  -enable-metrics           Enable Prometheus metrics (default false)
+  -metrics-addr string      Metrics server listen addr (default "0.0.0.0:9090")
+  -metrics-api-key string   Metrics API key (optional)
+  -metrics-username string  Metrics username (optional)
+  -metrics-password string  Metrics password (optional)
+  -enable-sentry            Enable Sentry error tracking (default false)
+  -sentry-dsn string        Sentry DSN for errors (optional)
+  -sentry-env string        Sentry env (default "production")
+  -sentry-release string    Sentry release version (optional)
 ```
 
-### Environment Variables
+
+
+### 🔒 Environment Variables 
 
 You can configure InboundParse using environment variables or command line flags:
 
@@ -190,6 +186,7 @@ You can configure InboundParse using environment variables or command line flags
 - `CF_Token` - Cloudflare API token (required for dns_cf)
 - `CF_Zone_ID` - Cloudflare Zone ID (required for dns_cf)
 
+
 ## Webhook Payload
 
 The service sends a JSON payload to your webhook with comprehensive email data:
@@ -212,344 +209,40 @@ The service sends a JSON payload to your webhook with comprehensive email data:
   "auth": {
     "spf": {
       "result": "pass",
-      "error": null
+      "domain": "example.com",
+      "mechanism": "ip4",
+      "explanation": ""
     },
     "dkim": {
-      "result": "pass", 
-      "error": null
+      "result": "pass",
+      "signatures": [
+        {
+          "domain": "example.com",
+          "result": "pass",
+          "canonicalization": "signed headers: 8"
+        }
+      ],
+      "body": "at least one signature passed verification"
     },
     "dmarc": {
       "result": "pass",
       "policy": "reject",
-      "error": null
+      "subdomain_policy": "reject",
+      "percentage": 100,
+      "spf_alignment": "pass (relaxed)",
+      "dkim_alignment": "pass (relaxed)"
     }
   }
 }
 ```
 
-### Payload Fields
+---
 
-- **timestamp**: ISO 8601 timestamp when the email was received
-- **from**: Array of sender addresses with name and email
-- **to**: Array of recipient addresses with name and email  
-- **subject**: Email subject line
-- **body**: Plain text body content
-- **headers**: Key-value map of email headers
-- **remote_ip**: IP address of the sending server
-- **auth**: Authentication results (SPF, DKIM, DMARC)
+## 🤝 Contributing
 
-## Authentication Results
+Contributions of all kinds are welcome! See [CONTRIBUTING.md](./docs/CONTRIBUTING.md) for guidelines, and don’t hesitate to open issues, fork, or create PRs.
 
-### SPF (Sender Policy Framework)
-- **result**: `pass`, `fail`, `softfail`, `neutral`, `none`, `temperror`, `permerror`
-- **raw**: Human-readable description of the SPF check
-- **mechanism**: The SPF mechanism that matched (if any)
+---
 
-### DKIM (DomainKeys Identified Mail)
-- **valid**: Boolean indicating if all signatures are valid
-- **signatures**: Array of signature validation results
-- **raw**: Summary of DKIM verification
-- **error**: Error message if verification failed
-
-### DMARC (Domain-based Message Authentication, Reporting & Conformance)
-- **result**: `pass`, `fail`, `none`
-- **raw**: Human-readable description of DMARC check
-- **error**: Error message if lookup failed
-
-## Observability
-
-InboundParse includes comprehensive observability features for monitoring and debugging:
-
-### Prometheus Metrics
-
-Enable metrics collection with `--enable-metrics` or `ENABLE_METRICS=true`:
-
-```bash
-# Enable metrics
-./inboundparse --enable-metrics --webhook=http://localhost:8080/api/webhook
-
-# Access metrics
-curl http://localhost:9090/metrics
-```
-
-**Key Metrics:**
-- SMTP connections and sessions
-- Message processing rates and failures
-- Webhook request duration and success rates
-- Authentication check results (SPF, DKIM, DMARC)
-- Server uptime and performance
-
-### Sentry Error Tracking
-
-Enable error tracking with `--enable-sentry` or `ENABLE_SENTRY=true`:
-
-```bash
-# Enable Sentry
-./inboundparse \
-  --enable-sentry \
-  --sentry-dsn="https://your-dsn@sentry.io/project-id" \
-  --sentry-env="production" \
-  --webhook=http://localhost:8080/api/webhook
-```
-
-**Features:**
-- Automatic error capture and reporting
-- Performance monitoring for key operations
-- Custom tags for service identification
-- Release tracking for version-based analysis
-
-### Health Checks
-
-Built-in health endpoint for load balancers:
-
-```bash
-curl http://localhost:9090/health
-```
-
-**Response:**
-```json
-{
-  "status": "healthy",
-  "timestamp": "2024-01-01T12:00:00Z"
-}
-```
-
-### Complete Observability Stack
-
-```bash
-./inboundparse \
-  --enable-metrics \
-  --enable-sentry \
-  --sentry-dsn="https://your-dsn@sentry.io/project-id" \
-  --sentry-env="production" \
-  --webhook=http://localhost:8080/api/webhook
-```
-
-See [OBSERVABILITY.md](OBSERVABILITY.md) for detailed configuration and monitoring setup.
-
-## Deployment
-
-### Docker Usage
-
-#### Build Docker Image
-
-```bash
-docker build -t inboundparse .
-```
-
-#### Run with Docker (Basic)
-
-```bash
-docker run -p 25:25 -p 587:587 inboundparse \
-  -webhook=http://your-webhook-url.com/api/webhook \
-  -verbose=true
-```
-
-#### Run with Docker (TLS + Monitoring)
-
-```bash
-docker run -d \
-  -p 25:25 -p 587:587 -p 9090:9090 \
-  -e WEBHOOK_URL=https://your-webhook-url.com/api/webhook \
-  -e ENABLE_METRICS=true \
-  -e ENABLE_SENTRY=true \
-  -e SENTRY_DSN=https://your-dsn@sentry.io/project-id \
-  -e CF_Token=your-cloudflare-token \
-  -e CF_Zone_ID=your-zone-id \
-  -e MXDOMAIN=your-domain.com \
-  inboundparse
-```
-
-### Fly.io Deployment
-
-InboundParse is pre-configured for Fly.io deployment with automatic SSL certificate management:
-
-```bash
-# Deploy to Fly.io
-fly deploy
-
-# Set environment variables
-fly secrets set WEBHOOK_URL=https://your-webhook-url.com/api/webhook
-fly secrets set CF_Token=your-cloudflare-token
-fly secrets set CF_Zone_ID=your-zone-id
-fly secrets set MXDOMAIN=your-domain.com
-
-# Enable monitoring
-fly secrets set ENABLE_METRICS=true
-fly secrets set ENABLE_SENTRY=true
-fly secrets set SENTRY_DSN=https://your-dsn@sentry.io/project-id
-```
-
-The `fly.toml` configuration includes:
-- PROXY protocol support for load balancers
-- Automatic certificate management
-- Health checks
-- Resource allocation (1GB RAM, 1 CPU)
-
-### Environment File (.env)
-
-Create a `.env` file in your project directory (optional):
-
-```bash
-# Required
-WEBHOOK_URL=https://your-webhook-url.com/api/webhook
-
-# Optional overrides
-LISTEN_ADDR=0.0.0.0:25
-LISTEN_ADDR_TLS=0.0.0.0:587
-ENABLE_SPF=true
-ENABLE_DKIM=true
-ENABLE_DMARC=true
-VERBOSE=false
-
-# TLS Configuration
-CERT_FILE=/cert/cert.pem
-KEY_FILE=/cert/key.pem
-
-# Certificate Management
-ACME_SH_EMAIL=admin@yourdomain.com
-MXDOMAIN=your-domain.com
-CF_Token=your-cloudflare-token
-CF_Zone_ID=your-zone-id
-
-# Monitoring
-ENABLE_METRICS=true
-ENABLE_SENTRY=true
-SENTRY_DSN=https://your-dsn@sentry.io/project-id
-```
-
-## Testing
-
-### Using Swaks (Recommended)
-
-Swaks is a powerful SMTP testing tool. See [EXAMPLES.md](EXAMPLES.md) for comprehensive examples.
-
-#### Basic Email Test
-
-```bash
-# Test with swaks
-swaks --to user@example.com \
-      --from me@example.com \
-      --server 127.0.0.1:2525 \
-      --header "Subject: Test Email" \
-      --body "This is a test email body."
-```
-
-#### HTML Email with Attachments
-
-```bash
-swaks --to user@example.com \
-      --from me@example.com \
-      --server 127.0.0.1:2525 \
-      --header "Subject: HTML Email Example" \
-      --attach-type text/html \
-      --attach-body '<html><body><h1>Hello!</h1><p>This is an <b>HTML</b> email.</p></body></html>'
-```
-
-### Send Test Email via Telnet
-
-```bash
-# Test port 25
-telnet localhost 25
-HELO test.com
-MAIL FROM:<test@example.com>
-RCPT TO:<recipient@example.com>
-DATA
-Subject: Test Email
-From: test@example.com
-To: recipient@example.com
-
-This is a test email body.
-.
-QUIT
-```
-
-```bash
-# Test port 587 (submission)
-telnet localhost 587
-EHLO test.com
-MAIL FROM:<test@example.com>
-RCPT TO:<recipient@example.com>
-DATA
-Subject: Test Email
-From: test@example.com
-To: recipient@example.com
-
-This is a test email body.
-.
-QUIT
-```
-
-### Development Testing
-
-```bash
-# Start development environment
-make up
-
-# Send test email
-make test-email
-
-# View logs
-docker-compose -f docker-compose.dev.yml logs -f inboundparse
-
-# Check metrics
-curl http://localhost:9090/metrics
-
-# Check health
-curl http://localhost:9090/health
-```
-
-## Development
-
-### Available Make Commands
-
-```bash
-make help          # Show all available commands
-make build         # Build the binary
-make deps          # Download dependencies
-make run           # Run on privileged port (25)
-make run-dev       # Run on non-privileged port (2525)
-make test          # Run tests
-make test-email    # Show telnet test instructions
-make clean         # Clean build artifacts
-make docker-build  # Build Docker image
-make up            # Start Docker Compose stack
-make down          # Stop Docker Compose stack
-make dev           # Restart Docker Compose stack
-make lint          # Run linters and security checks
-make coverage      # Run tests with coverage
-make check         # Run deps, linters, and vulncheck
-```
-
-### Project Structure
-
-```
-inboundparse/
-├── cmd/inboundparse/     # Main application
-├── internal/
-│   ├── config/          # Configuration management
-│   ├── server/          # SMTP server implementation
-│   └── service/         # Business logic services
-├── pkg/                 # Public packages
-├── _data/               # Monitoring configuration
-│   ├── prometheus.yml   # Prometheus config
-│   └── grafana/         # Grafana dashboards
-├── docker-compose.dev.yml # Development stack
-├── Dockerfile           # Multi-stage Docker build
-├── fly.toml            # Fly.io deployment config
-├── Makefile            # Build and development commands
-└── start.sh            # Container startup script
-```
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Run tests: `make test`
-5. Run linters: `make lint`
-6. Submit a pull request
-
-## License
-
-This project is licensed under the MIT License. 
+> **Need help or want to suggest new features?**  
+> Open an issue or start a discussion on GitHub!

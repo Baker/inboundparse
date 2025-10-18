@@ -60,6 +60,7 @@ func (m *mockMetricsService) RecordDMARCPolicy(policy string)                   
 func (m *mockMetricsService) IncrementActiveSessions() {
 	m.incrementActiveSessionsCalled = true
 }
+
 func (m *mockMetricsService) DecrementActiveSessions() {
 	m.decrementActiveSessionsCalled = true
 }

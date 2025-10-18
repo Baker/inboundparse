@@ -54,6 +54,7 @@ func (m *mockMetricsServiceForMessage) IncrementSMTPMessages()                  
 func (m *mockMetricsServiceForMessage) RecordMessageSize(size int64) {
 	m.recordMessageSizeCalled = true
 }
+
 func (m *mockMetricsServiceForMessage) IncrementMessagesProcessed() {
 	m.incrementMessagesProcessedCalled = true
 }
@@ -61,15 +62,19 @@ func (m *mockMetricsServiceForMessage) IncrementMessagesFailed() {}
 func (m *mockMetricsServiceForMessage) RecordMessageParsingDuration(duration time.Duration) {
 	m.recordMessageParsingDurationCalled = true
 }
+
 func (m *mockMetricsServiceForMessage) IncrementMessageParsingFailed() {
 	m.incrementMessageParsingFailedCalled = true
 }
+
 func (m *mockMetricsServiceForMessage) IncrementWebhookRequests() {
 	m.incrementWebhookRequestsCalled = true
 }
+
 func (m *mockMetricsServiceForMessage) RecordWebhookDuration(duration time.Duration) {
 	m.recordWebhookDurationCalled = true
 }
+
 func (m *mockMetricsServiceForMessage) IncrementWebhookFailed() {
 	m.incrementWebhookFailedCalled = true
 }
@@ -117,7 +122,6 @@ This is a test email body.`
 
 	reader := strings.NewReader(messageData)
 	err := processor.ProcessMessage(context.Background(), reader, "mail.example.com", "sender@example.com")
-
 	if err != nil {
 		t.Errorf("ProcessMessage() error = %v", err)
 	}
@@ -208,7 +212,6 @@ This is a test email body.`
 
 	reader := strings.NewReader(messageData)
 	err := processor.ProcessMessage(context.Background(), reader, "mail.example.com", "sender@example.com")
-
 	// Auth errors should not cause the message processing to fail
 	if err != nil {
 		t.Errorf("ProcessMessage() error = %v, expected no error for auth failure", err)
@@ -263,7 +266,6 @@ This is a test email body.`
 
 	reader := strings.NewReader(messageData)
 	err := processor.ProcessMessage(context.Background(), reader, "mail.example.com", "sender@example.com")
-
 	// Should still work without services
 	if err != nil {
 		t.Errorf("ProcessMessage() error = %v", err)
@@ -290,7 +292,6 @@ This is a test email body.`
 
 	reader := strings.NewReader(messageData)
 	err := processor.ProcessMessage(context.Background(), reader, "mail.example.com", "sender@example.com")
-
 	if err != nil {
 		t.Errorf("ProcessMessage() error = %v", err)
 	}
