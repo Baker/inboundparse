@@ -54,7 +54,7 @@ if [ ! -f /cert/account.conf ]; then
 fi
 
 # Check if certificates are already issued and install them
-if acme.sh --home /cert --list | grep -q "${DOMAIN}"; then
+if acme.sh --home /cert --list | grep -q "^${DOMAIN} "; then
     echo "Certificate for ${DOMAIN} found, installing..."
     if ! acme.sh --home /cert --install-cert -d "${DOMAIN}" \
         --cert-file /cert/cert.pem \
