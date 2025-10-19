@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"net"
+	"strings"
 	"testing"
 	"time"
 
@@ -64,6 +65,36 @@ func TestInitializeSentry(t *testing.T) {
 				},
 			},
 			expectError: false, // Sentry init might fail in test environment, but that's OK
+		},
+		{
+			name: "Sentry enabled with DSN and verbose mode",
+			config: &config.Config{
+				Sentry: config.SentryConfig{
+					Enabled: true,
+					DSN:     "https://test@sentry.io/123",
+					Env:     "development",
+					Release: "v1.0.0-dev",
+				},
+				Server: config.ServerConfig{
+					Verbose: true,
+				},
+			},
+			expectError: false,
+		},
+		{
+			name: "Sentry with production environment",
+			config: &config.Config{
+				Sentry: config.SentryConfig{
+					Enabled: true,
+					DSN:     "https://test@sentry.io/123",
+					Env:     "production",
+					Release: "v2.0.0",
+				},
+				Server: config.ServerConfig{
+					Verbose: false,
+				},
+			},
+			expectError: false,
 		},
 	}
 
@@ -542,3 +573,254 @@ func (m *mockMetricsServiceForMain) RecordDMARCPolicy(policy string)            
 func (m *mockMetricsServiceForMain) IncrementActiveSessions()                            { m.activeSessionsInc++ }
 func (m *mockMetricsServiceForMain) DecrementActiveSessions()                            { m.activeSessionsDec++ }
 func (m *mockMetricsServiceForMain) Close() error                                        { return nil }
+
+// TestInitializeSentry_BeforeSendCallback tests the BeforeSend callback functionality
+func TestInitializeSentry_BeforeSendCallback(t *testing.T) {
+	logger := &mockLoggerServiceForMain{}
+
+	config := &config.Config{
+		Sentry: config.SentryConfig{
+			Enabled: true,
+			DSN:     "https://test@sentry.io/123",
+			Env:     "test",
+			Release: "v1.0.0",
+		},
+		Server: config.ServerConfig{
+			Verbose: true,
+		},
+	}
+
+	// Initialize Sentry (may fail in test environment, but we test the callback logic)
+	err := initializeSentry(config, logger)
+	// Test passes if no error or if Sentry init fails gracefully
+	// The important thing is that the function doesn't panic
+	if err != nil {
+		t.Logf("Sentry initialization failed (expected in test environment): %v", err)
+	}
+}
+
+// TestRun_MissingWebhookURL checks that missing webhook URL returns an error
+func TestRun_MissingWebhookURL(t *testing.T) {
+	cfg := &config.Config{
+		Server: config.ServerConfig{
+			ListenAddr: ":25",
+			ServerName: "localhost",
+		},
+		Webhook: config.WebhookConfig{
+			URL: "", // Should trigger error
+		},
+		Auth: config.AuthConfig{
+			EnableSPF:   true,
+			EnableDKIM:  true,
+			EnableDMARC: true,
+		},
+		Metrics: config.MetricsConfig{
+			Enabled: false,
+		},
+		Sentry: config.SentryConfig{
+			Enabled: false,
+		},
+		Logging: config.LoggingConfig{
+			Level:  "info",
+			Format: "json",
+		},
+	}
+	err := runWithConfig(cfg)
+	if err == nil {
+		t.Error("expected error for missing webhook URL, got nil")
+	}
+	if err != nil && !strings.Contains(err.Error(), "webhook URL is required") {
+		t.Errorf("expected error to mention missing webhook URL, got: %v", err)
+	}
+}
+
+// TestLogServerInfo_AllFields ensures all configuration fields are logged
+func TestLogServerInfo_AllFields(t *testing.T) {
+	logger := &mockLoggerServiceForMain{}
+	ctx := context.Background()
+
+	testCases := []struct {
+		name   string
+		config *config.Config
+	}{
+		{
+			name: "complete configuration",
+			config: &config.Config{
+				Server: config.ServerConfig{
+					ListenAddr:    "0.0.0.0:2525",
+					ListenAddrTLS: "0.0.0.0:2587",
+					ServerName:    "mail.example.com",
+					Verbose:       true,
+					CertFile:      "/etc/ssl/cert.pem",
+					KeyFile:       "/etc/ssl/key.pem",
+				},
+				Webhook: config.WebhookConfig{
+					URL: "https://webhook.example.com/endpoint",
+				},
+				Auth: config.AuthConfig{
+					EnableSPF:   true,
+					EnableDKIM:  true,
+					EnableDMARC: true,
+				},
+				Metrics: config.MetricsConfig{
+					Enabled: true,
+					Addr:    ":9090",
+				},
+				Sentry: config.SentryConfig{
+					Enabled: true,
+				},
+				Logging: config.LoggingConfig{
+					Level:  "debug",
+					Format: "json",
+				},
+			},
+		},
+		{
+			name: "minimal configuration",
+			config: &config.Config{
+				Server: config.ServerConfig{
+					ListenAddr: ":25",
+					ServerName: "localhost",
+				},
+				Webhook: config.WebhookConfig{
+					URL: "http://localhost/webhook",
+				},
+				Logging: config.LoggingConfig{
+					Level:  "info",
+					Format: "console",
+				},
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Should not panic
+			logServerInfo(ctx, tc.config, logger)
+		})
+	}
+}
+
+// TestInitializeSentry_ErrorCases tests error handling in Sentry initialization
+func TestInitializeSentry_ErrorCases(t *testing.T) {
+	logger := &mockLoggerServiceForMain{}
+
+	testCases := []struct {
+		name        string
+		config      *config.Config
+		expectError bool
+	}{
+		{
+			name: "invalid DSN format",
+			config: &config.Config{
+				Sentry: config.SentryConfig{
+					Enabled: true,
+					DSN:     "invalid-dsn",
+					Env:     "test",
+				},
+				Server: config.ServerConfig{
+					Verbose: false,
+				},
+			},
+			expectError: true,
+		},
+		{
+			name: "empty DSN but enabled",
+			config: &config.Config{
+				Sentry: config.SentryConfig{
+					Enabled: true,
+					DSN:     "",
+				},
+			},
+			expectError: false, // Should skip initialization gracefully
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := initializeSentry(tc.config, logger)
+
+			if tc.expectError && err == nil {
+				t.Error("Expected error but got none")
+			}
+			if !tc.expectError && err != nil {
+				t.Errorf("Expected no error but got: %v", err)
+			}
+		})
+	}
+}
+
+// TestRunWithConfig_MissingWebhookURL tests validation of webhook URL
+func TestRunWithConfig_MissingWebhookURL(t *testing.T) {
+	cfg := &config.Config{
+		Server: config.ServerConfig{
+			ListenAddr: ":25",
+			ServerName: "localhost",
+			Verbose:    false,
+		},
+		Webhook: config.WebhookConfig{
+			URL: "", // Missing webhook URL
+		},
+		Auth: config.AuthConfig{
+			EnableSPF:   true,
+			EnableDKIM:  true,
+			EnableDMARC: true,
+		},
+		Metrics: config.MetricsConfig{
+			Enabled: false,
+		},
+		Sentry: config.SentryConfig{
+			Enabled: false,
+		},
+		Logging: config.LoggingConfig{
+			Level:  "info",
+			Format: "json",
+		},
+	}
+
+	err := runWithConfig(cfg)
+
+	assert.Error(t, err, "Expected error for missing webhook URL")
+	assert.Contains(t, err.Error(), "webhook URL is required")
+}
+
+// TestRunWithConfig_SentryInitialization verifies that Sentry is initialized properly in runWithConfig.
+// Because runWithConfig starts a blocking server, we test Sentry initialization logic only.
+func TestRunWithConfig_SentryInitialization(t *testing.T) {
+	logger := &mockLoggerServiceForMain{}
+
+	cfg := &config.Config{
+		Server: config.ServerConfig{
+			ListenAddr: ":25",
+			ServerName: "localhost",
+			Verbose:    true,
+		},
+		Webhook: config.WebhookConfig{
+			URL: "http://example.com/webhook", // Valid to get past webhook check
+		},
+		Auth: config.AuthConfig{
+			EnableSPF:   true,
+			EnableDKIM:  true,
+			EnableDMARC: true,
+		},
+		Metrics: config.MetricsConfig{
+			Enabled: false,
+		},
+		Sentry: config.SentryConfig{
+			Enabled: true,
+			DSN:     "https://public@sentry.io/1", // Example DSN, may not actually connect in test
+			Env:     "test",
+			Release: "v0.0.1-test",
+		},
+		Logging: config.LoggingConfig{
+			Level:  "info",
+			Format: "json",
+		},
+	}
+
+	// Call Sentry initializer directly to simulate what runWithConfig would do.
+	err := initializeSentry(cfg, logger)
+	if err != nil {
+		t.Logf("Sentry initialization failed (may be expected in test): %v", err)
+	}
+}

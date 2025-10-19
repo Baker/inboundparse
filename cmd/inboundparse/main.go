@@ -14,19 +14,29 @@ import (
 )
 
 func main() {
+	if err := run(); err != nil {
+		fmt.Fprintf(os.Stderr, "Fatal error: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+// run contains the main application logic and is testable
+func run() error {
 	// Load configuration
 	cfg, err := config.Load()
 	if err != nil {
-		// Use basic logging for configuration errors
-		fmt.Fprintf(os.Stderr, "Failed to load configuration: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("failed to load configuration: %w", err)
 	}
 
+	return runWithConfig(cfg)
+}
+
+// runWithConfig contains the main application logic with injected configuration
+func runWithConfig(cfg *config.Config) error {
 	// Initialize structured logger
 	logger, err := service.NewLoggerService(cfg.Server.Verbose)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to initialize logger: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("failed to initialize logger: %w", err)
 	}
 	defer func() {
 		if err := logger.Close(); err != nil {
@@ -50,7 +60,7 @@ func main() {
 
 	// Validate webhook URL
 	if cfg.Webhook.URL == "" {
-		logger.Fatal(ctx, "Webhook URL is required")
+		return fmt.Errorf("webhook URL is required")
 	}
 
 	// Create services
@@ -66,8 +76,10 @@ func main() {
 
 	// Run server with graceful shutdown
 	if err := srv.Run(ctx); err != nil {
-		logger.Fatal(ctx, "Server error", zap.Error(err))
+		return fmt.Errorf("server error: %w", err)
 	}
+
+	return nil
 }
 
 // initializeSentry initializes Sentry error tracking
