@@ -37,23 +37,24 @@ func (m *mockAuthService) PerformAuthenticationChecks(ctx context.Context, messa
 
 // mockMetricsServiceForMessage is a mock implementation of MetricsService for message processor tests
 type mockMetricsServiceForMessage struct {
-	recordMessageSizeCalled              bool
-	incrementMessageParsingFailedCalled  bool
-	recordMessageParsingDurationCalled   bool
-	incrementWebhookFailedCalled         bool
-	incrementWebhookRequestsCalled       bool
-	recordWebhookDurationCalled          bool
-	incrementMessagesProcessedCalled     bool
+	recordMessageSizeCalled             bool
+	incrementMessageParsingFailedCalled bool
+	recordMessageParsingDurationCalled  bool
+	incrementWebhookFailedCalled        bool
+	incrementWebhookRequestsCalled      bool
+	recordWebhookDurationCalled         bool
+	incrementMessagesProcessedCalled    bool
 }
 
-func (m *mockMetricsServiceForMessage) IncrementSMTPConnections() {}
-func (m *mockMetricsServiceForMessage) IncrementActiveConnections() {}
-func (m *mockMetricsServiceForMessage) DecrementActiveConnections() {}
+func (m *mockMetricsServiceForMessage) IncrementSMTPConnections()                       {}
+func (m *mockMetricsServiceForMessage) IncrementActiveConnections()                     {}
+func (m *mockMetricsServiceForMessage) DecrementActiveConnections()                     {}
 func (m *mockMetricsServiceForMessage) RecordConnectionDuration(duration time.Duration) {}
-func (m *mockMetricsServiceForMessage) IncrementSMTPMessages() {}
+func (m *mockMetricsServiceForMessage) IncrementSMTPMessages()                          {}
 func (m *mockMetricsServiceForMessage) RecordMessageSize(size int64) {
 	m.recordMessageSizeCalled = true
 }
+
 func (m *mockMetricsServiceForMessage) IncrementMessagesProcessed() {
 	m.incrementMessagesProcessedCalled = true
 }
@@ -61,30 +62,34 @@ func (m *mockMetricsServiceForMessage) IncrementMessagesFailed() {}
 func (m *mockMetricsServiceForMessage) RecordMessageParsingDuration(duration time.Duration) {
 	m.recordMessageParsingDurationCalled = true
 }
+
 func (m *mockMetricsServiceForMessage) IncrementMessageParsingFailed() {
 	m.incrementMessageParsingFailedCalled = true
 }
+
 func (m *mockMetricsServiceForMessage) IncrementWebhookRequests() {
 	m.incrementWebhookRequestsCalled = true
 }
+
 func (m *mockMetricsServiceForMessage) RecordWebhookDuration(duration time.Duration) {
 	m.recordWebhookDurationCalled = true
 }
+
 func (m *mockMetricsServiceForMessage) IncrementWebhookFailed() {
 	m.incrementWebhookFailedCalled = true
 }
-func (m *mockMetricsServiceForMessage) IncrementAuthChecks() {}
-func (m *mockMetricsServiceForMessage) IncrementSPFChecks() {}
-func (m *mockMetricsServiceForMessage) IncrementDKIMChecks() {}
-func (m *mockMetricsServiceForMessage) IncrementDMARCChecks() {}
-func (m *mockMetricsServiceForMessage) IncrementAuthChecksFailed() {}
-func (m *mockMetricsServiceForMessage) RecordSPFResult(result string) {}
-func (m *mockMetricsServiceForMessage) RecordDKIMResult(result string) {}
+func (m *mockMetricsServiceForMessage) IncrementAuthChecks()            {}
+func (m *mockMetricsServiceForMessage) IncrementSPFChecks()             {}
+func (m *mockMetricsServiceForMessage) IncrementDKIMChecks()            {}
+func (m *mockMetricsServiceForMessage) IncrementDMARCChecks()           {}
+func (m *mockMetricsServiceForMessage) IncrementAuthChecksFailed()      {}
+func (m *mockMetricsServiceForMessage) RecordSPFResult(result string)   {}
+func (m *mockMetricsServiceForMessage) RecordDKIMResult(result string)  {}
 func (m *mockMetricsServiceForMessage) RecordDMARCResult(result string) {}
 func (m *mockMetricsServiceForMessage) RecordDMARCPolicy(policy string) {}
-func (m *mockMetricsServiceForMessage) IncrementActiveSessions() {}
-func (m *mockMetricsServiceForMessage) DecrementActiveSessions() {}
-func (m *mockMetricsServiceForMessage) Close() error { return nil }
+func (m *mockMetricsServiceForMessage) IncrementActiveSessions()        {}
+func (m *mockMetricsServiceForMessage) DecrementActiveSessions()        {}
+func (m *mockMetricsServiceForMessage) Close() error                    { return nil }
 
 func TestNewMessageProcessor(t *testing.T) {
 	webhookService := &mockWebhookService{}
@@ -117,7 +122,6 @@ This is a test email body.`
 
 	reader := strings.NewReader(messageData)
 	err := processor.ProcessMessage(context.Background(), reader)
-
 	if err != nil {
 		t.Errorf("ProcessMessage() error = %v", err)
 	}
@@ -208,7 +212,6 @@ This is a test email body.`
 
 	reader := strings.NewReader(messageData)
 	err := processor.ProcessMessage(context.Background(), reader)
-
 	// Auth errors should not cause the message processing to fail
 	if err != nil {
 		t.Errorf("ProcessMessage() error = %v, expected no error for auth failure", err)
@@ -263,7 +266,6 @@ This is a test email body.`
 
 	reader := strings.NewReader(messageData)
 	err := processor.ProcessMessage(context.Background(), reader)
-
 	// Should still work without services
 	if err != nil {
 		t.Errorf("ProcessMessage() error = %v", err)
@@ -290,7 +292,6 @@ This is a test email body.`
 
 	reader := strings.NewReader(messageData)
 	err := processor.ProcessMessage(context.Background(), reader)
-
 	if err != nil {
 		t.Errorf("ProcessMessage() error = %v", err)
 	}

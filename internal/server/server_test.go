@@ -96,7 +96,6 @@ func TestServer_Start_WithoutMetrics(t *testing.T) {
 
 	ctx := context.Background()
 	err := server.Start(ctx)
-
 	// The server might start successfully or fail depending on available ports
 	// We just want to ensure it doesn't panic
 	if err != nil {
@@ -120,7 +119,6 @@ func TestServer_Start_WithMetrics(t *testing.T) {
 
 	ctx := context.Background()
 	err := server.Start(ctx)
-
 	// The server might start successfully or fail depending on available ports
 	// We just want to ensure it doesn't panic
 	if err != nil {
@@ -184,7 +182,6 @@ func TestServer_Run(t *testing.T) {
 	defer cancel()
 
 	err := server.Run(ctx)
-
 	// Run might succeed or fail depending on available ports
 	// We just want to ensure it doesn't panic
 	if err != nil {
@@ -210,7 +207,6 @@ func TestServer_Run_WithTimeout(t *testing.T) {
 	cancel() // Cancel immediately
 
 	err := server.Run(ctx)
-
 	// Run might succeed or fail depending on available ports
 	// We just want to ensure it doesn't panic
 	if err != nil {
@@ -234,7 +230,6 @@ func TestServer_StartMetricsServer_ErrorHandling(t *testing.T) {
 
 	ctx := context.Background()
 	err := server.Start(ctx)
-
 	// The server might start successfully or fail depending on the system
 	// We just want to ensure it doesn't panic
 	if err != nil {
@@ -298,7 +293,6 @@ func TestServer_StartSMTPServers_WithoutTLS(t *testing.T) {
 
 	ctx := context.Background()
 	err := server.Start(ctx)
-
 	// This might succeed or fail depending on available ports
 	if err != nil {
 		t.Logf("Start() returned expected error: %v", err)
@@ -320,7 +314,6 @@ func TestServer_Start_WithInvalidMetricsAddr(t *testing.T) {
 
 	ctx := context.Background()
 	err := server.Start(ctx)
-
 	// This should fail due to invalid address
 	if err != nil {
 		t.Logf("Start() returned expected error: %v", err)
@@ -340,7 +333,7 @@ func TestServer_Stop_WithRunningServices(t *testing.T) {
 	server := NewServer(config, backend, metricsService, logger)
 
 	ctx := context.Background()
-	
+
 	// Start the server
 	err := server.Start(ctx)
 	if err != nil {
@@ -369,7 +362,6 @@ func TestServer_Run_WithContextCancellation(t *testing.T) {
 	defer cancel()
 
 	err := server.Run(ctx)
-
 	// Run might succeed or fail depending on available ports
 	if err != nil {
 		t.Logf("Run() returned expected error: %v", err)
@@ -403,15 +395,15 @@ func TestServer_StartSMTPServers_WithValidCert(t *testing.T) {
 	// Create temporary certificate files for testing
 	certFile := "/tmp/test-cert.pem"
 	keyFile := "/tmp/test-key.pem"
-	
+
 	// Create dummy certificate files
-	err := os.WriteFile(certFile, []byte("dummy cert"), 0644)
+	err := os.WriteFile(certFile, []byte("dummy cert"), 0o644)
 	if err != nil {
 		t.Skip("Could not create test certificate file")
 	}
 	defer os.Remove(certFile)
-	
-	err = os.WriteFile(keyFile, []byte("dummy key"), 0644)
+
+	err = os.WriteFile(keyFile, []byte("dummy key"), 0o644)
 	if err != nil {
 		t.Skip("Could not create test key file")
 	}
@@ -434,7 +426,6 @@ func TestServer_StartSMTPServers_WithValidCert(t *testing.T) {
 
 	ctx := context.Background()
 	err = server.Start(ctx)
-
 	// This should fail because the certificate files are invalid
 	if err != nil {
 		t.Logf("Start() returned expected error: %v", err)
@@ -457,7 +448,6 @@ func TestServer_StartMetricsServer_ErrorHandling2(t *testing.T) {
 
 	ctx := context.Background()
 	err := server.Start(ctx)
-
 	// The server might start successfully or fail depending on the system
 	// We just want to ensure it doesn't panic
 	if err != nil {
@@ -535,7 +525,6 @@ func TestServer_WithDifferentConfigurations(t *testing.T) {
 
 			ctx := context.Background()
 			err := server.Start(ctx)
-
 			// The server might start successfully or fail depending on available ports
 			// We just want to ensure it doesn't panic
 			if err != nil {
@@ -575,7 +564,6 @@ func TestServer_GracefulShutdown(t *testing.T) {
 	defer cancel()
 
 	err := server.Run(ctx)
-
 	// Run might succeed or fail depending on available ports
 	// We just want to ensure it doesn't panic
 	if err != nil {
@@ -609,7 +597,6 @@ func TestServer_WithContextCancellation(t *testing.T) {
 	cancel() // Cancel immediately
 
 	err := server.Run(ctx)
-
 	// Run might succeed or fail depending on available ports
 	// We just want to ensure it doesn't panic
 	if err != nil {
@@ -633,7 +620,6 @@ func TestServer_StartMetricsServer_ErrorHandling3(t *testing.T) {
 
 	ctx := context.Background()
 	err := server.Start(ctx)
-
 	// This should fail due to invalid address
 	if err != nil {
 		t.Logf("Start() returned expected error: %v", err)
@@ -662,7 +648,7 @@ func TestServer_WithNilServices(t *testing.T) {
 	server := NewServer(config, backend, metricsService, logger)
 
 	ctx := context.Background()
-	
+
 	// Test starting without any issues
 	err := server.Start(ctx)
 	if err != nil {
@@ -721,7 +707,6 @@ func TestServer_WithDifferentTimeouts(t *testing.T) {
 
 			ctx := context.Background()
 			err := server.Start(ctx)
-
 			// The server might start successfully or fail depending on available ports
 			if err != nil {
 				t.Logf("Start() returned expected error: %v", err)
@@ -737,19 +722,19 @@ func TestServer_WithDifferentTimeouts(t *testing.T) {
 // Test server with different message sizes
 func TestServer_WithDifferentMessageSizes(t *testing.T) {
 	testCases := []struct {
-		name          string
+		name           string
 		maxMessageSize int64
 	}{
 		{
-			name:          "small message size",
+			name:           "small message size",
 			maxMessageSize: 1024, // 1KB
 		},
 		{
-			name:          "large message size",
+			name:           "large message size",
 			maxMessageSize: 100 * 1024 * 1024, // 100MB
 		},
 		{
-			name:          "zero message size",
+			name:           "zero message size",
 			maxMessageSize: 0,
 		},
 	}
@@ -777,7 +762,6 @@ func TestServer_WithDifferentMessageSizes(t *testing.T) {
 
 			ctx := context.Background()
 			err := server.Start(ctx)
-
 			// The server might start successfully or fail depending on available ports
 			if err != nil {
 				t.Logf("Start() returned expected error: %v", err)
@@ -837,7 +821,6 @@ func TestServer_WithDifferentServerNames(t *testing.T) {
 
 			ctx := context.Background()
 			err := server.Start(ctx)
-
 			// The server might start successfully or fail depending on available ports
 			if err != nil {
 				t.Logf("Start() returned expected error: %v", err)
@@ -873,7 +856,6 @@ func TestServer_StartSMTPServers_ErrorHandling(t *testing.T) {
 
 	ctx := context.Background()
 	err := server.Start(ctx)
-
 	// This should fail due to invalid address
 	if err != nil {
 		t.Logf("Start() returned expected error: %v", err)
@@ -883,24 +865,24 @@ func TestServer_StartSMTPServers_ErrorHandling(t *testing.T) {
 // Test server with metrics server enabled and disabled
 func TestServer_WithMetricsServerEnabled(t *testing.T) {
 	testCases := []struct {
-		name            string
-		metricsEnabled  bool
-		metricsAddr     string
+		name           string
+		metricsEnabled bool
+		metricsAddr    string
 	}{
 		{
-			name:            "metrics disabled",
-			metricsEnabled:  false,
-			metricsAddr:     "",
+			name:           "metrics disabled",
+			metricsEnabled: false,
+			metricsAddr:    "",
 		},
 		{
-			name:            "metrics enabled with default addr",
-			metricsEnabled:  true,
-			metricsAddr:     "127.0.0.1:0", // Use port 0 to avoid conflicts
+			name:           "metrics enabled with default addr",
+			metricsEnabled: true,
+			metricsAddr:    "127.0.0.1:0", // Use port 0 to avoid conflicts
 		},
 		{
-			name:            "metrics enabled with custom addr",
-			metricsEnabled:  true,
-			metricsAddr:     "127.0.0.1:0", // Use port 0 to avoid conflicts
+			name:           "metrics enabled with custom addr",
+			metricsEnabled: true,
+			metricsAddr:    "127.0.0.1:0", // Use port 0 to avoid conflicts
 		},
 	}
 
@@ -928,7 +910,6 @@ func TestServer_WithMetricsServerEnabled(t *testing.T) {
 
 			ctx := context.Background()
 			err := server.Start(ctx)
-
 			// The server might start successfully or fail depending on available ports
 			if err != nil {
 				t.Logf("Start() returned expected error: %v", err)

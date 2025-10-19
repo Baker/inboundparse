@@ -126,40 +126,40 @@ func TestAuthService_PerformAuthenticationChecks(t *testing.T) {
 
 func TestAuthService_ExtractDomainFromMessage(t *testing.T) {
 	tests := []struct {
-		name     string
-		message  []byte
-		want     string
-		wantErr  bool
+		name    string
+		message []byte
+		want    string
+		wantErr bool
 	}{
 		{
-			name:     "valid email address",
-			message:  []byte("From: test@example.com\r\nTo: recipient@example.com\r\nSubject: Test\r\n\r\nTest message"),
-			want:     "example.com",
-			wantErr:  false,
+			name:    "valid email address",
+			message: []byte("From: test@example.com\r\nTo: recipient@example.com\r\nSubject: Test\r\n\r\nTest message"),
+			want:    "example.com",
+			wantErr: false,
 		},
 		{
-			name:     "email with display name",
-			message:  []byte("From: Test User <test@example.com>\r\nTo: recipient@example.com\r\nSubject: Test\r\n\r\nTest message"),
-			want:     "example.com",
-			wantErr:  false,
+			name:    "email with display name",
+			message: []byte("From: Test User <test@example.com>\r\nTo: recipient@example.com\r\nSubject: Test\r\n\r\nTest message"),
+			want:    "example.com",
+			wantErr: false,
 		},
 		{
-			name:     "no From header",
-			message:  []byte("To: recipient@example.com\r\nSubject: Test\r\n\r\nTest message"),
-			want:     "",
-			wantErr:  true,
+			name:    "no From header",
+			message: []byte("To: recipient@example.com\r\nSubject: Test\r\n\r\nTest message"),
+			want:    "",
+			wantErr: true,
 		},
 		{
-			name:     "From header without @",
-			message:  []byte("From: invalid-email\r\nTo: recipient@example.com\r\nSubject: Test\r\n\r\nTest message"),
-			want:     "",
-			wantErr:  true,
+			name:    "From header without @",
+			message: []byte("From: invalid-email\r\nTo: recipient@example.com\r\nSubject: Test\r\n\r\nTest message"),
+			want:    "",
+			wantErr: true,
 		},
 		{
-			name:     "empty From header",
-			message:  []byte("From: \r\nTo: recipient@example.com\r\nSubject: Test\r\n\r\nTest message"),
-			want:     "",
-			wantErr:  true,
+			name:    "empty From header",
+			message: []byte("From: \r\nTo: recipient@example.com\r\nSubject: Test\r\n\r\nTest message"),
+			want:    "",
+			wantErr: true,
 		},
 	}
 
@@ -217,19 +217,19 @@ func TestAuthService_CheckDMARC_ErrorCases(t *testing.T) {
 	authService := &authService{enableDMARC: true}
 
 	tests := []struct {
-		name     string
-		message  []byte
-		wantErr  bool
+		name    string
+		message []byte
+		wantErr bool
 	}{
 		{
-			name:     "message without From header",
-			message:  []byte("To: recipient@example.com\r\nSubject: Test\r\n\r\nTest message"),
-			wantErr:  true,
+			name:    "message without From header",
+			message: []byte("To: recipient@example.com\r\nSubject: Test\r\n\r\nTest message"),
+			wantErr: true,
 		},
 		{
-			name:     "message with invalid From header",
-			message:  []byte("From: invalid-email\r\nTo: recipient@example.com\r\nSubject: Test\r\n\r\nTest message"),
-			wantErr:  true,
+			name:    "message with invalid From header",
+			message: []byte("From: invalid-email\r\nTo: recipient@example.com\r\nSubject: Test\r\n\r\nTest message"),
+			wantErr: true,
 		},
 	}
 
@@ -251,46 +251,46 @@ func TestAuthService_ExtractDomainFromMessage_EdgeCases(t *testing.T) {
 	authService := &authService{}
 
 	tests := []struct {
-		name     string
-		message  []byte
-		want     string
-		wantErr  bool
+		name    string
+		message []byte
+		want    string
+		wantErr bool
 	}{
 		{
-			name:     "email with multiple @ symbols",
-			message:  []byte("From: test@example@domain.com\r\nTo: recipient@example.com\r\nSubject: Test\r\n\r\nTest message"),
-			want:     "domain.com",
-			wantErr:  false,
+			name:    "email with multiple @ symbols",
+			message: []byte("From: test@example@domain.com\r\nTo: recipient@example.com\r\nSubject: Test\r\n\r\nTest message"),
+			want:    "domain.com",
+			wantErr: false,
 		},
 		{
-			name:     "email with display name and multiple @ symbols",
-			message:  []byte("From: Test User <test@example@domain.com>\r\nTo: recipient@example.com\r\nSubject: Test\r\n\r\nTest message"),
-			want:     "domain.com",
-			wantErr:  false,
+			name:    "email with display name and multiple @ symbols",
+			message: []byte("From: Test User <test@example@domain.com>\r\nTo: recipient@example.com\r\nSubject: Test\r\n\r\nTest message"),
+			want:    "domain.com",
+			wantErr: false,
 		},
 		{
-			name:     "email with trailing > without opening <",
-			message:  []byte("From: test@example.com>\r\nTo: recipient@example.com\r\nSubject: Test\r\n\r\nTest message"),
-			want:     "example.com",
-			wantErr:  false,
+			name:    "email with trailing > without opening <",
+			message: []byte("From: test@example.com>\r\nTo: recipient@example.com\r\nSubject: Test\r\n\r\nTest message"),
+			want:    "example.com",
+			wantErr: false,
 		},
 		{
-			name:     "email with opening < without closing >",
-			message:  []byte("From: <test@example.com\r\nTo: recipient@example.com\r\nSubject: Test\r\n\r\nTest message"),
-			want:     "example.com",
-			wantErr:  false,
+			name:    "email with opening < without closing >",
+			message: []byte("From: <test@example.com\r\nTo: recipient@example.com\r\nSubject: Test\r\n\r\nTest message"),
+			want:    "example.com",
+			wantErr: false,
 		},
 		{
-			name:     "From header with only display name",
-			message:  []byte("From: Test User\r\nTo: recipient@example.com\r\nSubject: Test\r\n\r\nTest message"),
-			want:     "",
-			wantErr:  true,
+			name:    "From header with only display name",
+			message: []byte("From: Test User\r\nTo: recipient@example.com\r\nSubject: Test\r\n\r\nTest message"),
+			want:    "",
+			wantErr: true,
 		},
 		{
-			name:     "From header with malformed email",
-			message:  []byte("From: @example.com\r\nTo: recipient@example.com\r\nSubject: Test\r\n\r\nTest message"),
-			want:     "example.com",
-			wantErr:  false,
+			name:    "From header with malformed email",
+			message: []byte("From: @example.com\r\nTo: recipient@example.com\r\nSubject: Test\r\n\r\nTest message"),
+			want:    "example.com",
+			wantErr: false,
 		},
 	}
 
@@ -711,7 +711,7 @@ func TestAuthService_PerformAuthenticationChecks_WithAllEnabled(t *testing.T) {
 
 func TestAuthService_CheckSPF_WithValidDomain(t *testing.T) {
 	authService := &authService{enableSPF: true}
-	
+
 	message := []byte("From: test@google.com\r\nTo: recipient@example.com\r\nSubject: Test\r\n\r\nTest message")
 	remoteIP := net.IPv4(8, 8, 8, 8) // Google's DNS server
 
@@ -722,7 +722,7 @@ func TestAuthService_CheckSPF_WithValidDomain(t *testing.T) {
 
 func TestAuthService_CheckDKIM_WithValidMessage(t *testing.T) {
 	authService := &authService{enableDKIM: true}
-	
+
 	message := []byte("From: test@example.com\r\nTo: recipient@example.com\r\nSubject: Test\r\n\r\nTest message")
 
 	result, err := authService.checkDKIM(message)
@@ -732,7 +732,7 @@ func TestAuthService_CheckDKIM_WithValidMessage(t *testing.T) {
 
 func TestAuthService_CheckDMARC_WithValidMessage(t *testing.T) {
 	authService := &authService{enableDMARC: true}
-	
+
 	message := []byte("From: test@example.com\r\nTo: recipient@example.com\r\nSubject: Test\r\n\r\nTest message")
 
 	result, policy, err := authService.checkDMARC(message)
@@ -745,34 +745,34 @@ func TestAuthService_ExtractDomainFromMessage_WithComplexEmail(t *testing.T) {
 	authService := &authService{}
 
 	tests := []struct {
-		name     string
-		message  []byte
-		want     string
-		wantErr  bool
+		name    string
+		message []byte
+		want    string
+		wantErr bool
 	}{
 		{
-			name:     "email with display name and angle brackets",
-			message:  []byte("From: \"John Doe\" <john.doe@example.com>\r\nTo: recipient@example.com\r\nSubject: Test\r\n\r\nTest message"),
-			want:     "example.com",
-			wantErr:  false,
+			name:    "email with display name and angle brackets",
+			message: []byte("From: \"John Doe\" <john.doe@example.com>\r\nTo: recipient@example.com\r\nSubject: Test\r\n\r\nTest message"),
+			want:    "example.com",
+			wantErr: false,
 		},
 		{
-			name:     "email with multiple recipients",
-			message:  []byte("From: sender@example.com\r\nTo: user1@example.com, user2@test.com\r\nSubject: Test\r\n\r\nTest message"),
-			want:     "example.com",
-			wantErr:  false,
+			name:    "email with multiple recipients",
+			message: []byte("From: sender@example.com\r\nTo: user1@example.com, user2@test.com\r\nSubject: Test\r\n\r\nTest message"),
+			want:    "example.com",
+			wantErr: false,
 		},
 		{
-			name:     "email with reply-to header",
-			message:  []byte("From: sender@example.com\r\nReply-To: reply@example.com\r\nTo: recipient@example.com\r\nSubject: Test\r\n\r\nTest message"),
-			want:     "example.com",
-			wantErr:  false,
+			name:    "email with reply-to header",
+			message: []byte("From: sender@example.com\r\nReply-To: reply@example.com\r\nTo: recipient@example.com\r\nSubject: Test\r\n\r\nTest message"),
+			want:    "example.com",
+			wantErr: false,
 		},
 		{
-			name:     "email with return-path header",
-			message:  []byte("Return-Path: <bounce@example.com>\r\nFrom: sender@example.com\r\nTo: recipient@example.com\r\nSubject: Test\r\n\r\nTest message"),
-			want:     "example.com",
-			wantErr:  false,
+			name:    "email with return-path header",
+			message: []byte("Return-Path: <bounce@example.com>\r\nFrom: sender@example.com\r\nTo: recipient@example.com\r\nSubject: Test\r\n\r\nTest message"),
+			want:    "example.com",
+			wantErr: false,
 		},
 	}
 
