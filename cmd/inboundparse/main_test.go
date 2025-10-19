@@ -2,9 +2,7 @@ package main
 
 import (
 	"context"
-	"io"
 	"net"
-	"strings"
 	"testing"
 	"time"
 
@@ -121,18 +119,13 @@ func TestLogServerInfo(t *testing.T) {
 	logServerInfo(ctx, config, logger)
 }
 
-func TestSMTPBackendWithServices_NewSession(t *testing.T) {
+func TestSMTPBackend_NewSession(t *testing.T) {
 	config := &config.Config{}
 	webhookService := &mockWebhookService{}
 	authService := &mockAuthService{}
 	metricsService := &mockMetricsServiceForMain{}
 
-	backend := &smtpBackendWithServices{
-		config:         config,
-		webhookService: webhookService,
-		authService:    authService,
-		metricsService: metricsService,
-	}
+	backend := service.NewSMTPBackend(config, webhookService, authService, metricsService)
 
 	tests := []struct {
 		name        string
@@ -164,304 +157,18 @@ func TestSMTPBackendWithServices_NewSession(t *testing.T) {
 	}
 }
 
-func TestSMTPBackendWithServices_NewSession_IncrementsActiveSessions(t *testing.T) {
+func TestSMTPBackend_NewSession_IncrementsActiveSessions(t *testing.T) {
 	cfg := &config.Config{}
 	webhookService := &mockWebhookService{}
 	authService := &mockAuthService{}
 	metricsService := &mockMetricsServiceForMain{}
 
-	backend := &smtpBackendWithServices{
-		config:         cfg,
-		webhookService: webhookService,
-		authService:    authService,
-		metricsService: metricsService,
-	}
+	backend := service.NewSMTPBackend(cfg, webhookService, authService, metricsService)
 
 	session, err := backend.NewSession(nil)
 	assert.NoError(t, err)
 	assert.NotNil(t, session)
 	assert.Equal(t, 1, metricsService.activeSessionsInc, "active sessions should be incremented once")
-}
-
-func TestSMTPSessionWithServices_AuthPlain(t *testing.T) {
-	config := &config.Config{}
-	messageProcessor := &mockMessageProcessor{}
-	metricsService := &mockMetricsServiceForMain{}
-	remoteIP := net.IPv4(127, 0, 0, 1)
-
-	session := &smtpSessionWithServices{
-		config:           config,
-		messageProcessor: messageProcessor,
-		metricsService:   metricsService,
-		remoteIP:         remoteIP,
-	}
-
-	tests := []struct {
-		name     string
-		username string
-		password string
-		wantErr  bool
-	}{
-		{
-			name:     "valid credentials",
-			username: "testuser",
-			password: "testpass",
-			wantErr:  false,
-		},
-		{
-			name:     "empty credentials",
-			username: "",
-			password: "",
-			wantErr:  false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			err := session.AuthPlain(tt.username, tt.password)
-			if tt.wantErr {
-				assert.Error(t, err)
-			} else {
-				assert.NoError(t, err)
-			}
-		})
-	}
-}
-
-func TestSMTPSessionWithServices_Mail(t *testing.T) {
-	config := &config.Config{}
-	messageProcessor := &mockMessageProcessor{}
-	metricsService := &mockMetricsServiceForMain{}
-	remoteIP := net.IPv4(127, 0, 0, 1)
-
-	session := &smtpSessionWithServices{
-		config:           config,
-		messageProcessor: messageProcessor,
-		metricsService:   metricsService,
-		remoteIP:         remoteIP,
-	}
-
-	tests := []struct {
-		name    string
-		from    string
-		wantErr bool
-	}{
-		{
-			name:    "valid from address",
-			from:    "test@example.com",
-			wantErr: false,
-		},
-		{
-			name:    "empty from address",
-			from:    "",
-			wantErr: false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			err := session.Mail(tt.from, nil)
-			if tt.wantErr {
-				assert.Error(t, err)
-			} else {
-				assert.NoError(t, err)
-			}
-			assert.Equal(t, tt.from, session.from)
-		})
-	}
-}
-
-func TestSMTPSessionWithServices_Rcpt(t *testing.T) {
-	config := &config.Config{}
-	messageProcessor := &mockMessageProcessor{}
-	metricsService := &mockMetricsServiceForMain{}
-	remoteIP := net.IPv4(127, 0, 0, 1)
-
-	session := &smtpSessionWithServices{
-		config:           config,
-		messageProcessor: messageProcessor,
-		metricsService:   metricsService,
-		remoteIP:         remoteIP,
-	}
-
-	tests := []struct {
-		name    string
-		to      string
-		wantErr bool
-	}{
-		{
-			name:    "valid to address",
-			to:      "recipient@example.com",
-			wantErr: false,
-		},
-		{
-			name:    "empty to address",
-			to:      "",
-			wantErr: false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			err := session.Rcpt(tt.to, nil)
-			if tt.wantErr {
-				assert.Error(t, err)
-			} else {
-				assert.NoError(t, err)
-			}
-			if !tt.wantErr {
-				assert.NotEmpty(t, session.to)
-				assert.Equal(t, tt.to, session.to[len(session.to)-1])
-			}
-		})
-	}
-}
-
-func TestSMTPSessionWithServices_Data(t *testing.T) {
-	config := &config.Config{}
-	messageProcessor := &mockMessageProcessor{}
-	metricsService := &mockMetricsServiceForMain{}
-	remoteIP := net.IPv4(127, 0, 0, 1)
-
-	session := &smtpSessionWithServices{
-		config:           config,
-		messageProcessor: messageProcessor,
-		metricsService:   metricsService,
-		remoteIP:         remoteIP,
-	}
-
-	tests := []struct {
-		name                string
-		messageData         string
-		processMessageError error
-		wantErr             bool
-	}{
-		{
-			name:                "successful message processing",
-			messageData:         "From: test@example.com\r\nTo: recipient@example.com\r\nSubject: Test\r\n\r\nTest message",
-			processMessageError: nil,
-			wantErr:             false,
-		},
-		{
-			name:                "message processing error",
-			messageData:         "From: test@example.com\r\nTo: recipient@example.com\r\nSubject: Test\r\n\r\nTest message",
-			processMessageError: context.Canceled,
-			wantErr:             true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// Set up message processor mock
-			messageProcessor.processMessageFunc = func(ctx context.Context, r io.Reader) error {
-				return tt.processMessageError
-			}
-
-			reader := strings.NewReader(tt.messageData)
-			err := session.Data(reader)
-
-			if tt.wantErr {
-				assert.Error(t, err)
-			} else {
-				assert.NoError(t, err)
-			}
-		})
-	}
-}
-
-func TestSMTPSessionWithServices_Data_UpdatesMetrics(t *testing.T) {
-	cfg := &config.Config{}
-	mp := &mockMessageProcessor{}
-	metrics := &mockMetricsServiceForMain{}
-	remoteIP := net.IPv4(127, 0, 0, 1)
-
-	session := &smtpSessionWithServices{
-		config:           cfg,
-		messageProcessor: mp,
-		metricsService:   metrics,
-		remoteIP:         remoteIP,
-	}
-
-	t.Run("success increments SMTP messages", func(t *testing.T) {
-		mp.processMessageFunc = func(ctx context.Context, r io.Reader) error { return nil }
-		metrics.smtpMessagesInc = 0
-		metrics.messagesFailedInc = 0
-
-		err := session.Data(strings.NewReader("ok"))
-		assert.NoError(t, err)
-		assert.Equal(t, 1, metrics.smtpMessagesInc)
-		assert.Equal(t, 0, metrics.messagesFailedInc)
-	})
-
-	t.Run("failure increments messages failed", func(t *testing.T) {
-		mp.processMessageFunc = func(ctx context.Context, r io.Reader) error { return context.Canceled }
-		metrics.smtpMessagesInc = 0
-		metrics.messagesFailedInc = 0
-
-		err := session.Data(strings.NewReader("fail"))
-		assert.Error(t, err)
-		assert.Equal(t, 0, metrics.smtpMessagesInc)
-		assert.Equal(t, 1, metrics.messagesFailedInc)
-	})
-}
-
-func TestSMTPSessionWithServices_Reset(t *testing.T) {
-	config := &config.Config{}
-	messageProcessor := &mockMessageProcessor{}
-	metricsService := &mockMetricsServiceForMain{}
-	remoteIP := net.IPv4(127, 0, 0, 1)
-
-	session := &smtpSessionWithServices{
-		config:           config,
-		messageProcessor: messageProcessor,
-		metricsService:   metricsService,
-		remoteIP:         remoteIP,
-	}
-
-	// Set some state
-	session.from = "test@example.com"
-	session.to = []string{"recipient@example.com"}
-
-	// Reset the session
-	session.Reset()
-
-	assert.Empty(t, session.from, "Reset() should clear from field")
-	assert.Nil(t, session.to, "Reset() should clear to field")
-}
-
-func TestSMTPSessionWithServices_Logout(t *testing.T) {
-	config := &config.Config{}
-	messageProcessor := &mockMessageProcessor{}
-	metricsService := &mockMetricsServiceForMain{}
-	remoteIP := net.IPv4(127, 0, 0, 1)
-
-	session := &smtpSessionWithServices{
-		config:           config,
-		messageProcessor: messageProcessor,
-		metricsService:   metricsService,
-		remoteIP:         remoteIP,
-	}
-
-	err := session.Logout()
-	assert.NoError(t, err)
-}
-
-func TestSMTPSessionWithServices_Logout_DecrementsActiveSessions(t *testing.T) {
-	cfg := &config.Config{}
-	mp := &mockMessageProcessor{}
-	metrics := &mockMetricsServiceForMain{}
-	remoteIP := net.IPv4(127, 0, 0, 1)
-
-	session := &smtpSessionWithServices{
-		config:           cfg,
-		messageProcessor: mp,
-		metricsService:   metrics,
-		remoteIP:         remoteIP,
-	}
-
-	err := session.Logout()
-	assert.NoError(t, err)
-	assert.Equal(t, 1, metrics.activeSessionsDec, "active sessions should be decremented once")
 }
 
 // Test main function error paths
@@ -521,18 +228,9 @@ func TestMain_BackendCreation(t *testing.T) {
 	metricsService := &mockMetricsServiceForMain{}
 
 	// Test backend creation (this is done in main())
-	backend := &smtpBackendWithServices{
-		config:         config,
-		webhookService: webhookService,
-		authService:    authService,
-		metricsService: metricsService,
-	}
+	backend := service.NewSMTPBackend(config, webhookService, authService, metricsService)
 
 	assert.NotNil(t, backend)
-	assert.Equal(t, config, backend.config)
-	assert.Equal(t, webhookService, backend.webhookService)
-	assert.Equal(t, authService, backend.authService)
-	assert.Equal(t, metricsService, backend.metricsService)
 }
 
 // Test main function with different configurations (without metrics to avoid registration issues)
@@ -616,12 +314,7 @@ func TestMain_WithDifferentConfigurations(t *testing.T) {
 			assert.NotNil(t, authService)
 
 			// Test backend creation
-			backend := &smtpBackendWithServices{
-				config:         tc.config,
-				webhookService: webhookService,
-				authService:    authService,
-				metricsService: metricsService,
-			}
+			backend := service.NewSMTPBackend(tc.config, webhookService, authService, metricsService)
 			assert.NotNil(t, backend)
 		})
 	}
@@ -810,17 +503,6 @@ func (m *mockAuthService) PerformAuthenticationChecks(ctx context.Context, messa
 		return m.performAuthChecksFunc(ctx, message, remoteIP)
 	}
 	return &service.AuthResult{}, nil
-}
-
-type mockMessageProcessor struct {
-	processMessageFunc func(ctx context.Context, r io.Reader) error
-}
-
-func (m *mockMessageProcessor) ProcessMessage(ctx context.Context, r io.Reader) error {
-	if m.processMessageFunc != nil {
-		return m.processMessageFunc(ctx, r)
-	}
-	return nil
 }
 
 type mockMetricsServiceForMain struct {

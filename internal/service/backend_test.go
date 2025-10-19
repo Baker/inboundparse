@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"io"
 	"strings"
 	"testing"
 	"time"
@@ -10,18 +9,6 @@ import (
 	"github.com/emersion/go-smtp"
 	"github.com/inboundparse/inboundparse/internal/config"
 )
-
-// mockMessageProcessor is a mock implementation of MessageProcessor
-type mockMessageProcessor struct {
-	processMessageFunc func(ctx context.Context, r io.Reader) error
-}
-
-func (m *mockMessageProcessor) ProcessMessage(ctx context.Context, r io.Reader) error {
-	if m.processMessageFunc != nil {
-		return m.processMessageFunc(ctx, r)
-	}
-	return nil
-}
 
 // mockMetricsService is a mock implementation of MetricsService
 type mockMetricsService struct {
@@ -68,10 +55,11 @@ func (m *mockMetricsService) Close() error { return nil }
 
 func TestNewSMTPBackend(t *testing.T) {
 	config := &config.Config{}
-	messageProcessor := &mockMessageProcessor{}
+	webhookService := &mockWebhookService{}
+	authService := &mockAuthService{}
 	metricsService := &mockMetricsService{}
 
-	backend := NewSMTPBackend(config, messageProcessor, metricsService)
+	backend := NewSMTPBackend(config, webhookService, authService, metricsService)
 	if backend == nil {
 		t.Error("NewSMTPBackend() returned nil")
 	}
@@ -79,10 +67,11 @@ func TestNewSMTPBackend(t *testing.T) {
 
 func TestSMTPBackend_NewSession(t *testing.T) {
 	config := &config.Config{}
-	messageProcessor := &mockMessageProcessor{}
+	webhookService := &mockWebhookService{}
+	authService := &mockAuthService{}
 	metricsService := &mockMetricsService{}
 
-	backend := NewSMTPBackend(config, messageProcessor, metricsService).(*smtpBackend)
+	backend := NewSMTPBackend(config, webhookService, authService, metricsService).(*smtpBackend)
 
 	tests := []struct {
 		name        string
@@ -117,10 +106,11 @@ func TestSMTPBackend_NewSession(t *testing.T) {
 
 func TestSMTPBackend_NewSession_IncrementsMetrics(t *testing.T) {
 	config := &config.Config{}
-	messageProcessor := &mockMessageProcessor{}
+	webhookService := &mockWebhookService{}
+	authService := &mockAuthService{}
 	metricsService := &mockMetricsService{}
 
-	backend := NewSMTPBackend(config, messageProcessor, metricsService).(*smtpBackend)
+	backend := NewSMTPBackend(config, webhookService, authService, metricsService).(*smtpBackend)
 
 	_, err := backend.NewSession(nil)
 	if err != nil {
@@ -134,10 +124,11 @@ func TestSMTPBackend_NewSession_IncrementsMetrics(t *testing.T) {
 
 func TestSMTPSession_AuthPlain(t *testing.T) {
 	config := &config.Config{}
-	messageProcessor := &mockMessageProcessor{}
+	webhookService := &mockWebhookService{}
+	authService := &mockAuthService{}
 	metricsService := &mockMetricsService{}
 
-	backend := NewSMTPBackend(config, messageProcessor, metricsService).(*smtpBackend)
+	backend := NewSMTPBackend(config, webhookService, authService, metricsService).(*smtpBackend)
 	session, err := backend.NewSession(nil)
 	if err != nil {
 		t.Fatalf("NewSession() error = %v", err)
@@ -177,10 +168,11 @@ func TestSMTPSession_AuthPlain(t *testing.T) {
 
 func TestSMTPSession_Mail(t *testing.T) {
 	config := &config.Config{}
-	messageProcessor := &mockMessageProcessor{}
+	webhookService := &mockWebhookService{}
+	authService := &mockAuthService{}
 	metricsService := &mockMetricsService{}
 
-	backend := NewSMTPBackend(config, messageProcessor, metricsService).(*smtpBackend)
+	backend := NewSMTPBackend(config, webhookService, authService, metricsService).(*smtpBackend)
 	session, err := backend.NewSession(nil)
 	if err != nil {
 		t.Fatalf("NewSession() error = %v", err)
@@ -220,10 +212,11 @@ func TestSMTPSession_Mail(t *testing.T) {
 
 func TestSMTPSession_Rcpt(t *testing.T) {
 	config := &config.Config{}
-	messageProcessor := &mockMessageProcessor{}
+	webhookService := &mockWebhookService{}
+	authService := &mockAuthService{}
 	metricsService := &mockMetricsService{}
 
-	backend := NewSMTPBackend(config, messageProcessor, metricsService).(*smtpBackend)
+	backend := NewSMTPBackend(config, webhookService, authService, metricsService).(*smtpBackend)
 	session, err := backend.NewSession(nil)
 	if err != nil {
 		t.Fatalf("NewSession() error = %v", err)
@@ -262,54 +255,50 @@ func TestSMTPSession_Rcpt(t *testing.T) {
 }
 
 func TestSMTPSession_Data(t *testing.T) {
-	config := &config.Config{}
-	messageProcessor := &mockMessageProcessor{}
-	metricsService := &mockMetricsService{}
-
-	backend := NewSMTPBackend(config, messageProcessor, metricsService).(*smtpBackend)
-	session, err := backend.NewSession(nil)
-	if err != nil {
-		t.Fatalf("NewSession() error = %v", err)
-	}
-
-	smtpSession := session.(*smtpSession)
-
 	tests := []struct {
-		name                string
-		messageData         string
-		processMessageError error
-		wantErr             bool
-		expectMetricsCall   bool
+		name              string
+		messageData       string
+		webhookError      error
+		wantErr           bool
+		expectMetricsCall bool
 	}{
 		{
-			name:                "successful message processing",
-			messageData:         "From: test@example.com\r\nTo: recipient@example.com\r\nSubject: Test\r\n\r\nTest message",
-			processMessageError: nil,
-			wantErr:             false,
-			expectMetricsCall:   true,
+			name:              "successful message processing",
+			messageData:       "From: test@example.com\r\nTo: recipient@example.com\r\nSubject: Test\r\n\r\nTest message",
+			webhookError:      nil,
+			wantErr:           false,
+			expectMetricsCall: true,
 		},
 		{
-			name:                "message processing error",
-			messageData:         "From: test@example.com\r\nTo: recipient@example.com\r\nSubject: Test\r\n\r\nTest message",
-			processMessageError: context.Canceled,
-			wantErr:             true,
-			expectMetricsCall:   false,
+			name:              "message processing error",
+			messageData:       "From: test@example.com\r\nTo: recipient@example.com\r\nSubject: Test\r\n\r\nTest message",
+			webhookError:      context.Canceled,
+			wantErr:           true,
+			expectMetricsCall: false,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Reset metrics service state
-			metricsService.incrementSMTPMessagesCalled = false
-			metricsService.incrementMessagesFailedCalled = false
+			config := &config.Config{}
+			webhookService := &mockWebhookService{
+				sendWebhookFunc: func(ctx context.Context, payload *WebhookPayload) error {
+					return tt.webhookError
+				},
+			}
+			authService := &mockAuthService{}
+			metricsService := &mockMetricsService{}
 
-			// Set up message processor mock
-			messageProcessor.processMessageFunc = func(ctx context.Context, r io.Reader) error {
-				return tt.processMessageError
+			backend := NewSMTPBackend(config, webhookService, authService, metricsService).(*smtpBackend)
+			session, err := backend.NewSession(nil)
+			if err != nil {
+				t.Fatalf("NewSession() error = %v", err)
 			}
 
+			smtpSession := session.(*smtpSession)
+
 			reader := strings.NewReader(tt.messageData)
-			err := smtpSession.Data(reader)
+			err = smtpSession.Data(reader)
 
 			if (err != nil) != tt.wantErr {
 				t.Errorf("Data() error = %v, wantErr %v", err, tt.wantErr)
@@ -319,7 +308,7 @@ func TestSMTPSession_Data(t *testing.T) {
 				t.Error("Expected IncrementSMTPMessages to be called")
 			}
 
-			if !tt.expectMetricsCall && tt.processMessageError != nil && !metricsService.incrementMessagesFailedCalled {
+			if !tt.expectMetricsCall && tt.webhookError != nil && !metricsService.incrementMessagesFailedCalled {
 				t.Error("Expected IncrementMessagesFailed to be called")
 			}
 		})
@@ -328,10 +317,11 @@ func TestSMTPSession_Data(t *testing.T) {
 
 func TestSMTPSession_Reset(t *testing.T) {
 	config := &config.Config{}
-	messageProcessor := &mockMessageProcessor{}
+	webhookService := &mockWebhookService{}
+	authService := &mockAuthService{}
 	metricsService := &mockMetricsService{}
 
-	backend := NewSMTPBackend(config, messageProcessor, metricsService).(*smtpBackend)
+	backend := NewSMTPBackend(config, webhookService, authService, metricsService).(*smtpBackend)
 	session, err := backend.NewSession(nil)
 	if err != nil {
 		t.Fatalf("NewSession() error = %v", err)
@@ -356,10 +346,11 @@ func TestSMTPSession_Reset(t *testing.T) {
 
 func TestSMTPSession_Logout(t *testing.T) {
 	config := &config.Config{}
-	messageProcessor := &mockMessageProcessor{}
+	webhookService := &mockWebhookService{}
+	authService := &mockAuthService{}
 	metricsService := &mockMetricsService{}
 
-	backend := NewSMTPBackend(config, messageProcessor, metricsService).(*smtpBackend)
+	backend := NewSMTPBackend(config, webhookService, authService, metricsService).(*smtpBackend)
 	session, err := backend.NewSession(nil)
 	if err != nil {
 		t.Fatalf("NewSession() error = %v", err)
@@ -379,10 +370,11 @@ func TestSMTPSession_Logout(t *testing.T) {
 
 func TestSMTPBackend_NewSession_WithConnection(t *testing.T) {
 	config := &config.Config{}
-	messageProcessor := &mockMessageProcessor{}
+	webhookService := &mockWebhookService{}
+	authService := &mockAuthService{}
 	metricsService := &mockMetricsService{}
 
-	backend := NewSMTPBackend(config, messageProcessor, metricsService).(*smtpBackend)
+	backend := NewSMTPBackend(config, webhookService, authService, metricsService).(*smtpBackend)
 
 	// Test with a mock connection that has a remote address
 	tests := []struct {
@@ -412,25 +404,10 @@ func TestSMTPBackend_NewSession_WithConnection(t *testing.T) {
 }
 
 func TestSMTPSession_Data_WithMetrics(t *testing.T) {
-	config := &config.Config{}
-	messageProcessor := &mockMessageProcessor{}
-	metricsService := &mockMetricsService{
-		incrementSMTPMessagesCalled:   false,
-		incrementMessagesFailedCalled: false,
-	}
-
-	backend := NewSMTPBackend(config, messageProcessor, metricsService).(*smtpBackend)
-	session, err := backend.NewSession(nil)
-	if err != nil {
-		t.Fatalf("NewSession() error = %v", err)
-	}
-
-	smtpSession := session.(*smtpSession)
-
 	tests := []struct {
 		name                 string
 		messageData          string
-		processMessageError  error
+		webhookError         error
 		wantErr              bool
 		expectSuccessMetrics bool
 		expectFailureMetrics bool
@@ -438,7 +415,7 @@ func TestSMTPSession_Data_WithMetrics(t *testing.T) {
 		{
 			name:                 "successful message processing",
 			messageData:          "From: test@example.com\r\nTo: recipient@example.com\r\nSubject: Test\r\n\r\nTest message",
-			processMessageError:  nil,
+			webhookError:         nil,
 			wantErr:              false,
 			expectSuccessMetrics: true,
 			expectFailureMetrics: false,
@@ -446,7 +423,7 @@ func TestSMTPSession_Data_WithMetrics(t *testing.T) {
 		{
 			name:                 "message processing error",
 			messageData:          "From: test@example.com\r\nTo: recipient@example.com\r\nSubject: Test\r\n\r\nTest message",
-			processMessageError:  context.Canceled,
+			webhookError:         context.Canceled,
 			wantErr:              true,
 			expectSuccessMetrics: false,
 			expectFailureMetrics: true,
@@ -455,17 +432,28 @@ func TestSMTPSession_Data_WithMetrics(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Reset metrics service state
-			metricsService.incrementSMTPMessagesCalled = false
-			metricsService.incrementMessagesFailedCalled = false
-
-			// Set up message processor mock
-			messageProcessor.processMessageFunc = func(ctx context.Context, r io.Reader) error {
-				return tt.processMessageError
+			config := &config.Config{}
+			webhookService := &mockWebhookService{
+				sendWebhookFunc: func(ctx context.Context, payload *WebhookPayload) error {
+					return tt.webhookError
+				},
+			}
+			authService := &mockAuthService{}
+			metricsService := &mockMetricsService{
+				incrementSMTPMessagesCalled:   false,
+				incrementMessagesFailedCalled: false,
 			}
 
+			backend := NewSMTPBackend(config, webhookService, authService, metricsService).(*smtpBackend)
+			session, err := backend.NewSession(nil)
+			if err != nil {
+				t.Fatalf("NewSession() error = %v", err)
+			}
+
+			smtpSession := session.(*smtpSession)
+
 			reader := strings.NewReader(tt.messageData)
-			err := smtpSession.Data(reader)
+			err = smtpSession.Data(reader)
 
 			if (err != nil) != tt.wantErr {
 				t.Errorf("Data() error = %v, wantErr %v", err, tt.wantErr)
@@ -484,12 +472,13 @@ func TestSMTPSession_Data_WithMetrics(t *testing.T) {
 
 func TestSMTPSession_Logout_WithMetrics(t *testing.T) {
 	config := &config.Config{}
-	messageProcessor := &mockMessageProcessor{}
+	webhookService := &mockWebhookService{}
+	authService := &mockAuthService{}
 	metricsService := &mockMetricsService{
 		decrementActiveSessionsCalled: false,
 	}
 
-	backend := NewSMTPBackend(config, messageProcessor, metricsService).(*smtpBackend)
+	backend := NewSMTPBackend(config, webhookService, authService, metricsService).(*smtpBackend)
 	session, err := backend.NewSession(nil)
 	if err != nil {
 		t.Fatalf("NewSession() error = %v", err)

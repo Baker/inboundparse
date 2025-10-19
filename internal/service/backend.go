@@ -12,21 +12,24 @@ import (
 
 // smtpBackend implements the SMTPBackend interface
 type smtpBackend struct {
-	config           *config.Config
-	messageProcessor MessageProcessor
-	metricsService   MetricsService
+	config         *config.Config
+	webhookService WebhookService
+	authService    AuthService
+	metricsService MetricsService
 }
 
 // NewSMTPBackend creates a new SMTP backend
 func NewSMTPBackend(
 	config *config.Config,
-	messageProcessor MessageProcessor,
+	webhookService WebhookService,
+	authService AuthService,
 	metricsService MetricsService,
 ) SMTPBackend {
 	return &smtpBackend{
-		config:           config,
-		messageProcessor: messageProcessor,
-		metricsService:   metricsService,
+		config:         config,
+		webhookService: webhookService,
+		authService:    authService,
+		metricsService: metricsService,
 	}
 }
 
@@ -42,10 +45,18 @@ func (b *smtpBackend) NewSession(conn *smtp.Conn) (smtp.Session, error) {
 		}
 	}
 
+	// Create message processor with remote IP
+	processor := NewMessageProcessor(
+		b.webhookService,
+		b.authService,
+		b.metricsService,
+		remoteIP,
+	)
+
 	// Create session
 	session := &smtpSession{
 		config:           b.config,
-		messageProcessor: b.messageProcessor,
+		messageProcessor: processor,
 		metricsService:   b.metricsService,
 		remoteIP:         remoteIP,
 	}
