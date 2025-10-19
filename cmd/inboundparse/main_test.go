@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/emersion/go-smtp"
+	"github.com/getsentry/sentry-go"
 	"github.com/inboundparse/inboundparse/internal/config"
 	"github.com/inboundparse/inboundparse/internal/service"
 	"github.com/stretchr/testify/assert"
@@ -822,5 +823,260 @@ func TestRunWithConfig_SentryInitialization(t *testing.T) {
 	err := initializeSentry(cfg, logger)
 	if err != nil {
 		t.Logf("Sentry initialization failed (may be expected in test): %v", err)
+	}
+}
+
+// TestInitializeSentry_BeforeSendCallbackExecution tests that the BeforeSend callback adds proper tags
+func TestInitializeSentry_BeforeSendCallbackExecution(t *testing.T) {
+	logger := &mockLoggerServiceForMain{}
+
+	cfg := &config.Config{
+		Sentry: config.SentryConfig{
+			Enabled: true,
+			DSN:     "https://public@sentry.io/1",
+			Env:     "test",
+			Release: "v1.0.0",
+		},
+		Server: config.ServerConfig{
+			Verbose: false,
+		},
+	}
+
+	// Initialize Sentry
+	err := initializeSentry(cfg, logger)
+	if err != nil {
+		t.Logf("Sentry initialization failed (may be expected in test): %v", err)
+		// Don't fail the test, Sentry might not initialize in test env
+		return
+	}
+
+	// Create a test event to simulate BeforeSend being called
+	testEvent := &sentry.Event{
+		Message: "test event",
+		Tags:    make(map[string]string),
+	}
+
+	// Get the Hub and manually test the BeforeSend logic
+	hub := sentry.CurrentHub()
+	client := hub.Client()
+	if client != nil {
+		options := client.Options()
+		if options.BeforeSend != nil {
+			// Execute BeforeSend callback
+			modifiedEvent := options.BeforeSend(testEvent, nil)
+
+			// Verify tags were added
+			assert.NotNil(t, modifiedEvent, "Event should not be nil after BeforeSend")
+			assert.Equal(t, "inboundparse", modifiedEvent.Tags["service"], "Service tag should be set")
+			assert.Equal(t, "smtp-server", modifiedEvent.Tags["component"], "Component tag should be set")
+		}
+	}
+}
+
+// TestRunWithConfig_LoggerInitialization tests that logger is properly initialized
+func TestRunWithConfig_LoggerInitialization(t *testing.T) {
+	tests := []struct {
+		name    string
+		verbose bool
+	}{
+		{
+			name:    "verbose mode enabled",
+			verbose: true,
+		},
+		{
+			name:    "verbose mode disabled",
+			verbose: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Test logger initialization directly since we can't run the full server in tests
+			logger, err := service.NewLoggerService(tt.verbose)
+			assert.NoError(t, err, "Logger should initialize successfully")
+			assert.NotNil(t, logger, "Logger should not be nil")
+
+			// Clean up
+			if logger != nil {
+				// Close may fail in test environment with "sync /dev/stderr: invalid argument"
+				// which is expected behavior, so we just call it without asserting
+				_ = logger.Close()
+			}
+		})
+	}
+}
+
+// TestRunWithConfig_ServiceInitialization tests that services are created properly
+func TestRunWithConfig_ServiceInitialization(t *testing.T) {
+	tests := []struct {
+		name   string
+		config *config.Config
+	}{
+		{
+			name: "metrics enabled",
+			config: &config.Config{
+				Webhook: config.WebhookConfig{
+					URL:      "http://example.com/webhook",
+					Username: "user",
+					Password: "pass",
+				},
+				Auth: config.AuthConfig{
+					EnableSPF:   true,
+					EnableDKIM:  true,
+					EnableDMARC: true,
+				},
+				Metrics: config.MetricsConfig{
+					Enabled: true,
+					Addr:    ":9090",
+				},
+			},
+		},
+		{
+			name: "all auth disabled",
+			config: &config.Config{
+				Webhook: config.WebhookConfig{
+					URL: "http://example.com/webhook",
+				},
+				Auth: config.AuthConfig{
+					EnableSPF:   false,
+					EnableDKIM:  false,
+					EnableDMARC: false,
+				},
+				Metrics: config.MetricsConfig{
+					Enabled: false,
+				},
+			},
+		},
+		{
+			name: "with auth credentials",
+			config: &config.Config{
+				Webhook: config.WebhookConfig{
+					URL:      "https://webhook.example.com/inbound",
+					Username: "testuser",
+					Password: "testpass",
+				},
+				Auth: config.AuthConfig{
+					EnableSPF:   true,
+					EnableDKIM:  false,
+					EnableDMARC: true,
+				},
+				Metrics: config.MetricsConfig{
+					Enabled: false, // Disabled to avoid duplicate Prometheus registration in tests
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Test service creation directly without starting the server
+			logger := &mockLoggerServiceForMain{}
+
+			// Create services like runWithConfig does
+			metricsService := service.NewMetricsService(tt.config.Metrics.Enabled)
+			assert.NotNil(t, metricsService, "Metrics service should be created")
+
+			webhookService := service.NewWebhookService(
+				tt.config.Webhook.URL,
+				tt.config.Webhook.Username,
+				tt.config.Webhook.Password,
+			)
+			assert.NotNil(t, webhookService, "Webhook service should be created")
+
+			authService := service.NewAuthService(
+				tt.config.Auth.EnableSPF,
+				tt.config.Auth.EnableDKIM,
+				tt.config.Auth.EnableDMARC,
+				logger,
+			)
+			assert.NotNil(t, authService, "Auth service should be created")
+
+			// Create backend
+			backend := service.NewSMTPBackend(tt.config, webhookService, authService, metricsService, logger)
+			assert.NotNil(t, backend, "SMTP backend should be created")
+		})
+	}
+}
+
+// TestLogServerInfo_DifferentConfigurations tests logServerInfo with various configs
+func TestLogServerInfo_DifferentConfigurations(t *testing.T) {
+	logger := &mockLoggerServiceForMain{}
+	ctx := context.Background()
+
+	tests := []struct {
+		name   string
+		config *config.Config
+	}{
+		{
+			name: "minimal config",
+			config: &config.Config{
+				Server: config.ServerConfig{
+					ListenAddr:    ":25",
+					ListenAddrTLS: "",
+					ServerName:    "localhost",
+					Verbose:       false,
+					CertFile:      "",
+					KeyFile:       "",
+				},
+				Webhook: config.WebhookConfig{
+					URL: "http://example.com/webhook",
+				},
+				Auth: config.AuthConfig{
+					EnableSPF:   false,
+					EnableDKIM:  false,
+					EnableDMARC: false,
+				},
+				Metrics: config.MetricsConfig{
+					Enabled: false,
+					Addr:    "",
+				},
+				Sentry: config.SentryConfig{
+					Enabled: false,
+				},
+				Logging: config.LoggingConfig{
+					Level:  "info",
+					Format: "json",
+				},
+			},
+		},
+		{
+			name: "full config with TLS",
+			config: &config.Config{
+				Server: config.ServerConfig{
+					ListenAddr:    ":25",
+					ListenAddrTLS: ":465",
+					ServerName:    "mail.example.com",
+					Verbose:       true,
+					CertFile:      "/path/to/cert.pem",
+					KeyFile:       "/path/to/key.pem",
+				},
+				Webhook: config.WebhookConfig{
+					URL: "https://api.example.com/webhook",
+				},
+				Auth: config.AuthConfig{
+					EnableSPF:   true,
+					EnableDKIM:  true,
+					EnableDMARC: true,
+				},
+				Metrics: config.MetricsConfig{
+					Enabled: true,
+					Addr:    ":9090",
+				},
+				Sentry: config.SentryConfig{
+					Enabled: true,
+				},
+				Logging: config.LoggingConfig{
+					Level:  "debug",
+					Format: "console",
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Should not panic
+			logServerInfo(ctx, tt.config, logger)
+		})
 	}
 }
