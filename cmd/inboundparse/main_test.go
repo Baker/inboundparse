@@ -913,7 +913,7 @@ func TestRunWithConfig_ServiceInitialization(t *testing.T) {
 		config *config.Config
 	}{
 		{
-			name: "metrics enabled",
+			name: "with webhook credentials",
 			config: &config.Config{
 				Webhook: config.WebhookConfig{
 					URL:      "http://example.com/webhook",
@@ -926,8 +926,7 @@ func TestRunWithConfig_ServiceInitialization(t *testing.T) {
 					EnableDMARC: true,
 				},
 				Metrics: config.MetricsConfig{
-					Enabled: true,
-					Addr:    ":9090",
+					Enabled: false, // Disabled to avoid duplicate Prometheus registration across tests
 				},
 			},
 		},
