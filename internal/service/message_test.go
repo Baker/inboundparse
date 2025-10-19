@@ -72,8 +72,9 @@ func TestNewMessageProcessor(t *testing.T) {
 	authService := &mockAuthService{}
 	metricsService := &mockMetricsServiceForMessage{}
 	remoteIP := net.IPv4(127, 0, 0, 1)
+	logger := &mockLoggerService{}
 
-	processor := NewMessageProcessor(webhookService, authService, metricsService, remoteIP)
+	processor := NewMessageProcessor(webhookService, authService, metricsService, remoteIP, logger)
 	if processor == nil {
 		t.Error("NewMessageProcessor() returned nil")
 	}
@@ -84,8 +85,9 @@ func TestMessageProcessor_ProcessMessage_Success(t *testing.T) {
 	authService := &mockAuthService{}
 	metricsService := &mockMetricsServiceForMessage{}
 	remoteIP := net.IPv4(127, 0, 0, 1)
+	logger := &mockLoggerService{}
 
-	processor := NewMessageProcessor(webhookService, authService, metricsService, remoteIP).(*messageProcessor)
+	processor := NewMessageProcessor(webhookService, authService, metricsService, remoteIP, logger).(*messageProcessor)
 
 	// Valid email message
 	messageData := `From: test@example.com
@@ -125,8 +127,9 @@ func TestMessageProcessor_ProcessMessage_ReadError(t *testing.T) {
 	authService := &mockAuthService{}
 	metricsService := &mockMetricsServiceForMessage{}
 	remoteIP := net.IPv4(127, 0, 0, 1)
+	logger := &mockLoggerService{}
 
-	processor := NewMessageProcessor(webhookService, authService, metricsService, remoteIP).(*messageProcessor)
+	processor := NewMessageProcessor(webhookService, authService, metricsService, remoteIP, logger).(*messageProcessor)
 
 	// Create a reader that will return an error
 	errorReader := &errorReader{err: errors.New("read error")}
@@ -147,8 +150,9 @@ func TestMessageProcessor_ProcessMessage_ParseError(t *testing.T) {
 	authService := &mockAuthService{}
 	metricsService := &mockMetricsServiceForMessage{}
 	remoteIP := net.IPv4(127, 0, 0, 1)
+	logger := &mockLoggerService{}
 
-	processor := NewMessageProcessor(webhookService, authService, metricsService, remoteIP).(*messageProcessor)
+	processor := NewMessageProcessor(webhookService, authService, metricsService, remoteIP, logger).(*messageProcessor)
 
 	// Invalid email message
 	messageData := `This is not a valid email message`
@@ -174,8 +178,9 @@ func TestMessageProcessor_ProcessMessage_AuthError(t *testing.T) {
 	}
 	metricsService := &mockMetricsServiceForMessage{}
 	remoteIP := net.IPv4(127, 0, 0, 1)
+	logger := &mockLoggerService{}
 
-	processor := NewMessageProcessor(webhookService, authService, metricsService, remoteIP).(*messageProcessor)
+	processor := NewMessageProcessor(webhookService, authService, metricsService, remoteIP, logger).(*messageProcessor)
 
 	// Valid email message
 	messageData := `From: test@example.com
@@ -203,8 +208,9 @@ func TestMessageProcessor_ProcessMessage_WebhookError(t *testing.T) {
 	authService := &mockAuthService{}
 	metricsService := &mockMetricsServiceForMessage{}
 	remoteIP := net.IPv4(127, 0, 0, 1)
+	logger := &mockLoggerService{}
 
-	processor := NewMessageProcessor(webhookService, authService, metricsService, remoteIP).(*messageProcessor)
+	processor := NewMessageProcessor(webhookService, authService, metricsService, remoteIP, logger).(*messageProcessor)
 
 	// Valid email message
 	messageData := `From: test@example.com
@@ -229,7 +235,7 @@ This is a test email body.`
 
 func TestMessageProcessor_ProcessMessage_NoServices(t *testing.T) {
 	// Test with nil services
-	processor := NewMessageProcessor(nil, nil, nil, net.IPv4(127, 0, 0, 1)).(*messageProcessor)
+	processor := NewMessageProcessor(nil, nil, nil, net.IPv4(127, 0, 0, 1), nil).(*messageProcessor)
 
 	// Valid email message
 	messageData := `From: test@example.com
@@ -253,8 +259,9 @@ func TestMessageProcessor_ExtractHeaders(t *testing.T) {
 	authService := &mockAuthService{}
 	metricsService := &mockMetricsServiceForMessage{}
 	remoteIP := net.IPv4(127, 0, 0, 1)
+	logger := &mockLoggerService{}
 
-	processor := NewMessageProcessor(webhookService, authService, metricsService, remoteIP).(*messageProcessor)
+	processor := NewMessageProcessor(webhookService, authService, metricsService, remoteIP, logger).(*messageProcessor)
 
 	// Test with email that has various headers
 	messageData := `From: test@example.com
@@ -287,8 +294,9 @@ func TestMessageProcessor_ProcessMessage_WithAttachments(t *testing.T) {
 	authService := &mockAuthService{}
 	metricsService := &mockMetricsServiceForMessage{}
 	remoteIP := net.IPv4(127, 0, 0, 1)
+	logger := &mockLoggerService{}
 
-	processor := NewMessageProcessor(webhookService, authService, metricsService, remoteIP).(*messageProcessor)
+	processor := NewMessageProcessor(webhookService, authService, metricsService, remoteIP, logger).(*messageProcessor)
 
 	// Set up webhook service to capture payload
 	var capturedPayload *WebhookPayload
@@ -333,8 +341,9 @@ func TestMessageProcessor_ProcessMessage_WithHTMLContent(t *testing.T) {
 	authService := &mockAuthService{}
 	metricsService := &mockMetricsServiceForMessage{}
 	remoteIP := net.IPv4(127, 0, 0, 1)
+	logger := &mockLoggerService{}
 
-	processor := NewMessageProcessor(webhookService, authService, metricsService, remoteIP).(*messageProcessor)
+	processor := NewMessageProcessor(webhookService, authService, metricsService, remoteIP, logger).(*messageProcessor)
 
 	// Set up webhook service to capture payload
 	var capturedPayload *WebhookPayload
@@ -373,8 +382,9 @@ func TestMessageProcessor_ProcessMessage_WithEmptyMessage(t *testing.T) {
 	authService := &mockAuthService{}
 	metricsService := &mockMetricsServiceForMessage{}
 	remoteIP := net.IPv4(127, 0, 0, 1)
+	logger := &mockLoggerService{}
 
-	processor := NewMessageProcessor(webhookService, authService, metricsService, remoteIP).(*messageProcessor)
+	processor := NewMessageProcessor(webhookService, authService, metricsService, remoteIP, logger).(*messageProcessor)
 
 	// Create empty message
 	messageData := ""
@@ -393,8 +403,9 @@ func TestMessageProcessor_ProcessMessage_WithInvalidMessage(t *testing.T) {
 	authService := &mockAuthService{}
 	metricsService := &mockMetricsServiceForMessage{}
 	remoteIP := net.IPv4(127, 0, 0, 1)
+	logger := &mockLoggerService{}
 
-	processor := NewMessageProcessor(webhookService, authService, metricsService, remoteIP).(*messageProcessor)
+	processor := NewMessageProcessor(webhookService, authService, metricsService, remoteIP, logger).(*messageProcessor)
 
 	// Create invalid message
 	messageData := "This is not a valid email message"

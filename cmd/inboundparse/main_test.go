@@ -124,8 +124,9 @@ func TestSMTPBackend_NewSession(t *testing.T) {
 	webhookService := &mockWebhookService{}
 	authService := &mockAuthService{}
 	metricsService := &mockMetricsServiceForMain{}
+	logger := &mockLoggerServiceForMain{}
 
-	backend := service.NewSMTPBackend(config, webhookService, authService, metricsService)
+	backend := service.NewSMTPBackend(config, webhookService, authService, metricsService, logger)
 
 	tests := []struct {
 		name        string
@@ -162,8 +163,9 @@ func TestSMTPBackend_NewSession_IncrementsActiveSessions(t *testing.T) {
 	webhookService := &mockWebhookService{}
 	authService := &mockAuthService{}
 	metricsService := &mockMetricsServiceForMain{}
+	logger := &mockLoggerServiceForMain{}
 
-	backend := service.NewSMTPBackend(cfg, webhookService, authService, metricsService)
+	backend := service.NewSMTPBackend(cfg, webhookService, authService, metricsService, logger)
 
 	session, err := backend.NewSession(nil)
 	assert.NoError(t, err)
@@ -216,7 +218,8 @@ func TestMain_ServiceCreation(t *testing.T) {
 	webhookService := service.NewWebhookService(config.Webhook.URL, config.Webhook.Username, config.Webhook.Password)
 	assert.NotNil(t, webhookService)
 
-	authService := service.NewAuthService(config.Auth.EnableSPF, config.Auth.EnableDKIM, config.Auth.EnableDMARC)
+	logger := &mockLoggerServiceForMain{}
+	authService := service.NewAuthService(config.Auth.EnableSPF, config.Auth.EnableDKIM, config.Auth.EnableDMARC, logger)
 	assert.NotNil(t, authService)
 }
 
@@ -226,9 +229,10 @@ func TestMain_BackendCreation(t *testing.T) {
 	webhookService := &mockWebhookService{}
 	authService := &mockAuthService{}
 	metricsService := &mockMetricsServiceForMain{}
+	logger := &mockLoggerServiceForMain{}
 
 	// Test backend creation (this is done in main())
-	backend := service.NewSMTPBackend(config, webhookService, authService, metricsService)
+	backend := service.NewSMTPBackend(config, webhookService, authService, metricsService, logger)
 
 	assert.NotNil(t, backend)
 }
@@ -310,11 +314,12 @@ func TestMain_WithDifferentConfigurations(t *testing.T) {
 			webhookService := service.NewWebhookService(tc.config.Webhook.URL, tc.config.Webhook.Username, tc.config.Webhook.Password)
 			assert.NotNil(t, webhookService)
 
-			authService := service.NewAuthService(tc.config.Auth.EnableSPF, tc.config.Auth.EnableDKIM, tc.config.Auth.EnableDMARC)
+			logger := &mockLoggerServiceForMain{}
+			authService := service.NewAuthService(tc.config.Auth.EnableSPF, tc.config.Auth.EnableDKIM, tc.config.Auth.EnableDMARC, logger)
 			assert.NotNil(t, authService)
 
 			// Test backend creation
-			backend := service.NewSMTPBackend(tc.config, webhookService, authService, metricsService)
+			backend := service.NewSMTPBackend(tc.config, webhookService, authService, metricsService, logger)
 			assert.NotNil(t, backend)
 		})
 	}
@@ -463,11 +468,11 @@ func TestMain_EnvironmentScenarios(t *testing.T) {
 			webhookService := service.NewWebhookService(scenario.config.Webhook.URL, scenario.config.Webhook.Username, scenario.config.Webhook.Password)
 			assert.NotNil(t, webhookService)
 
-			authService := service.NewAuthService(scenario.config.Auth.EnableSPF, scenario.config.Auth.EnableDKIM, scenario.config.Auth.EnableDMARC)
-			assert.NotNil(t, authService)
-
 			// Test Sentry initialization
 			logger := &mockLoggerServiceForMain{}
+
+			authService := service.NewAuthService(scenario.config.Auth.EnableSPF, scenario.config.Auth.EnableDKIM, scenario.config.Auth.EnableDMARC, logger)
+			assert.NotNil(t, authService)
 			err := initializeSentry(scenario.config, logger)
 			if scenario.expectError {
 				assert.Error(t, err)

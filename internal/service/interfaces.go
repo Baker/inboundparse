@@ -88,21 +88,54 @@ type AuthResult struct {
 	DMARC *DMARCResult `json:"dmarc,omitempty"`
 }
 
-// SPFResult represents SPF authentication result
+// SPFResult represents SPF authentication result per RFC 7208
 type SPFResult struct {
-	Result string `json:"result"`
-	Error  string `json:"error,omitempty"`
+	Result       string `json:"result"`                  // pass, fail, softfail, neutral, none, temperror, permerror
+	Mechanism    string `json:"mechanism,omitempty"`     // The mechanism that matched
+	Explanation  string `json:"explanation,omitempty"`   // Human-readable explanation
+	SenderDomain string `json:"sender_domain,omitempty"` // The domain being checked
+	HeloDomain   string `json:"helo_domain,omitempty"`   // HELO/EHLO domain
+	RawRecord    string `json:"raw_record,omitempty"`    // Raw SPF record
+	Error        string `json:"error,omitempty"`         // Error message if any
 }
 
-// DKIMResult represents DKIM authentication result
+// DKIMSignature represents a single DKIM signature verification result per RFC 6376
+type DKIMSignature struct {
+	Domain            string   `json:"domain"`                        // d= signing domain
+	Selector          string   `json:"selector"`                      // s= selector
+	Result            string   `json:"result"`                        // pass, fail, temperror, permerror, none
+	Algorithm         string   `json:"algorithm,omitempty"`           // a= signature algorithm
+	BodyHashAlgorithm string   `json:"body_hash_algorithm,omitempty"` // Part of a=
+	Canonicalization  string   `json:"canonicalization,omitempty"`    // c= canonicalization algorithm
+	HeadersSigned     []string `json:"headers_signed,omitempty"`      // h= headers included in signature
+	Identity          string   `json:"identity,omitempty"`            // i= agent or user identifier
+	Timestamp         int64    `json:"timestamp,omitempty"`           // t= signature timestamp
+	Expiration        int64    `json:"expiration,omitempty"`          // x= signature expiration
+	BodyLength        int64    `json:"body_length,omitempty"`         // l= body length count
+	QueryMethod       string   `json:"query_method,omitempty"`        // q= query method
+	Error             string   `json:"error,omitempty"`               // Error message if verification failed
+}
+
+// DKIMResult represents DKIM authentication results per RFC 6376
 type DKIMResult struct {
-	Result string `json:"result"`
-	Error  string `json:"error,omitempty"`
+	Signatures []*DKIMSignature `json:"signatures,omitempty"` // All DKIM signatures found and verified
+	Result     string           `json:"result"`               // Overall result: pass (at least one valid), fail, none
+	Error      string           `json:"error,omitempty"`      // Error message if any
 }
 
-// DMARCResult represents DMARC authentication result
+// DMARCResult represents DMARC authentication result per RFC 7489
 type DMARCResult struct {
-	Result string `json:"result"`
-	Policy string `json:"policy,omitempty"`
-	Error  string `json:"error,omitempty"`
+	Result             string   `json:"result"`                         // pass, fail, temperror, permerror, none
+	Policy             string   `json:"policy,omitempty"`               // none, quarantine, reject
+	SubdomainPolicy    string   `json:"subdomain_policy,omitempty"`     // sp= subdomain policy
+	Percentage         int      `json:"percentage,omitempty"`           // pct= percentage of messages to filter
+	AlignmentModeSPF   string   `json:"alignment_mode_spf,omitempty"`   // aspf= relaxed or strict
+	AlignmentModeDKIM  string   `json:"alignment_mode_dkim,omitempty"`  // adkim= relaxed or strict
+	SPFAligned         bool     `json:"spf_aligned"`                    // Whether SPF alignment passed
+	DKIMAligned        bool     `json:"dkim_aligned"`                   // Whether DKIM alignment passed
+	ReportURIAggregate []string `json:"report_uri_aggregate,omitempty"` // rua= aggregate report URIs
+	ReportURIForensic  []string `json:"report_uri_forensic,omitempty"`  // ruf= forensic report URIs
+	RawRecord          string   `json:"raw_record,omitempty"`           // Raw DMARC record
+	Domain             string   `json:"domain,omitempty"`               // Domain checked
+	Error              string   `json:"error,omitempty"`                // Error message if any
 }

@@ -94,7 +94,8 @@ func TestAuthService_PerformAuthenticationChecks(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			authService := NewAuthService(tt.enableSPF, tt.enableDKIM, tt.enableDMARC)
+			logger := &mockLoggerService{}
+			authService := NewAuthService(tt.enableSPF, tt.enableDKIM, tt.enableDMARC, logger)
 			ctx := context.Background()
 
 			result, err := authService.PerformAuthenticationChecks(ctx, tt.message, tt.remoteIP)
@@ -202,13 +203,13 @@ func TestAuthService_CheckSPF_ErrorCases(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := authService.checkSPF(tt.message, tt.remoteIP)
+			ctx := context.Background()
+			domain, _ := authService.extractDomainFromMessage(tt.message)
+			result := authService.checkSPF(ctx, tt.message, tt.remoteIP, domain)
 			if tt.wantErr {
-				assert.Error(t, err)
-				assert.Equal(t, "none", result)
-			} else {
-				assert.NoError(t, err)
+				assert.Contains(t, result.Result, "none")
 			}
+			assert.NotNil(t, result)
 		})
 	}
 }
@@ -235,14 +236,13 @@ func TestAuthService_CheckDMARC_ErrorCases(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, policy, err := authService.checkDMARC(tt.message)
+			ctx := context.Background()
+			domain, _ := authService.extractDomainFromMessage(tt.message)
+			result := authService.checkDMARC(ctx, tt.message, domain, nil, nil)
 			if tt.wantErr {
-				assert.Error(t, err)
-				assert.Equal(t, "none", result)
-				assert.Empty(t, policy)
-			} else {
-				assert.NoError(t, err)
+				assert.Contains(t, result.Result, "none")
 			}
+			assert.NotNil(t, result)
 		})
 	}
 }
@@ -309,7 +309,8 @@ func TestAuthService_ExtractDomainFromMessage_EdgeCases(t *testing.T) {
 
 func TestAuthService_PerformAuthenticationChecks_WithRealSPF(t *testing.T) {
 	// Test with SPF enabled and a real domain
-	authService := NewAuthService(true, false, false)
+	logger := &mockLoggerService{}
+	authService := NewAuthService(true, false, false, logger)
 	ctx := context.Background()
 
 	message := []byte("From: test@google.com\r\nTo: recipient@example.com\r\nSubject: Test\r\n\r\nTest message")
@@ -325,7 +326,8 @@ func TestAuthService_PerformAuthenticationChecks_WithRealSPF(t *testing.T) {
 
 func TestAuthService_PerformAuthenticationChecks_WithRealDKIM(t *testing.T) {
 	// Test with DKIM enabled
-	authService := NewAuthService(false, true, false)
+	logger := &mockLoggerService{}
+	authService := NewAuthService(false, true, false, logger)
 	ctx := context.Background()
 
 	message := []byte("From: test@example.com\r\nTo: recipient@example.com\r\nSubject: Test\r\n\r\nTest message")
@@ -341,7 +343,8 @@ func TestAuthService_PerformAuthenticationChecks_WithRealDKIM(t *testing.T) {
 
 func TestAuthService_PerformAuthenticationChecks_WithRealDMARC(t *testing.T) {
 	// Test with DMARC enabled
-	authService := NewAuthService(false, false, true)
+	logger := &mockLoggerService{}
+	authService := NewAuthService(false, false, true, logger)
 	ctx := context.Background()
 
 	message := []byte("From: test@example.com\r\nTo: recipient@example.com\r\nSubject: Test\r\n\r\nTest message")
@@ -357,7 +360,8 @@ func TestAuthService_PerformAuthenticationChecks_WithRealDMARC(t *testing.T) {
 
 // Test auth service error handling paths
 func TestAuthService_ErrorHandling(t *testing.T) {
-	service := NewAuthService(true, true, true)
+	logger := &mockLoggerService{}
+	service := NewAuthService(true, true, true, logger)
 	assert.NotNil(t, service)
 
 	// Test with invalid message format
@@ -371,7 +375,8 @@ func TestAuthService_ErrorHandling(t *testing.T) {
 
 // Test auth service with different message formats
 func TestAuthService_DifferentMessageFormats(t *testing.T) {
-	service := NewAuthService(true, true, true)
+	logger := &mockLoggerService{}
+	service := NewAuthService(true, true, true, logger)
 	assert.NotNil(t, service)
 
 	testCases := []struct {
@@ -421,7 +426,8 @@ func TestAuthService_DifferentMessageFormats(t *testing.T) {
 
 // Test auth service with different IP addresses
 func TestAuthService_DifferentIPAddresses(t *testing.T) {
-	service := NewAuthService(true, true, true)
+	logger := &mockLoggerService{}
+	service := NewAuthService(true, true, true, logger)
 	assert.NotNil(t, service)
 
 	message := []byte("From: test@example.com\r\nTo: recipient@example.com\r\nSubject: Test\r\n\r\nTest message")
@@ -467,7 +473,8 @@ func TestAuthService_DifferentIPAddresses(t *testing.T) {
 
 // Test auth service with different domain formats
 func TestAuthService_DifferentDomainFormats(t *testing.T) {
-	service := NewAuthService(true, true, true)
+	logger := &mockLoggerService{}
+	service := NewAuthService(true, true, true, logger)
 	assert.NotNil(t, service)
 
 	remoteIP := net.IPv4(127, 0, 0, 1)
@@ -513,7 +520,8 @@ func TestAuthService_DifferentDomainFormats(t *testing.T) {
 
 // Test auth service with malformed email addresses
 func TestAuthService_MalformedEmailAddresses(t *testing.T) {
-	service := NewAuthService(true, true, true)
+	logger := &mockLoggerService{}
+	service := NewAuthService(true, true, true, logger)
 	assert.NotNil(t, service)
 
 	remoteIP := net.IPv4(127, 0, 0, 1)
@@ -584,7 +592,8 @@ func TestAuthService_AuthenticationCombinations(t *testing.T) {
 
 	for _, combo := range combinations {
 		t.Run(combo.name, func(t *testing.T) {
-			service := NewAuthService(combo.enableSPF, combo.enableDKIM, combo.enableDMARC)
+			logger := &mockLoggerService{}
+			service := NewAuthService(combo.enableSPF, combo.enableDKIM, combo.enableDMARC, logger)
 			assert.NotNil(t, service)
 
 			result, err := service.PerformAuthenticationChecks(context.Background(), message, remoteIP)
@@ -615,7 +624,8 @@ func TestAuthService_AuthenticationCombinations(t *testing.T) {
 
 // Test auth service with large messages
 func TestAuthService_LargeMessages(t *testing.T) {
-	service := NewAuthService(true, true, true)
+	logger := &mockLoggerService{}
+	service := NewAuthService(true, true, true, logger)
 	assert.NotNil(t, service)
 
 	remoteIP := net.IPv4(127, 0, 0, 1)
@@ -631,7 +641,8 @@ func TestAuthService_LargeMessages(t *testing.T) {
 
 // Test auth service with concurrent access
 func TestAuthService_ConcurrentAccess(t *testing.T) {
-	service := NewAuthService(true, true, true)
+	logger := &mockLoggerService{}
+	service := NewAuthService(true, true, true, logger)
 	assert.NotNil(t, service)
 
 	message := []byte("From: test@example.com\r\nTo: recipient@example.com\r\nSubject: Test\r\n\r\nTest message")
@@ -658,7 +669,8 @@ func TestAuthService_ConcurrentAccess(t *testing.T) {
 
 // Test auth service with context cancellation
 func TestAuthService_ContextCancellation(t *testing.T) {
-	service := NewAuthService(true, true, true)
+	logger := &mockLoggerService{}
+	service := NewAuthService(true, true, true, logger)
 	assert.NotNil(t, service)
 
 	message := []byte("From: test@example.com\r\nTo: recipient@example.com\r\nSubject: Test\r\n\r\nTest message")
@@ -675,7 +687,8 @@ func TestAuthService_ContextCancellation(t *testing.T) {
 
 // Test auth service with timeout context
 func TestAuthService_TimeoutContext(t *testing.T) {
-	service := NewAuthService(true, true, true)
+	logger := &mockLoggerService{}
+	service := NewAuthService(true, true, true, logger)
 	assert.NotNil(t, service)
 
 	message := []byte("From: test@example.com\r\nTo: recipient@example.com\r\nSubject: Test\r\n\r\nTest message")
@@ -695,7 +708,8 @@ func TestAuthService_TimeoutContext(t *testing.T) {
 
 func TestAuthService_PerformAuthenticationChecks_WithAllEnabled(t *testing.T) {
 	// Test with all authentication methods enabled
-	authService := NewAuthService(true, true, true)
+	logger := &mockLoggerService{}
+	authService := NewAuthService(true, true, true, logger)
 	ctx := context.Background()
 
 	message := []byte("From: test@example.com\r\nTo: recipient@example.com\r\nSubject: Test\r\n\r\nTest message")
@@ -715,9 +729,11 @@ func TestAuthService_CheckSPF_WithValidDomain(t *testing.T) {
 	message := []byte("From: test@google.com\r\nTo: recipient@example.com\r\nSubject: Test\r\n\r\nTest message")
 	remoteIP := net.IPv4(8, 8, 8, 8) // Google's DNS server
 
-	result, err := authService.checkSPF(message, remoteIP)
-	assert.NoError(t, err)
-	assert.NotEmpty(t, result)
+	ctx := context.Background()
+	domain, _ := authService.extractDomainFromMessage(message)
+	result := authService.checkSPF(ctx, message, remoteIP, domain)
+	assert.NotNil(t, result)
+	assert.NotEmpty(t, result.Result)
 }
 
 func TestAuthService_CheckDKIM_WithValidMessage(t *testing.T) {
@@ -725,9 +741,10 @@ func TestAuthService_CheckDKIM_WithValidMessage(t *testing.T) {
 
 	message := []byte("From: test@example.com\r\nTo: recipient@example.com\r\nSubject: Test\r\n\r\nTest message")
 
-	result, err := authService.checkDKIM(message)
-	assert.NoError(t, err)
-	assert.NotEmpty(t, result)
+	ctx := context.Background()
+	result := authService.checkDKIM(ctx, message)
+	assert.NotNil(t, result)
+	assert.NotEmpty(t, result.Result)
 }
 
 func TestAuthService_CheckDMARC_WithValidMessage(t *testing.T) {
@@ -735,10 +752,11 @@ func TestAuthService_CheckDMARC_WithValidMessage(t *testing.T) {
 
 	message := []byte("From: test@example.com\r\nTo: recipient@example.com\r\nSubject: Test\r\n\r\nTest message")
 
-	result, policy, err := authService.checkDMARC(message)
-	assert.NoError(t, err)
-	assert.NotEmpty(t, result)
-	assert.NotEmpty(t, policy)
+	ctx := context.Background()
+	domain, _ := authService.extractDomainFromMessage(message)
+	result := authService.checkDMARC(ctx, message, domain, nil, nil)
+	assert.NotNil(t, result)
+	assert.NotEmpty(t, result.Result)
 }
 
 func TestAuthService_ExtractDomainFromMessage_WithComplexEmail(t *testing.T) {

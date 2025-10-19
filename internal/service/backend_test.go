@@ -58,8 +58,9 @@ func TestNewSMTPBackend(t *testing.T) {
 	webhookService := &mockWebhookService{}
 	authService := &mockAuthService{}
 	metricsService := &mockMetricsService{}
+	logger := &mockLoggerService{}
 
-	backend := NewSMTPBackend(config, webhookService, authService, metricsService)
+	backend := NewSMTPBackend(config, webhookService, authService, metricsService, logger)
 	if backend == nil {
 		t.Error("NewSMTPBackend() returned nil")
 	}
@@ -70,8 +71,9 @@ func TestSMTPBackend_NewSession(t *testing.T) {
 	webhookService := &mockWebhookService{}
 	authService := &mockAuthService{}
 	metricsService := &mockMetricsService{}
+	logger := &mockLoggerService{}
 
-	backend := NewSMTPBackend(config, webhookService, authService, metricsService).(*smtpBackend)
+	backend := NewSMTPBackend(config, webhookService, authService, metricsService, logger).(*smtpBackend)
 
 	tests := []struct {
 		name        string
@@ -109,8 +111,9 @@ func TestSMTPBackend_NewSession_IncrementsMetrics(t *testing.T) {
 	webhookService := &mockWebhookService{}
 	authService := &mockAuthService{}
 	metricsService := &mockMetricsService{}
+	logger := &mockLoggerService{}
 
-	backend := NewSMTPBackend(config, webhookService, authService, metricsService).(*smtpBackend)
+	backend := NewSMTPBackend(config, webhookService, authService, metricsService, logger).(*smtpBackend)
 
 	_, err := backend.NewSession(nil)
 	if err != nil {
@@ -127,8 +130,9 @@ func TestSMTPSession_AuthPlain(t *testing.T) {
 	webhookService := &mockWebhookService{}
 	authService := &mockAuthService{}
 	metricsService := &mockMetricsService{}
+	logger := &mockLoggerService{}
 
-	backend := NewSMTPBackend(config, webhookService, authService, metricsService).(*smtpBackend)
+	backend := NewSMTPBackend(config, webhookService, authService, metricsService, logger).(*smtpBackend)
 	session, err := backend.NewSession(nil)
 	if err != nil {
 		t.Fatalf("NewSession() error = %v", err)
@@ -171,8 +175,9 @@ func TestSMTPSession_Mail(t *testing.T) {
 	webhookService := &mockWebhookService{}
 	authService := &mockAuthService{}
 	metricsService := &mockMetricsService{}
+	logger := &mockLoggerService{}
 
-	backend := NewSMTPBackend(config, webhookService, authService, metricsService).(*smtpBackend)
+	backend := NewSMTPBackend(config, webhookService, authService, metricsService, logger).(*smtpBackend)
 	session, err := backend.NewSession(nil)
 	if err != nil {
 		t.Fatalf("NewSession() error = %v", err)
@@ -215,8 +220,9 @@ func TestSMTPSession_Rcpt(t *testing.T) {
 	webhookService := &mockWebhookService{}
 	authService := &mockAuthService{}
 	metricsService := &mockMetricsService{}
+	logger := &mockLoggerService{}
 
-	backend := NewSMTPBackend(config, webhookService, authService, metricsService).(*smtpBackend)
+	backend := NewSMTPBackend(config, webhookService, authService, metricsService, logger).(*smtpBackend)
 	session, err := backend.NewSession(nil)
 	if err != nil {
 		t.Fatalf("NewSession() error = %v", err)
@@ -288,8 +294,9 @@ func TestSMTPSession_Data(t *testing.T) {
 			}
 			authService := &mockAuthService{}
 			metricsService := &mockMetricsService{}
+			logger := &mockLoggerService{}
 
-			backend := NewSMTPBackend(config, webhookService, authService, metricsService).(*smtpBackend)
+			backend := NewSMTPBackend(config, webhookService, authService, metricsService, logger).(*smtpBackend)
 			session, err := backend.NewSession(nil)
 			if err != nil {
 				t.Fatalf("NewSession() error = %v", err)
@@ -320,8 +327,9 @@ func TestSMTPSession_Reset(t *testing.T) {
 	webhookService := &mockWebhookService{}
 	authService := &mockAuthService{}
 	metricsService := &mockMetricsService{}
+	logger := &mockLoggerService{}
 
-	backend := NewSMTPBackend(config, webhookService, authService, metricsService).(*smtpBackend)
+	backend := NewSMTPBackend(config, webhookService, authService, metricsService, logger).(*smtpBackend)
 	session, err := backend.NewSession(nil)
 	if err != nil {
 		t.Fatalf("NewSession() error = %v", err)
@@ -349,8 +357,9 @@ func TestSMTPSession_Logout(t *testing.T) {
 	webhookService := &mockWebhookService{}
 	authService := &mockAuthService{}
 	metricsService := &mockMetricsService{}
+	logger := &mockLoggerService{}
 
-	backend := NewSMTPBackend(config, webhookService, authService, metricsService).(*smtpBackend)
+	backend := NewSMTPBackend(config, webhookService, authService, metricsService, logger).(*smtpBackend)
 	session, err := backend.NewSession(nil)
 	if err != nil {
 		t.Fatalf("NewSession() error = %v", err)
@@ -373,8 +382,9 @@ func TestSMTPBackend_NewSession_WithConnection(t *testing.T) {
 	webhookService := &mockWebhookService{}
 	authService := &mockAuthService{}
 	metricsService := &mockMetricsService{}
+	logger := &mockLoggerService{}
 
-	backend := NewSMTPBackend(config, webhookService, authService, metricsService).(*smtpBackend)
+	backend := NewSMTPBackend(config, webhookService, authService, metricsService, logger).(*smtpBackend)
 
 	// Test with a mock connection that has a remote address
 	tests := []struct {
@@ -443,8 +453,9 @@ func TestSMTPSession_Data_WithMetrics(t *testing.T) {
 				incrementSMTPMessagesCalled:   false,
 				incrementMessagesFailedCalled: false,
 			}
+			logger := &mockLoggerService{}
 
-			backend := NewSMTPBackend(config, webhookService, authService, metricsService).(*smtpBackend)
+			backend := NewSMTPBackend(config, webhookService, authService, metricsService, logger).(*smtpBackend)
 			session, err := backend.NewSession(nil)
 			if err != nil {
 				t.Fatalf("NewSession() error = %v", err)
@@ -477,8 +488,9 @@ func TestSMTPSession_Logout_WithMetrics(t *testing.T) {
 	metricsService := &mockMetricsService{
 		decrementActiveSessionsCalled: false,
 	}
+	logger := &mockLoggerService{}
 
-	backend := NewSMTPBackend(config, webhookService, authService, metricsService).(*smtpBackend)
+	backend := NewSMTPBackend(config, webhookService, authService, metricsService, logger).(*smtpBackend)
 	session, err := backend.NewSession(nil)
 	if err != nil {
 		t.Fatalf("NewSession() error = %v", err)

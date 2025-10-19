@@ -32,11 +32,25 @@ func NewLoggerService(verbose bool) (LoggerService, error) {
 		// Development configuration
 		config = zap.NewDevelopmentConfig()
 		config.EncoderConfig.EncodeLevel = zapcore.CapitalColorLevelEncoder
+		// In development, show stack traces for errors
+		config.Development = true
 	} else {
 		// Production configuration
 		config = zap.NewProductionConfig()
 		config.EncoderConfig.TimeKey = "timestamp"
 		config.EncoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
+
+		// Disable stack traces for Error level in production (only for DPanic/Panic/Fatal)
+		config.DisableStacktrace = false
+
+		// Enable sampling to reduce log volume
+		config.Sampling = &zap.SamplingConfig{
+			Initial:    100, // Log first 100 entries per second
+			Thereafter: 100, // Then 1 in every 100
+		}
+
+		// Disable caller info in production for cleaner logs
+		config.DisableCaller = true
 	}
 
 	// Add custom fields
@@ -45,7 +59,11 @@ func NewLoggerService(verbose bool) (LoggerService, error) {
 		"version": "1.0.0",
 	}
 
-	logger, err := config.Build()
+	// Build logger with options to control stack traces
+	logger, err := config.Build(
+		// Only add stack traces for DPanic and above (not for Error)
+		zap.AddStacktrace(zapcore.DPanicLevel),
+	)
 	if err != nil {
 		return nil, err
 	}

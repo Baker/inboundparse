@@ -3,6 +3,8 @@ package service
 import (
 	"context"
 	"net"
+
+	"go.uber.org/zap"
 )
 
 // mockWebhookService is a mock implementation of WebhookService for tests
@@ -27,4 +29,24 @@ func (m *mockAuthService) PerformAuthenticationChecks(ctx context.Context, messa
 		return m.performAuthChecksFunc(ctx, message, remoteIP)
 	}
 	return &AuthResult{}, nil
+}
+
+// mockLoggerService is a mock implementation of LoggerService for tests
+type mockLoggerService struct{}
+
+func (m *mockLoggerService) Info(ctx context.Context, msg string, fields ...zap.Field)  {}
+func (m *mockLoggerService) Error(ctx context.Context, msg string, fields ...zap.Field) {}
+func (m *mockLoggerService) Warn(ctx context.Context, msg string, fields ...zap.Field)  {}
+func (m *mockLoggerService) Debug(ctx context.Context, msg string, fields ...zap.Field) {}
+func (m *mockLoggerService) Fatal(ctx context.Context, msg string, fields ...zap.Field) {}
+func (m *mockLoggerService) With(fields ...zap.Field) LoggerService {
+	return m
+}
+
+func (m *mockLoggerService) WithContext(ctx context.Context) LoggerService {
+	return m
+}
+
+func (m *mockLoggerService) Close() error {
+	return nil
 }

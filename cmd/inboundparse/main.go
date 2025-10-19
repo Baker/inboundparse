@@ -56,10 +56,10 @@ func main() {
 	// Create services
 	metricsService := service.NewMetricsService(cfg.Metrics.Enabled)
 	webhookService := service.NewWebhookService(cfg.Webhook.URL, cfg.Webhook.Username, cfg.Webhook.Password)
-	authService := service.NewAuthService(cfg.Auth.EnableSPF, cfg.Auth.EnableDKIM, cfg.Auth.EnableDMARC)
+	authService := service.NewAuthService(cfg.Auth.EnableSPF, cfg.Auth.EnableDKIM, cfg.Auth.EnableDMARC, logger)
 
 	// Create SMTP backend
-	backend := service.NewSMTPBackend(cfg, webhookService, authService, metricsService)
+	backend := service.NewSMTPBackend(cfg, webhookService, authService, metricsService, logger)
 
 	// Create server
 	srv := server.NewServer(cfg, backend, metricsService, logger)
