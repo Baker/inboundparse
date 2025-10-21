@@ -82,7 +82,21 @@ func (s *Server) startMetricsServer(ctx context.Context) error {
 
 // startSMTPServers starts the SMTP servers
 func (s *Server) startSMTPServers(ctx context.Context) error {
-	// Create SMTP server
+	// Load TLS certificate if provided
+	var tlsConfig *tls.Config
+	if s.config.Server.CertFile != "" && s.config.Server.KeyFile != "" {
+		cert, err := tls.LoadX509KeyPair(s.config.Server.CertFile, s.config.Server.KeyFile)
+		if err != nil {
+			return fmt.Errorf("failed to load TLS certificate: %w", err)
+		}
+
+		tlsConfig = &tls.Config{
+			Certificates: []tls.Certificate{cert},
+			MinVersion:   tls.VersionTLS12,
+		}
+	}
+
+	// Create main SMTP server with STARTTLS support
 	s.smtpServer = smtp.NewServer(s.backend)
 	s.smtpServer.Addr = s.config.Server.ListenAddr
 	s.smtpServer.Domain = s.config.Server.ServerName
@@ -90,27 +104,23 @@ func (s *Server) startSMTPServers(ctx context.Context) error {
 	s.smtpServer.ReadTimeout = s.config.Server.ReadTimeout
 	s.smtpServer.WriteTimeout = s.config.Server.WriteTimeout
 	s.smtpServer.AllowInsecureAuth = true
+	
+	// Enable STARTTLS if certificates are available
+	if tlsConfig != nil {
+		s.smtpServer.TLSConfig = tlsConfig
+		s.smtpServer.EnableSMTPUTF8 = true
+	}
 
-	// Start plain SMTP server
+	// Start main SMTP server with STARTTLS support
 	go func() {
-		s.logger.Info(ctx, "Starting plain SMTP server", zap.String("addr", s.config.Server.ListenAddr))
+		s.logger.Info(ctx, "Starting SMTP server with STARTTLS", zap.String("addr", s.config.Server.ListenAddr))
 		if err := s.smtpServer.ListenAndServe(); err != nil {
 			s.logger.Error(ctx, "SMTP server error", zap.Error(err))
 		}
 	}()
 
-	// Start TLS SMTP server if certificates are provided
-	if s.config.Server.CertFile != "" && s.config.Server.KeyFile != "" {
-		cert, err := tls.LoadX509KeyPair(s.config.Server.CertFile, s.config.Server.KeyFile)
-		if err != nil {
-			return fmt.Errorf("failed to load TLS certificate: %w", err)
-		}
-
-		tlsConfig := &tls.Config{
-			Certificates: []tls.Certificate{cert},
-			MinVersion:   tls.VersionTLS12,
-		}
-
+	// Create separate TLS-only server on port 587 if certificates are provided
+	if tlsConfig != nil {
 		s.tlsServer = smtp.NewServer(s.backend)
 		s.tlsServer.Addr = s.config.Server.ListenAddrTLS
 		s.tlsServer.Domain = s.config.Server.ServerName
@@ -119,6 +129,7 @@ func (s *Server) startSMTPServers(ctx context.Context) error {
 		s.tlsServer.WriteTimeout = s.config.Server.WriteTimeout
 		s.tlsServer.TLSConfig = tlsConfig
 		s.tlsServer.AllowInsecureAuth = true
+		s.tlsServer.EnableSMTPUTF8 = true
 
 		go func() {
 			s.logger.Info(ctx, "Starting TLS SMTP server", zap.String("addr", s.config.Server.ListenAddrTLS))
