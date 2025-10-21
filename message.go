@@ -5,21 +5,23 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net"
 	"net/http"
 	"net/mail"
 	"time"
 
 	"github.com/emersion/go-smtp"
+	"github.com/getsentry/sentry-go"
 	"github.com/mnako/letters"
+	"github.com/rs/zerolog/log"
 )
 
 type MessageProcessor struct {
-	config *ServerConfig
-	from   string
-	to     []string
-	conn   *smtp.Conn
+	config    *ServerConfig
+	from      string
+	to        []string
+	conn      *smtp.Conn
+	sessionID string
 	// testRemoteIP allows tests to stub the remote IP without a real connection
 	testRemoteIP net.IP
 }
@@ -86,10 +88,23 @@ type WebhookPayload struct {
 }
 
 func (mp *MessageProcessor) ProcessMessage(r io.Reader) error {
+	start := time.Now()
+
 	// Read the entire message
 	var buf bytes.Buffer
-	_, err := io.Copy(&buf, r)
+	size, err := io.Copy(&buf, r)
 	if err != nil {
+		log.Error().
+			Err(err).
+			Str("session_id", mp.sessionID).
+			Msg("Failed to read message")
+		CaptureError(err, map[string]interface{}{
+			"session_id": mp.sessionID,
+			"from":       mp.from,
+			"to":         mp.to,
+			"stage":      "read_message",
+		})
+		TrackMessage(0, false)
 		return fmt.Errorf("failed to read message: %w", err)
 	}
 
@@ -98,8 +113,30 @@ func (mp *MessageProcessor) ProcessMessage(r io.Reader) error {
 	// Parse the email
 	email, err := letters.ParseEmail(bytes.NewReader(buf.Bytes()))
 	if err != nil {
+		log.Error().
+			Err(err).
+			Str("session_id", mp.sessionID).
+			Int64("size", size).
+			Msg("Failed to parse message")
+		CaptureError(err, map[string]interface{}{
+			"session_id": mp.sessionID,
+			"from":       mp.from,
+			"to":         mp.to,
+			"size":       size,
+			"stage":      "parse_email",
+		})
+		TrackMessage(size, false)
 		return fmt.Errorf("failed to parse message: %w", err)
 	}
+
+	log.Info().
+		Str("session_id", mp.sessionID).
+		Str("from", mp.from).
+		Strs("to", mp.to).
+		Str("subject", email.Headers.Subject).
+		Str("message_id", string(email.Headers.MessageID)).
+		Int64("size", size).
+		Msg("Message parsed successfully")
 
 	// Create webhook payload
 	payload := &WebhookPayload{
@@ -122,17 +159,62 @@ func (mp *MessageProcessor) ProcessMessage(r io.Reader) error {
 	}
 
 	// Send to webhook
-	return mp.sendWebhook(payload)
+	err = mp.sendWebhook(payload)
+
+	duration := time.Since(start)
+	if err != nil {
+		log.Error().
+			Err(err).
+			Str("session_id", mp.sessionID).
+			Str("message_id", string(email.Headers.MessageID)).
+			Dur("duration", duration).
+			Msg("Failed to process message")
+		TrackMessage(size, false)
+		return err
+	}
+
+	log.Info().
+		Str("session_id", mp.sessionID).
+		Str("message_id", string(email.Headers.MessageID)).
+		Dur("duration", duration).
+		Msg("Message processed successfully")
+	TrackMessage(size, true)
+
+	return nil
 }
 
 func (mp *MessageProcessor) sendWebhook(payload *WebhookPayload) error {
+	start := time.Now()
+
 	jsonData, err := json.Marshal(payload)
 	if err != nil {
+		log.Error().
+			Err(err).
+			Str("session_id", mp.sessionID).
+			Msg("Failed to marshal webhook payload")
+		CaptureError(err, map[string]interface{}{
+			"session_id": mp.sessionID,
+			"from":       mp.from,
+			"to":         mp.to,
+			"subject":    payload.Subject,
+			"message_id": payload.MessageID,
+			"stage":      "marshal_payload",
+		})
 		return fmt.Errorf("failed to marshal payload: %w", err)
 	}
 
 	req, err := http.NewRequest("POST", mp.config.WebhookURL, bytes.NewBuffer(jsonData))
 	if err != nil {
+		log.Error().
+			Err(err).
+			Str("session_id", mp.sessionID).
+			Str("webhook_url", mp.config.WebhookURL).
+			Msg("Failed to create webhook request")
+		CaptureError(err, map[string]interface{}{
+			"session_id":  mp.sessionID,
+			"webhook_url": mp.config.WebhookURL,
+			"stage":       "create_request",
+		})
 		return fmt.Errorf("failed to create request: %w", err)
 	}
 
@@ -149,22 +231,68 @@ func (mp *MessageProcessor) sendWebhook(payload *WebhookPayload) error {
 	}
 
 	resp, err := client.Do(req)
+	duration := time.Since(start)
+
 	if err != nil {
+		log.Error().
+			Err(err).
+			Str("session_id", mp.sessionID).
+			Str("webhook_url", mp.config.WebhookURL).
+			Dur("duration", duration).
+			Msg("Webhook request failed")
+		CaptureError(err, map[string]interface{}{
+			"session_id":  mp.sessionID,
+			"webhook_url": mp.config.WebhookURL,
+			"from":        mp.from,
+			"to":          mp.to,
+			"subject":     payload.Subject,
+			"message_id":  payload.MessageID,
+			"stage":       "send_request",
+		})
+		TrackWebhookRequest(0, duration)
 		return fmt.Errorf("webhook request failed: %w", err)
 	}
 	defer func() {
 		if closeErr := resp.Body.Close(); closeErr != nil {
-			log.Printf("Failed to close response body: %v", closeErr)
+			log.Warn().
+				Err(closeErr).
+				Str("session_id", mp.sessionID).
+				Msg("Failed to close response body")
 		}
 	}()
 
+	TrackWebhookRequest(resp.StatusCode, duration)
+
 	if resp.StatusCode >= 400 {
+		log.Error().
+			Str("session_id", mp.sessionID).
+			Str("webhook_url", mp.config.WebhookURL).
+			Int("status_code", resp.StatusCode).
+			Dur("duration", duration).
+			Msg("Webhook returned error status")
+
+		CaptureMessage(
+			fmt.Sprintf("Webhook returned error status: %d", resp.StatusCode),
+			sentry.LevelError,
+			map[string]interface{}{
+				"session_id":  mp.sessionID,
+				"webhook_url": mp.config.WebhookURL,
+				"status_code": resp.StatusCode,
+				"from":        mp.from,
+				"to":          mp.to,
+				"subject":     payload.Subject,
+				"message_id":  payload.MessageID,
+			},
+		)
 		return fmt.Errorf("webhook returned error status: %d", resp.StatusCode)
 	}
 
-	if mp.config.Verbose {
-		log.Printf("Successfully sent email to webhook: %s", mp.config.WebhookURL)
-	}
+	log.Info().
+		Str("session_id", mp.sessionID).
+		Str("webhook_url", mp.config.WebhookURL).
+		Int("status_code", resp.StatusCode).
+		Dur("duration", duration).
+		Msg("Successfully sent email to webhook")
 
 	return nil
 }

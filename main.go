@@ -2,7 +2,6 @@ package main
 
 import (
 	"flag"
-	"log"
 	"os"
 
 	"github.com/joho/godotenv"
@@ -24,7 +23,77 @@ var (
 	certFile       = flag.String("cert-file", "", "TLS certificate file")
 	keyFile        = flag.String("key-file", "", "TLS key file")
 	verbose        = flag.Bool("verbose", false, "Enable verbose logging")
+	// Sentry flags
+	enableSentry  = flag.Bool("enable-sentry", false, "Enable Sentry error tracking")
+	sentryDSN     = flag.String("sentry-dsn", "", "Sentry DSN for error tracking")
+	sentryEnv     = flag.String("sentry-env", "production", "Sentry environment")
+	sentryRelease = flag.String("sentry-release", "", "Sentry release version")
+	// Metrics flags
+	enableMetrics   = flag.Bool("enable-metrics", false, "Enable Prometheus metrics")
+	metricsAddr     = flag.String("metrics-addr", "0.0.0.0:9090", "Metrics server listen address")
+	metricsAPIKey   = flag.String("metrics-api-key", "", "Metrics API key for Bearer token authentication")
+	metricsUsername = flag.String("metrics-username", "", "Metrics username for Basic authentication")
+	metricsPassword = flag.String("metrics-password", "", "Metrics password for Basic authentication")
 )
+
+// setEnvString sets a string flag from environment variable if present
+func setEnvString(envKey string, target *string) {
+	if env := os.Getenv(envKey); env != "" {
+		*target = env
+	}
+}
+
+// setEnvBool sets a bool flag from environment variable if present
+func setEnvBool(envKey string, target *bool) {
+	if env := os.Getenv(envKey); env != "" {
+		*target = env == "true"
+	}
+}
+
+// loadEnvOverrides loads configuration from environment variables
+func loadEnvOverrides() {
+	loadCoreConfig()
+	loadAuthConfig()
+	loadSentryConfig()
+	loadMetricsConfig()
+}
+
+// loadCoreConfig loads core SMTP configuration from environment
+func loadCoreConfig() {
+	setEnvString("LISTEN_ADDR", listenAddr)
+	setEnvString("LISTEN_ADDR_TLS", listenAddrTLS)
+	setEnvString("WEBHOOK_URL", webhookURL)
+	setEnvString("WEBHOOK_USER", webhookUser)
+	setEnvString("WEBHOOK_PASS", webhookPass)
+	setEnvString("SERVER_NAME", serverName)
+	setEnvString("CERT_FILE", certFile)
+	setEnvString("KEY_FILE", keyFile)
+	setEnvBool("VERBOSE", verbose)
+}
+
+// loadAuthConfig loads email authentication configuration from environment
+func loadAuthConfig() {
+	setEnvBool("ENABLE_SPF", enableSPF)
+	setEnvBool("ENABLE_DKIM", enableDKIM)
+	setEnvBool("ENABLE_DMARC", enableDMARC)
+}
+
+// loadSentryConfig loads Sentry configuration from environment
+func loadSentryConfig() {
+	setEnvBool("ENABLE_SENTRY", enableSentry)
+	setEnvString("SENTRY_DSN", sentryDSN)
+	setEnvString("SENTRY_ENV", sentryEnv)
+	setEnvString("SENTRY_RELEASE", sentryRelease)
+}
+
+// loadMetricsConfig loads Prometheus metrics configuration from environment
+func loadMetricsConfig() {
+	setEnvBool("ENABLE_METRICS", enableMetrics)
+	setEnvString("METRICS_ADDR", metricsAddr)
+	setEnvString("METRICS_API_KEY", metricsAPIKey)
+	setEnvString("METRICS_USERNAME", metricsUsername)
+	setEnvString("METRICS_PASSWORD", metricsPassword)
+}
 
 func main() {
 	if os.Getenv("INBOUNDPARSE_TEST_EXIT") == "1" {
@@ -32,89 +101,87 @@ func main() {
 	}
 	// Load environment variables
 	if err := godotenv.Load(); err != nil {
-		log.Println("No .env file found, using default values")
+		logger.Info().Err(err).Msg("Failed to load .env file")
 	}
 
 	flag.Parse()
 
+	// Initialize logger first so all subsequent logs are structured
+	InitLogger(*verbose)
+
 	// Override with environment variables if set
-	if env := os.Getenv("LISTEN_ADDR"); env != "" {
-		*listenAddr = env
-	}
-	if env := os.Getenv("LISTEN_ADDR_TLS"); env != "" {
-		*listenAddrTLS = env
-	}
-	if env := os.Getenv("WEBHOOK_URL"); env != "" {
-		*webhookURL = env
-	}
-	if env := os.Getenv("WEBHOOK_USER"); env != "" {
-		*webhookUser = env
-	}
-	if env := os.Getenv("WEBHOOK_PASS"); env != "" {
-		*webhookPass = env
-	}
-	if env := os.Getenv("ENABLE_SPF"); env != "" {
-		*enableSPF = env == "true"
-	}
-	if env := os.Getenv("ENABLE_DKIM"); env != "" {
-		*enableDKIM = env == "true"
-	}
-	if env := os.Getenv("ENABLE_DMARC"); env != "" {
-		*enableDMARC = env == "true"
-	}
-	if env := os.Getenv("VERBOSE"); env != "" {
-		*verbose = env == "true"
-	}
-	if env := os.Getenv("CERT_FILE"); env != "" {
-		*certFile = env
-	}
-	if env := os.Getenv("KEY_FILE"); env != "" {
-		*keyFile = env
-	}
-	if env := os.Getenv("SERVER_NAME"); env != "" {
-		*serverName = env
-	}
+	loadEnvOverrides()
 
 	if *webhookURL == "" {
-		log.Fatal("Webhook URL is required. Use -webhook flag or WEBHOOK_URL environment variable")
+		logger.Fatal().Msg("Webhook URL is required. Use -webhook flag or WEBHOOK_URL environment variable")
 	}
 
 	config := &ServerConfig{
-		ListenAddr:     *listenAddr,
-		ListenAddrTLS:  *listenAddrTLS,
-		WebhookURL:     *webhookURL,
-		WebhookUser:    *webhookUser,
-		WebhookPass:    *webhookPass,
-		ServerName:     *serverName,
-		MaxMessageSize: *maxMessageSize,
-		ReadTimeout:    *readTimeout,
-		WriteTimeout:   *writeTimeout,
-		EnableSPF:      *enableSPF,
-		EnableDKIM:     *enableDKIM,
-		EnableDMARC:    *enableDMARC,
-		Verbose:        *verbose,
-		CertFile:       *certFile,
-		KeyFile:        *keyFile,
+		ListenAddr:      *listenAddr,
+		ListenAddrTLS:   *listenAddrTLS,
+		WebhookURL:      *webhookURL,
+		WebhookUser:     *webhookUser,
+		WebhookPass:     *webhookPass,
+		ServerName:      *serverName,
+		MaxMessageSize:  *maxMessageSize,
+		ReadTimeout:     *readTimeout,
+		WriteTimeout:    *writeTimeout,
+		EnableSPF:       *enableSPF,
+		EnableDKIM:      *enableDKIM,
+		EnableDMARC:     *enableDMARC,
+		Verbose:         *verbose,
+		CertFile:        *certFile,
+		KeyFile:         *keyFile,
+		EnableSentry:    *enableSentry,
+		SentryDSN:       *sentryDSN,
+		SentryEnv:       *sentryEnv,
+		SentryRelease:   *sentryRelease,
+		EnableMetrics:   *enableMetrics,
+		MetricsAddr:     *metricsAddr,
+		MetricsAPIKey:   *metricsAPIKey,
+		MetricsUsername: *metricsUsername,
+		MetricsPassword: *metricsPassword,
+	}
+
+	// Initialize Sentry
+	if err := InitSentry(config); err != nil {
+		logger.Error().Err(err).Msg("Failed to initialize Sentry")
+	}
+	defer FlushSentry()
+
+	// Initialize and start metrics server
+	if config.EnableMetrics {
+		metricsServer := NewMetricsServer(config)
+		if err := metricsServer.Start(); err != nil {
+			logger.Error().Err(err).Msg("Failed to start metrics server")
+		}
 	}
 
 	server, err := NewSMTPServer(config)
 	if err != nil {
-		log.Fatal("Failed to initialize SMTP server:", err)
+		logger.Fatal().Err(err).Msg("Failed to initialize SMTP server")
 	}
 
-	log.Printf("Starting SMTP server on %s", *listenAddr)
+	logger.Info().
+		Str("smtp_address", *listenAddr).
+		Str("smtp_tls_address", *listenAddrTLS).
+		Str("webhook_url", *webhookURL).
+		Bool("spf_enabled", *enableSPF).
+		Bool("dkim_enabled", *enableDKIM).
+		Bool("dmarc_enabled", *enableDMARC).
+		Bool("metrics_enabled", *enableMetrics).
+		Bool("sentry_enabled", *enableSentry).
+		Bool("verbose", *verbose).
+		Msg("Starting InboundParse SMTP server")
+
 	if *certFile != "" && *keyFile != "" {
-		log.Printf("Starting TLS SMTP server on %s", *listenAddrTLS)
+		logger.Info().
+			Str("cert_file", *certFile).
+			Str("key_file", *keyFile).
+			Msg("TLS certificates configured")
 	}
-	log.Printf("Webhook URL: %s", *webhookURL)
-	log.Printf("SPF validation: %v", *enableSPF)
-	log.Printf("DKIM validation: %v", *enableDKIM)
-	log.Printf("DMARC validation: %v", *enableDMARC)
-	log.Printf("Verbose: %v", *verbose)
-	log.Printf("Cert File: %s", *certFile)
-	log.Printf("Key File: %s", *keyFile)
 
 	if err := server.Start(); err != nil {
-		log.Fatal("Failed to start SMTP server:", err)
+		logger.Fatal().Err(err).Msg("Failed to start SMTP server")
 	}
 }

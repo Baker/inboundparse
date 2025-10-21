@@ -4,12 +4,12 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
-	"log"
 	"net"
 	"time"
 
 	"github.com/emersion/go-smtp"
 	"github.com/pires/go-proxyproto"
+	"github.com/rs/zerolog/log"
 )
 
 type ServerConfig struct {
@@ -28,6 +28,17 @@ type ServerConfig struct {
 	Verbose        bool
 	CertFile       string
 	KeyFile        string
+	// Sentry configuration
+	EnableSentry  bool
+	SentryDSN     string
+	SentryEnv     string
+	SentryRelease string
+	// Metrics configuration
+	EnableMetrics   bool
+	MetricsAddr     string
+	MetricsAPIKey   string
+	MetricsUsername string
+	MetricsPassword string
 }
 
 type SMTPServer struct {
@@ -53,7 +64,10 @@ func NewSMTPServer(config *ServerConfig) (*SMTPServer, error) {
 
 	// Optionally enable TLS
 	if config.CertFile != "" && config.KeyFile != "" {
-		log.Printf("Loading TLS certificate from %s and %s", config.CertFile, config.KeyFile)
+		log.Debug().
+			Str("cert_file", config.CertFile).
+			Str("key_file", config.KeyFile).
+			Msg("Loading TLS certificate")
 		cert, err := tls.LoadX509KeyPair(config.CertFile, config.KeyFile)
 		if err != nil {
 			return nil, fmt.Errorf("failed to load TLS certificate: %w", err)
@@ -84,15 +98,23 @@ func NewSMTPServer(config *ServerConfig) (*SMTPServer, error) {
 func (s *SMTPServer) Start() error {
 	if s.tlsServer != nil {
 		go func() {
-			log.Printf("Starting plain SMTP server at %s", s.config.ListenAddr)
+			log.Info().
+				Str("address", s.config.ListenAddr).
+				Msg("Starting plain SMTP server")
 			if err := s.listenAndServeWithProxy(s.server, s.config.ListenAddr); err != nil {
-				log.Printf("plain SMTP server stopped with error: %v", err)
+				log.Error().
+					Err(err).
+					Msg("Plain SMTP server stopped with error")
 			}
 		}()
-		log.Printf("Starting TLS SMTP server at %s", s.config.ListenAddrTLS)
+		log.Info().
+			Str("address", s.config.ListenAddrTLS).
+			Msg("Starting TLS SMTP server")
 		return s.listenAndServeWithProxy(s.tlsServer, s.config.ListenAddrTLS)
 	}
-	log.Printf("Starting plain SMTP server at %s", s.config.ListenAddr)
+	log.Info().
+		Str("address", s.config.ListenAddr).
+		Msg("Starting plain SMTP server")
 	return s.listenAndServeWithProxy(s.server, s.config.ListenAddr)
 }
 

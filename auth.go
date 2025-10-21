@@ -8,6 +8,7 @@ import (
 	"github.com/emersion/go-msgauth/dkim"
 	"github.com/emersion/go-msgauth/dmarc"
 	"github.com/mnako/letters"
+	"github.com/rs/zerolog/log"
 	"github.com/zaccone/spf"
 )
 
@@ -21,6 +22,13 @@ var (
 // performAuthenticationChecks runs all enabled authentication checks
 func (mp *MessageProcessor) performAuthenticationChecks(rawMessage string, headers letters.Headers) AuthenticationResults {
 	results := AuthenticationResults{}
+
+	log.Debug().
+		Str("session_id", mp.sessionID).
+		Bool("spf_enabled", mp.config.EnableSPF).
+		Bool("dkim_enabled", mp.config.EnableDKIM).
+		Bool("dmarc_enabled", mp.config.EnableDMARC).
+		Msg("Starting authentication checks")
 
 	// SPF Check
 	if mp.config.EnableSPF {
@@ -37,6 +45,13 @@ func (mp *MessageProcessor) performAuthenticationChecks(rawMessage string, heade
 		results.DMARC = mp.checkDMARC(rawMessage, headers, results.SPF, results.DKIM)
 	}
 
+	log.Info().
+		Str("session_id", mp.sessionID).
+		Interface("spf", results.SPF).
+		Interface("dkim", results.DKIM).
+		Interface("dmarc", results.DMARC).
+		Msg("Authentication checks completed")
+
 	return results
 }
 
@@ -44,6 +59,10 @@ func (mp *MessageProcessor) performAuthenticationChecks(rawMessage string, heade
 func (mp *MessageProcessor) checkSPF() *SPFResult {
 	remoteIP := mp.getRemoteIP()
 	if remoteIP == nil {
+		log.Warn().
+			Str("session_id", mp.sessionID).
+			Msg("SPF check: Failed to get remote IP")
+		TrackSPFResult("temperror")
 		return &SPFResult{
 			Result: "temperror",
 			Raw:    "Failed to get remote IP",
@@ -53,6 +72,11 @@ func (mp *MessageProcessor) checkSPF() *SPFResult {
 	// Extract domain from MAIL FROM (envelope sender)
 	domain := mp.extractDomainFromEmail(mp.from)
 	if domain == "" {
+		log.Debug().
+			Str("session_id", mp.sessionID).
+			Str("from", mp.from).
+			Msg("SPF check: No domain found in sender address")
+		TrackSPFResult("none")
 		return &SPFResult{
 			Result: "none",
 			Raw:    "No domain found in sender address",
@@ -61,12 +85,35 @@ func (mp *MessageProcessor) checkSPF() *SPFResult {
 
 	result, mechanism, err := spfCheckHostFn(remoteIP, domain, mp.from)
 	if err != nil {
+		log.Warn().
+			Err(err).
+			Str("session_id", mp.sessionID).
+			Str("domain", domain).
+			Str("remote_ip", remoteIP.String()).
+			Msg("SPF check error")
+		CaptureError(err, map[string]interface{}{
+			"session_id": mp.sessionID,
+			"domain":     domain,
+			"remote_ip":  remoteIP.String(),
+			"from":       mp.from,
+			"check_type": "spf",
+		})
+		TrackSPFResult("temperror")
 		return &SPFResult{
 			Result: "temperror",
 			Raw:    fmt.Sprintf("SPF check error: %v", err),
 		}
 	}
 
+	log.Debug().
+		Str("session_id", mp.sessionID).
+		Str("result", result.String()).
+		Str("domain", domain).
+		Str("remote_ip", remoteIP.String()).
+		Str("mechanism", mechanism).
+		Msg("SPF check completed")
+
+	TrackSPFResult(result.String())
 	return &SPFResult{
 		Result:    result.String(),
 		Raw:       fmt.Sprintf("SPF result: %s for domain %s from IP %s", result.String(), domain, remoteIP.String()),
@@ -78,6 +125,11 @@ func (mp *MessageProcessor) checkSPF() *SPFResult {
 func (mp *MessageProcessor) checkDKIM(rawMessage string) *DKIMResult {
 	verifications, err := dkimVerifyFn(strings.NewReader(rawMessage))
 	if err != nil {
+		log.Warn().
+			Err(err).
+			Str("session_id", mp.sessionID).
+			Msg("DKIM verification error")
+		TrackDKIMResult(false)
 		return &DKIMResult{
 			Valid: false,
 			Raw:   fmt.Sprintf("DKIM verification error: %v", err),
@@ -97,6 +149,14 @@ func (mp *MessageProcessor) checkDKIM(rawMessage string) *DKIMResult {
 		}
 	}
 
+	log.Debug().
+		Str("session_id", mp.sessionID).
+		Bool("valid", hasValidSignature).
+		Int("signature_count", len(verifications)).
+		Strs("signatures", signatures).
+		Msg("DKIM check completed")
+
+	TrackDKIMResult(hasValidSignature)
 	return &DKIMResult{
 		Valid:      hasValidSignature,
 		Signatures: signatures,
@@ -108,6 +168,10 @@ func (mp *MessageProcessor) checkDKIM(rawMessage string) *DKIMResult {
 func (mp *MessageProcessor) checkDMARC(rawMessage string, headers letters.Headers, spfResult *SPFResult, dkimResult *DKIMResult) *DMARCResult {
 	// Extract domain from From header (RFC5322.From) - this is what DMARC protects
 	if len(headers.From) == 0 || headers.From[0] == nil || len(headers.From[0].Address) == 0 {
+		log.Debug().
+			Str("session_id", mp.sessionID).
+			Msg("DMARC check: No From header found")
+		TrackDMARCResult("none", "")
 		return &DMARCResult{
 			Result: "none",
 			Raw:    "No From header found",
@@ -118,6 +182,11 @@ func (mp *MessageProcessor) checkDMARC(rawMessage string, headers letters.Header
 	// RFC 7489: The domain in the RFC5322.From field is the primary identifier
 	fromDomain := mp.extractDomainFromEmail(fromHeader)
 	if fromDomain == "" {
+		log.Debug().
+			Str("session_id", mp.sessionID).
+			Str("from_header", fromHeader).
+			Msg("DMARC check: No domain found in From header")
+		TrackDMARCResult("none", "")
 		return &DMARCResult{
 			Result: "none",
 			Raw:    "No domain found in From header",
@@ -127,6 +196,18 @@ func (mp *MessageProcessor) checkDMARC(rawMessage string, headers letters.Header
 	// Look up DMARC policy with domain hierarchy traversal
 	record, actualDomain, err := mp.lookupDMARCRecord(fromDomain)
 	if err != nil {
+		log.Warn().
+			Err(err).
+			Str("session_id", mp.sessionID).
+			Str("domain", fromDomain).
+			Msg("DMARC lookup error")
+		CaptureError(err, map[string]interface{}{
+			"session_id": mp.sessionID,
+			"domain":     fromDomain,
+			"from":       mp.from,
+			"check_type": "dmarc",
+		})
+		TrackDMARCResult("none", "")
 		return &DMARCResult{
 			Result: "none",
 			Raw:    fmt.Sprintf("DMARC lookup error: %v", err),
@@ -135,6 +216,11 @@ func (mp *MessageProcessor) checkDMARC(rawMessage string, headers letters.Header
 	}
 
 	if record == nil {
+		log.Debug().
+			Str("session_id", mp.sessionID).
+			Str("domain", fromDomain).
+			Msg("DMARC check: No record found")
+		TrackDMARCResult("none", "")
 		return &DMARCResult{
 			Result: "none",
 			Raw:    fmt.Sprintf("No DMARC record found for domain %s or its parent domains", fromDomain),
@@ -189,6 +275,19 @@ func (mp *MessageProcessor) checkDMARC(rawMessage string, headers letters.Header
 	rawMsg := fmt.Sprintf("DMARC evaluation for domain %s (policy found at %s): policy=%s, SPF pass=%v aligned=%v, DKIM pass=%v aligned=%v, result=%s",
 		fromDomain, actualDomain, string(record.Policy), spfPass, spfAligned, dkimPass, dkimAligned, result)
 
+	log.Debug().
+		Str("session_id", mp.sessionID).
+		Str("result", result).
+		Str("domain", fromDomain).
+		Str("actual_domain", actualDomain).
+		Str("policy", string(record.Policy)).
+		Bool("spf_pass", spfPass).
+		Bool("spf_aligned", spfAligned).
+		Bool("dkim_pass", dkimPass).
+		Bool("dkim_aligned", dkimAligned).
+		Msg("DMARC check completed")
+
+	TrackDMARCResult(result, string(record.Policy))
 	return &DMARCResult{
 		Result: result,
 		Raw:    rawMsg,
