@@ -1,81 +1,155 @@
-# InboundParse - Email to Webhook Gateway
+# InboundParse - Modern Email to Webhook Gateway
 
-A modern SMTP server that receives emails from any domain without authentication and forwards them to webhooks with comprehensive email authentication validation and SSL/TLS support.
+A SMTP server that receives emails from any domain without authentication and forwards them to webhooks with comprehensive email authentication validation, automatic SSL/TLS support and more. 
+
+> [!NOTE]
+> This is my first major Golang product, so I may not do things the **golang way**, but I am open to feedback. I have used this application privately for the last 6 months, and have received well over **100,000** of pieces of mail (mostly spam, but thats for another day).
+
 
 ## Features
 
-- **No SMTP Auth Required**: Accepts emails from any domain without username/password
-- **TLS Support**: Optional TLS when `-cert-file` and `-key-file` are provided
-- **SPF Validation**: Validates Sender Policy Framework records
-- **DKIM Validation**: Verifies DomainKeys Identified Mail signatures
-- **DMARC Validation**: Evaluates DMARC policy and alignment
-- **Headers Included**: Forwards received headers along with parsed message data
-- **Webhook Authentication**: Supports HTTP Basic Auth for webhook endpoints
-- **Verbose Logging**: Enable extra logs with `-verbose`
-- **Multiple Ports**: Listens on 25 by default; TLS listener on 587 when certs are provided
-- **PROXY protocol**: Accepts PROXY protocol connections (e.g., from load balancers)
+### Core SMTP Functionality
+
+- ✉️ **No SMTP Auth Required**: Accepts emails from any domain without username/password
+- 🔒 **TLS Support**: Automatic SSL/TLS certificate management with Let's Encrypt
+- 🔌 **Multiple Ports**: Listens on 25 (SMTP) and 587 (Submission) with optional TLS
+- 🛡️ **PROXY Protocol**: Accepts PROXY protocol connections (e.g., from load balancers)
+- 📏 **Message Size Limits**: Configurable maximum message size (default: 10MB)
+
+### Email Authentication (RFC Compliant)
+- 🧐 **SPF Validation (RFC 7208)**: Validates Sender Policy Framework with HELO and envelope sender
+- 🖊️ **DKIM Validation (RFC 6376)**: Verifies DomainKeys Identified Mail signatures with multi-signature support
+- 🕵️‍♂️ **DMARC Validation (RFC 7489)**: Evaluates DMARC policy with identifier alignment checking
+- 📝 **Comprehensive Results**: Detailed authentication results with domain, mechanism, and alignment data
+
+### Observability & Monitoring
+- 📋 **Structured Logging**: JSON-formatted logs with configurable levels
+- 📊 **Prometheus Metrics**: Comprehensive metrics collection and monitoring
+- 🛎️ **Sentry Integration**: Error tracking and performance monitoring
+- ❤️ **Health Checks**: Built-in health endpoint for load balancers
+- 📈 **Grafana Dashboards**: Pre-configured monitoring dashboards
+
+### Deployment & Operations
+- 🐳 **Docker Support**: Multi-stage Docker builds with Alpine Linux
+- 🧩 **Docker Compose**: Complete development stack with monitoring
+- 🚀 **Fly.io Ready**: Pre-configured for Fly.io deployment (more to come!)
+- 🔑 **Automatic Certificates**: Let's Encrypt integration with DNS validation
+- ⚙️ **Environment Configuration**: Flexible configuration via environment variables
+
+### Webhook Integration
+- 🔐 **HTTP Basic Auth**: Secure webhook authentication
+- 📨 **Rich Payload**: Complete email data including headers and attachments
+- 🔁 **Error Handling**: Robust webhook delivery with retry logic
+- ✂️ **Content Processing**: Parsed text and HTML content extraction
 
 ## Quick Start
 
-### Build and Run
+Welcome to **InboundParse**! Whether you're a developer, sysadmin, or open source enthusiast, getting started is easy. You can build and run the project with just a few commands. Contributions are welcome—see the bottom for how to get involved!
+
+---
+
+### 1. ⚡ Fastest Start with Make
+
+Most development and deployment tasks are automated with `make` for simplicity.
 
 ```bash
-# Install dependencies
-go mod tidy
+# Download Go dependencies & build the project
+make deps
 
-# Build the binary
-go build -o inboundparse
+# Development mode
+make run-dev
 
-# Run with webhook URL
-./inboundparse -webhook=http://localhost:8080/api/webhook
+# Copy the example environment file and customize your webhook target
+cp .env.example .env
+echo 'WEBHOOK_URL=https://your-app.com/webhook' >> .env # Recommend deleting the first WEBHOOK_URL to make it cleaner, but env should load last.
+make run-dev
 ```
 
-### Command Line Options
+---
+
+### 2. 👐 Manual Build & Run (for non-Make users)
+
+```bash
+# 1. Ensure Go ≥ 1.20 is installed
+go mod tidy      # Download dependencies
+go build -o inboundparse ./cmd/inboundparse/
+
+# 2. Start the server with a custom webhook endpoint
+./inboundparse -webhook=https://your-app.com/webhook
+```
+
+---
+
+### 3. 🐳 Full Local Dev Stack (Docker Compose, Monitoring, Visual Dashboards)
+
+Spin up the whole ecosystem: SMTP, metrics, dashboards, and log viewing, all with familiar tooling.
+
+```bash
+# Start SMTP server, Prometheus (metrics), and Grafana (dashboards)
+make up
+
+# View logs (all services)
+docker-compose -f docker-compose.dev.yml logs -f
+
+# Stop all services
+make down
+
+# Restart/dev workflow (down + up)
+make dev
+```
+
+With the dev stack running, you'll have:
+- **InboundParse SMTP server** (`:25`, `:587`, `:9090`)
+- **Prometheus** for metrics (`:9091`)
+- **Grafana** dashboards (`:3000`, login `admin`/`admin`)
+
+---
+
+### 4. 🛠️ Command Line Reference
+
+You can configure nearly everything via CLI flags (or use environment variables). Use `./inboundparse -h` to see all options.
 
 ```bash
 Usage of ./inboundparse:
-  -listen string
-        SMTP server listen address (default "0.0.0.0:25")
-  -listen-tls string
-        SMTP server listen address for TLS (default "0.0.0.0:587")
-  -webhook string
-        Webhook URL to send email data to (required)
-  -webhook-user string
-        Basic auth username for webhook
-  -webhook-pass string
-        Basic auth password for webhook
-  -name string
-        SMTP server name (default "mx.inboundparse.com")
-  -max-size int
-        Maximum message size in bytes (default 10485760)
-  -read-timeout int
-        Read timeout in seconds (default 30)
-  -write-timeout int
-        Write timeout in seconds (default 30)
-  -enable-spf
-        Enable SPF validation (default true)
-  -enable-dkim
-        Enable DKIM validation (default true)
-  -enable-dmarc
-        Enable DMARC validation (default true)
-  -cert-file string
-        TLS certificate file path (optional)
-  -key-file string
-        TLS private key file path (optional)
-  -verbose
-        Enable verbose logging (default false)
+  -listen string            SMTP server listen address (default "0.0.0.0:25")
+  -listen-tls string        SMTP TLS listen address (default "0.0.0.0:587")
+  -webhook string           Webhook URL for email payloads (required)
+  -webhook-user string      Basic auth username for webhook (optional)
+  -webhook-pass string      Basic auth password for webhook (optional)
+  -name string              SMTP server name (default "mx.inboundparse.com")
+  -max-size int             Max message size bytes (default 10485760)
+  -read-timeout int         Read timeout (seconds, default 30)
+  -write-timeout int        Write timeout (seconds, default 30)
+  -enable-spf               Enable SPF validation (default true)
+  -enable-dkim              Enable DKIM validation (default true)
+  -enable-dmarc             Enable DMARC validation (default true)
+  -cert-file string         TLS cert file (optional)
+  -key-file string          TLS private key (optional)
+  -verbose                  Enable verbose logging (default false)
+  -enable-metrics           Enable Prometheus metrics (default false)
+  -metrics-addr string      Metrics server listen addr (default "0.0.0.0:9090")
+  -metrics-api-key string   Metrics API key (optional)
+  -metrics-username string  Metrics username (optional)
+  -metrics-password string  Metrics password (optional)
+  -enable-sentry            Enable Sentry error tracking (default false)
+  -sentry-dsn string        Sentry DSN for errors (optional)
+  -sentry-env string        Sentry env (default "production")
+  -sentry-release string    Sentry release version (optional)
 ```
 
-### Environment Variables
 
-You can also configure using environment variables:
+
+### 🔒 Environment Variables 
+
+You can configure InboundParse using environment variables or command line flags:
 
 #### Core Configuration
 - `WEBHOOK_URL` - Webhook URL (required)
 - `WEBHOOK_USER` - Basic auth username for webhook
 - `WEBHOOK_PASS` - Basic auth password for webhook
-- `LISTEN_ADDR` - SMTP server listen address (overrides `-listen`)
-- `LISTEN_ADDR_TLS` - TLS server listen address (overrides `-listen-tls`)
+- `LISTEN_ADDR` - SMTP server listen address (default: "0.0.0.0:25")
+- `LISTEN_ADDR_TLS` - TLS server listen address (default: "0.0.0.0:587")
+- `SERVER_NAME` - SMTP server name (default: "mx.inboundparse.com")
 
 #### TLS Configuration
 - `CERT_FILE` - TLS certificate file path
@@ -87,9 +161,35 @@ You can also configure using environment variables:
 - `ENABLE_DMARC` - Enable DMARC validation (default: true)
 - `VERBOSE` - Enable verbose logging (default: false)
 
+#### Logging Configuration
+- `LOG_LEVEL` - Log level (debug, info, warn, error) (default: "info")
+- `LOG_FORMAT` - Log format (json, console) (default: "json")
+- `LOG_OUTPUT` - Log output destination (default: "stdout")
+
+#### Metrics Configuration
+- `ENABLE_METRICS` - Enable Prometheus metrics collection (default: false)
+- `METRICS_ADDR` - Metrics server listen address (default: "0.0.0.0:9090")
+- `METRICS_API_KEY` - Metrics API key
+- `METRICS_USERNAME` - Metrics username
+- `METRICS_PASSWORD` - Metrics password
+
+#### Sentry Configuration
+- `ENABLE_SENTRY` - Enable Sentry error tracking (default: false)
+- `SENTRY_DSN` - Sentry DSN for error tracking
+- `SENTRY_ENV` - Sentry environment (default: "production")
+- `SENTRY_RELEASE` - Sentry release version
+
+#### Automatic Certificate Management
+- `ACME_SH_EMAIL` - Email for Let's Encrypt account registration
+- `MXDOMAIN` - Domain for SSL certificate (default: "mx.inboundparse.com")
+- `DNS_API` - DNS API provider (default: "dns_cf")
+- `CF_Token` - Cloudflare API token (required for dns_cf)
+- `CF_Zone_ID` - Cloudflare Zone ID (required for dns_cf)
+
+
 ## Webhook Payload
 
-The service sends a JSON payload to your webhook similar to:
+The service sends a JSON payload to your webhook with comprehensive email data:
 
 ```json
 {
@@ -97,110 +197,52 @@ The service sends a JSON payload to your webhook similar to:
   "from": [{ "address": "sender@example.com", "name": "Sender" }],
   "to":   [{ "address": "recipient@example.com", "name": "Recipient" }],
   "subject": "Email Subject",
-  "message_id": "<unique-message-id@example.com>",
-  "headers": { "From": ["sender@example.com"], "Subject": ["Email Subject"] },
-  "text_body": "Plain text body",
-  "enriched_text_body": "...",
-  "html_body": "<p>HTML body</p>",
-  "attachments": [ /* array of files */ ],
-  "inline_files": [ /* array of inline files */ ],
-  "authentication_results": {
-    "spf":   { "result": "pass", "raw": "...", "mechanism": "..." },
-    "dkim":  { "valid": true, "signatures": ["Valid: example.com"], "raw": "..." },
-    "dmarc": { "result": "pass", "raw": "...", "policy": "reject" }
+  "body": "Plain text body content",
+  "headers": {
+    "From": "sender@example.com",
+    "To": "recipient@example.com", 
+    "Subject": "Email Subject",
+    "Message-ID": "<unique-message-id@example.com>",
+    "Date": "Mon, 01 Jan 2024 12:00:00 +0000"
+  },
+  "remote_ip": "192.168.1.100",
+  "auth": {
+    "spf": {
+      "result": "pass",
+      "domain": "example.com",
+      "mechanism": "ip4",
+      "explanation": ""
+    },
+    "dkim": {
+      "result": "pass",
+      "signatures": [
+        {
+          "domain": "example.com",
+          "result": "pass",
+          "canonicalization": "signed headers: 8"
+        }
+      ],
+      "body": "at least one signature passed verification"
+    },
+    "dmarc": {
+      "result": "pass",
+      "policy": "reject",
+      "subdomain_policy": "reject",
+      "percentage": 100,
+      "spf_alignment": "pass (relaxed)",
+      "dkim_alignment": "pass (relaxed)"
+    }
   }
 }
 ```
 
-## Authentication Results
+---
 
-### SPF (Sender Policy Framework)
-- **result**: `pass`, `fail`, `softfail`, `neutral`, `none`, `temperror`, `permerror`
-- **raw**: Human-readable description of the SPF check
-- **mechanism**: The SPF mechanism that matched (if any)
+## 🤝 Contributing
 
-### DKIM (DomainKeys Identified Mail)
-- **valid**: Boolean indicating if all signatures are valid
-- **signatures**: Array of signature validation results
-- **raw**: Summary of DKIM verification
-- **error**: Error message if verification failed
+Contributions of all kinds are welcome! See [CONTRIBUTING.md](./docs/CONTRIBUTING.md) for guidelines, and don’t hesitate to open issues, fork, or create PRs.
 
-### DMARC (Domain-based Message Authentication, Reporting & Conformance)
-- **result**: `pass`, `fail`, `none`
-- **raw**: Human-readable description of DMARC check
-- **policy**: The DMARC policy (`none`, `quarantine`, `reject`)
-- **error**: Error message if lookup failed
+---
 
-## Docker Usage
-
-### Build Docker Image
-
-```bash
-docker build -t inboundparse .
-```
-
-### Run with Docker (Basic)
-
-```bash
-docker run -p 25:25 -p 587:587 inboundparse \
-  -webhook=http://your-webhook-url.com/api/webhook \
-  -verbose=true
-```
-
-### Run with Docker (TLS)
-
-Provide your own certificate and key inside the container and set `CERT_FILE`/`KEY_FILE`.
-
-### Environment File (.env)
-
-Create a `.env` file in your project directory (optional):
-
-```bash
-WEBHOOK_URL=https://your-webhook-url.com/api/webhook
-
-# Optional overrides
-LISTEN_ADDR=0.0.0.0:25
-LISTEN_ADDR_TLS=0.0.0.0:587
-ENABLE_SPF=true
-ENABLE_DKIM=true
-ENABLE_DMARC=true
-VERBOSE=false
-CERT_FILE=/cert/cert.pem
-KEY_FILE=/cert/key.pem
-```
-
-## Testing
-
-### Send Test Email via Telnet
-
-```bash
-# Test port 25
-telnet localhost 25
-HELO test.com
-MAIL FROM:<test@example.com>
-RCPT TO:<recipient@example.com>
-DATA
-Subject: Test Email
-From: test@example.com
-To: recipient@example.com
-
-This is a test email body.
-.
-QUIT
-```
-
-```bash
-# Test port 587 (submission)
-telnet localhost 587
-EHLO test.com
-MAIL FROM:<test@example.com>
-RCPT TO:<recipient@example.com>
-DATA
-Subject: Test Email
-From: test@example.com
-To: recipient@example.com
-
-This is a test email body.
-.
-QUIT
-``` 
+> **Need help or want to suggest new features?**  
+> Open an issue or start a discussion on GitHub!

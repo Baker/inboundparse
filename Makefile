@@ -1,81 +1,88 @@
-.PHONY: build run test clean docker-build docker-run help
+.DEFAULT_GOAL := help
+.PHONY: build run test clean docker-build docker-run help lint verify-deps coverage check
 
 # Variables
 BINARY_NAME=inboundparse
 DOCKER_IMAGE=inboundparse:latest
+GOBIN := $(shell go env GOPATH)/bin
 
-# Default target
 help:
-	@echo "Available commands:"
-	@echo "  build        - Build the binary"
-	@echo "  run          - Run the service with default webhook URL"
-	@echo "  test         - Run tests"
-	@echo "  clean        - Clean build artifacts"
-	@echo "  docker-build - Build Docker image"
-	@echo "  docker-run   - Run with Docker Compose"
-	@echo "  docker-stop  - Stop Docker containers"
-	@echo "  deps         - Download dependencies"
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "%-30s %s\n", $$1, $$2}'
 
-# Build the binary
-build:
+build: ## Build the binary
 	@echo "Building $(BINARY_NAME)..."
-	go build -o $(BINARY_NAME) .
+	go build -o $(BINARY_NAME) ./cmd/inboundparse/
 
-# Download dependencies
-deps:
+deps: ## Download dependencies
 	@echo "Downloading dependencies..."
 	go mod tidy
 	go mod download
 
-# Run the service
-run: build
-	@echo "Starting inboundparse server..."
-	@echo "Webhook URL: $${WEBHOOK_URL:-http://localhost:8080/webhook}"
-	@echo "SMTP listening on :25 (run as root or use port >1024)"
-	./$(BINARY_NAME)
-
-# Run with non-privileged port
-run-dev: build
+run-dev: build ## Run with non-privileged port
 	@echo "Starting inboundparse server on port 2525..."
 	@echo "Webhook URL: $${WEBHOOK_URL:-http://localhost:8080/webhook}"
 	./$(BINARY_NAME) -listen=:2525 
 
-# Run tests
-test:
-    @echo "Running tests..."
-    go test -v ./...
+test: ## Run tests
+	@echo "Running tests..."
+	go test -v ./...
 
 
-# Clean build artifacts
-clean:
+clean: ## Clean build artifacts
 	@echo "Cleaning build artifacts..."
 	rm -f $(BINARY_NAME)
 	go clean
 
-# Build Docker image
-docker-build:
+docker-build: ## Build Docker image
 	@echo "Building Docker image..."
 	docker build -t $(DOCKER_IMAGE) .
 
-# Test email sending
-test-email:
-	@echo "Sending test email via telnet..."
-	@echo "Connect with: telnet localhost 2525"
-	@echo "Then use SMTP commands:"
-	@echo "  HELO test.com"
-	@echo "  MAIL FROM:<test@example.com>"
-	@echo "  RCPT TO:<recipient@example.com>"
-	@echo "  DATA"
-	@echo "  Subject: Test Email"
-	@echo "  From: test@example.com"
-	@echo "  To: recipient@example.com"
-	@echo "  "
-	@echo "  This is a test email body."
-	@echo "  ."
-	@echo "  QUIT"
+up: ## Start the docker containers
+	@echo "Starting the docker containers"
+	@docker compose -f docker-compose.dev.yml up --build --detach
 
-# Show service status
-status:
+down: ## Stop the docker containers
+	@echo "Stopping the docker containers"
+	@docker compose -f docker-compose.dev.yml down
+
+dev: down up ## Restart the docker containers
+
+status: ## Show service status
 	@echo "Checking service status..."
 	@docker-compose ps 2>/dev/null || echo "Docker Compose not running"
 	@ps aux | grep $(BINARY_NAME) | grep -v grep || echo "Binary not running" 
+
+ci: ## Run CI workflow
+	gh act push -W .github/workflows/ci.yml
+
+format: ## Format the code
+	@echo "Running golangci-lint..."
+	@command -v $(GOBIN)/golangci-lint >/dev/null 2>&1 || go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
+	@$(GOBIN)/golangci-lint fmt
+
+vet: ## Vet the code
+	@echo "Vetting code..."
+	go vet ./...
+
+lint: ## Lint (golangci-lint) + vuln scan (govulncheck)
+	@echo "Running golangci-lint..."
+	@command -v $(GOBIN)/golangci-lint >/dev/null 2>&1 || go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
+	@$(GOBIN)/golangci-lint run --fix --timeout=5m
+	@echo "Running govulncheck..."
+	@command -v $(GOBIN)/govulncheck >/dev/null 2>&1 || go install golang.org/x/vuln/cmd/govulncheck@latest
+	@$(GOBIN)/govulncheck ./...
+
+fl: format lint vet ## Format, lint, and vet the code
+
+verify-deps: ## Verify and report dependency status
+	@echo "Verifying dependencies..."
+	go mod verify
+	@echo "Outdated modules:"
+	@go list -u -m all | grep -v "^inboundparse " | grep -E "\[[^\]]*\]$$" || true
+
+coverage: ## Run tests with coverage and print summary
+	@echo "Running tests with coverage..."
+	go test -covermode=atomic -coverpkg=./... -coverprofile=cover.out ./...
+	@go tool cover -func=cover.out | tail -n1
+
+check: deps lint  ## Run deps, linters, vulncheck

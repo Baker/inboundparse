@@ -71,6 +71,9 @@ func main() {
 	if env := os.Getenv("KEY_FILE"); env != "" {
 		*keyFile = env
 	}
+	if env := os.Getenv("SERVER_NAME"); env != "" {
+		*serverName = env
+	}
 
 	if *webhookURL == "" {
 		log.Fatal("Webhook URL is required. Use -webhook flag or WEBHOOK_URL environment variable")

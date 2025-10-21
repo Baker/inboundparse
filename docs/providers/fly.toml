@@ -13,6 +13,8 @@ primary_region = 'iad'
   ENABLE_DKIM = "true"
   ENABLE_DMARC = "true"
   ENABLE_SPF = "true"
+  ENABLE_METRICS = "true"
+  ENABLE_SENTRY = "true"
 
 [[vm]]
   memory = '1gb'
