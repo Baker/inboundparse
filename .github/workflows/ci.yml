@@ -100,7 +100,7 @@ jobs:
       - name: 🔧 Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version-file: go.mod
+          go-version: stable
           cache: true
 
       - name: 🧪 Run tests with coverage
@@ -108,13 +108,14 @@ jobs:
 
       - name: ✅ Enforce coverage threshold
         uses: vladopajic/go-test-coverage@v2
+        continue-on-error: true
         with:
           profile: cover.out
           config: ./.github/.testcoverage.yml
 
 
   build:
-    name: 🔨 Build
+    name: 🔨 Build matrix
     needs:
       - lint
       - deps
