@@ -6,20 +6,18 @@
 app = 'inboundparse'
 primary_region = 'iad'
 
-[build]
-
 [env]
   VERBOSE = "true"
   ENABLE_DKIM = "true"
   ENABLE_DMARC = "true"
   ENABLE_SPF = "true"
+  ENABLE_METRICS = "true"
+  WEBHOOK_URL = "https://webhook-test.com/c31fbfa10a08fd4a5e86c5168375e1e4"
 
 [[vm]]
   memory = '1gb'
   cpu_kind = 'shared'
   cpus = 1
-  memory_mb = 1024
-
 [[services]]
   internal_port = 25
   internal_address = "0.0.0.0"
@@ -28,6 +26,11 @@ primary_region = 'iad'
   [[services.ports]]
     port = 25
     handlers = ["proxy_proto"]
+
+[[services]]
+  internal_port = 587
+  internal_address = "0.0.0.0"
+  protocol = "tcp"
 
   [[services.ports]]
     port = 587
