@@ -479,12 +479,6 @@
         },
         "targets": [
           {
-            "expr": "rate(auth_checks_total[5m])",
-            "interval": "",
-            "legendFormat": "Total Auth Checks/sec",
-            "refId": "A"
-          },
-          {
             "expr": "rate(auth_checks_spf_total[5m])",
             "interval": "",
             "legendFormat": "SPF Checks/sec",

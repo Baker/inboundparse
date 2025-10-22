@@ -525,13 +525,13 @@
         },
         "targets": [
           {
-            "expr": "histogram_quantile(0.95, rate(webhook_request_duration_seconds_bucket[5m]))",
+            "expr": "histogram_quantile(0.95, rate(webhook_duration_seconds_bucket[5m]))",
             "interval": "",
             "legendFormat": "95th percentile",
             "refId": "A"
           },
           {
-            "expr": "histogram_quantile(0.50, rate(webhook_request_duration_seconds_bucket[5m]))",
+            "expr": "histogram_quantile(0.50, rate(webhook_duration_seconds_bucket[5m]))",
             "interval": "",
             "legendFormat": "50th percentile",
             "refId": "B"
@@ -614,17 +614,11 @@
           {
             "expr": "rate(webhook_requests_total[5m])",
             "interval": "",
-            "legendFormat": "Requests/sec",
+            "legendFormat": "{{status_code}}",
             "refId": "A"
-          },
-          {
-            "expr": "rate(webhook_requests_failed_total[5m])",
-            "interval": "",
-            "legendFormat": "Failed/sec",
-            "refId": "B"
           }
         ],
-        "title": "Webhook Request Rate",
+        "title": "Webhook Request Rate by Status",
         "type": "timeseries"
       },
       {
@@ -699,12 +693,6 @@
         },
         "targets": [
           {
-            "expr": "rate(auth_checks_total[5m])",
-            "interval": "",
-            "legendFormat": "Total Auth Checks/sec",
-            "refId": "A"
-          },
-          {
             "expr": "rate(auth_checks_spf_total[5m])",
             "interval": "",
             "legendFormat": "SPF Checks/sec",
@@ -731,35 +719,7 @@
         "fieldConfig": {
           "defaults": {
             "color": {
-              "mode": "palette-classic"
-            },
-            "custom": {
-              "axisLabel": "",
-              "axisPlacement": "auto",
-              "barAlignment": 0,
-              "drawStyle": "line",
-              "fillOpacity": 10,
-              "gradientMode": "none",
-              "hideFrom": {
-                "legend": false,
-                "tooltip": false,
-                "vis": false
-              },
-              "lineInterpolation": "linear",
-              "lineWidth": 1,
-              "pointSize": 5,
-              "scaleDistribution": {
-                "type": "linear"
-              },
-              "showPoints": "never",
-              "spanNulls": false,
-              "stacking": {
-                "group": "A",
-                "mode": "none"
-              },
-              "thresholdsStyle": {
-                "mode": "off"
-              }
+              "mode": "thresholds"
             },
             "mappings": [],
             "thresholds": {
@@ -770,12 +730,16 @@
                   "value": null
                 },
                 {
+                  "color": "yellow",
+                  "value": 0.8
+                },
+                {
                   "color": "red",
-                  "value": 80
+                  "value": 0.95
                 }
               ]
             },
-            "unit": "s"
+            "unit": "percentunit"
           },
           "overrides": []
         },
@@ -787,31 +751,27 @@
         },
         "id": 9,
         "options": {
-          "legend": {
-            "calcs": [],
-            "displayMode": "list",
-            "placement": "bottom"
+          "orientation": "auto",
+          "reduceOptions": {
+            "calcs": [
+              "lastNotNull"
+            ],
+            "fields": "",
+            "values": false
           },
-          "tooltip": {
-            "mode": "single"
-          }
+          "showThresholdLabels": false,
+          "showThresholdMarkers": true
         },
         "targets": [
           {
-            "expr": "histogram_quantile(0.95, rate(message_parsing_duration_seconds_bucket[5m]))",
+            "expr": "rate(smtp_messages_processed_total{status=\"success\"}[5m]) / rate(smtp_messages_total[5m])",
             "interval": "",
-            "legendFormat": "95th percentile",
+            "legendFormat": "Success Rate",
             "refId": "A"
-          },
-          {
-            "expr": "histogram_quantile(0.50, rate(message_parsing_duration_seconds_bucket[5m]))",
-            "interval": "",
-            "legendFormat": "50th percentile",
-            "refId": "B"
           }
         ],
-        "title": "Message Parsing Duration",
-        "type": "timeseries"
+        "title": "Message Success Rate",
+        "type": "gauge"
       },
       {
         "datasource": "Prometheus",
@@ -821,48 +781,13 @@
               "mode": "palette-classic"
             },
             "custom": {
-              "axisLabel": "",
-              "axisPlacement": "auto",
-              "barAlignment": 0,
-              "drawStyle": "line",
-              "fillOpacity": 10,
-              "gradientMode": "none",
               "hideFrom": {
                 "legend": false,
                 "tooltip": false,
                 "vis": false
-              },
-              "lineInterpolation": "linear",
-              "lineWidth": 1,
-              "pointSize": 5,
-              "scaleDistribution": {
-                "type": "linear"
-              },
-              "showPoints": "never",
-              "spanNulls": false,
-              "stacking": {
-                "group": "A",
-                "mode": "none"
-              },
-              "thresholdsStyle": {
-                "mode": "off"
               }
             },
-            "mappings": [],
-            "thresholds": {
-              "mode": "absolute",
-              "steps": [
-                {
-                  "color": "green",
-                  "value": null
-                },
-                {
-                  "color": "red",
-                  "value": 80
-                }
-              ]
-            },
-            "unit": "s"
+            "mappings": []
           },
           "overrides": []
         },
@@ -875,9 +800,16 @@
         "id": 10,
         "options": {
           "legend": {
-            "calcs": [],
-            "displayMode": "list",
-            "placement": "bottom"
+            "displayMode": "table",
+            "placement": "right"
+          },
+          "pieType": "donut",
+          "reduceOptions": {
+            "calcs": [
+              "lastNotNull"
+            ],
+            "fields": "",
+            "values": false
           },
           "tooltip": {
             "mode": "single"
@@ -885,14 +817,14 @@
         },
         "targets": [
           {
-            "expr": "server_uptime_seconds",
+            "expr": "webhook_requests_total",
             "interval": "",
-            "legendFormat": "Uptime",
+            "legendFormat": "{{status_code}}",
             "refId": "A"
           }
         ],
-        "title": "Server Uptime",
-        "type": "timeseries"
+        "title": "Webhook Status Distribution",
+        "type": "piechart"
       }
     ],
     "schemaVersion": 27,
