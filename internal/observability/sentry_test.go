@@ -106,3 +106,117 @@ func TestSentryClient_RecoverWithSentry(t *testing.T) {
 
 	client.RecoverWithSentry()
 }
+
+func TestSentryConfig_DefaultValues(t *testing.T) {
+	config := SentryConfig{}
+
+	if config.EnableSentry {
+		t.Error("Expected EnableSentry to be false by default")
+	}
+	if config.SentryDSN != "" {
+		t.Errorf("Expected empty SentryDSN, got '%s'", config.SentryDSN)
+	}
+	if config.SentryEnv != "" {
+		t.Errorf("Expected empty SentryEnv, got '%s'", config.SentryEnv)
+	}
+	if config.SentryRelease != "" {
+		t.Errorf("Expected empty SentryRelease, got '%s'", config.SentryRelease)
+	}
+}
+
+func TestSentryConfig_WithValues(t *testing.T) {
+	config := SentryConfig{
+		EnableSentry:  true,
+		SentryDSN:     "https://test@sentry.io/123456",
+		SentryEnv:     "test",
+		SentryRelease: "v1.0.0",
+	}
+
+	if !config.EnableSentry {
+		t.Error("Expected EnableSentry to be true")
+	}
+	if config.SentryDSN != "https://test@sentry.io/123456" {
+		t.Errorf("Expected SentryDSN 'https://test@sentry.io/123456', got '%s'", config.SentryDSN)
+	}
+	if config.SentryEnv != "test" {
+		t.Errorf("Expected SentryEnv 'test', got '%s'", config.SentryEnv)
+	}
+	if config.SentryRelease != "v1.0.0" {
+		t.Errorf("Expected SentryRelease 'v1.0.0', got '%s'", config.SentryRelease)
+	}
+}
+
+func TestSentryClient_MultipleInit(t *testing.T) {
+	client := NewSentryClient()
+
+	config1 := SentryConfig{
+		EnableSentry: false,
+	}
+
+	config2 := SentryConfig{
+		EnableSentry: false,
+	}
+
+	// Should be able to init multiple times
+	err1 := client.Init(config1)
+	if err1 != nil {
+		t.Errorf("Expected no error on first init, got %v", err1)
+	}
+
+	err2 := client.Init(config2)
+	if err2 != nil {
+		t.Errorf("Expected no error on second init, got %v", err2)
+	}
+}
+
+func TestSentryClient_CaptureErrorWithNilError(t *testing.T) {
+	client := NewSentryClient()
+
+	config := SentryConfig{
+		EnableSentry: false,
+	}
+	client.Init(config)
+
+	// Should not panic with nil error
+	client.CaptureError(nil, map[string]interface{}{
+		"test": "value",
+	})
+}
+
+func TestSentryClient_CaptureErrorWithNilTags(t *testing.T) {
+	client := NewSentryClient()
+
+	config := SentryConfig{
+		EnableSentry: false,
+	}
+	client.Init(config)
+
+	// Should not panic with nil tags
+	client.CaptureError(errors.New("test error"), nil)
+}
+
+func TestSentryClient_CaptureMessageWithNilTags(t *testing.T) {
+	client := NewSentryClient()
+
+	config := SentryConfig{
+		EnableSentry: false,
+	}
+	client.Init(config)
+
+	// Should not panic with nil tags
+	client.CaptureMessage("test message", sentry.LevelInfo, nil)
+}
+
+func TestSentryClient_CaptureMessageWithEmptyMessage(t *testing.T) {
+	client := NewSentryClient()
+
+	config := SentryConfig{
+		EnableSentry: false,
+	}
+	client.Init(config)
+
+	// Should not panic with empty message
+	client.CaptureMessage("", sentry.LevelInfo, map[string]interface{}{
+		"test": "value",
+	})
+}

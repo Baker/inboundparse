@@ -7,6 +7,7 @@ import (
 	"inboundparse/internal/config"
 	"inboundparse/internal/observability"
 	"net"
+	"strings"
 	"time"
 
 	"github.com/emersion/go-smtp"
@@ -133,12 +134,18 @@ func (s *SMTPServer) Stop() error {
 	var closeErrors error
 	if s.server != nil {
 		if err := s.server.Close(); err != nil {
-			closeErrors = errors.Join(closeErrors, err)
+			// Ignore "server already closed" errors for idempotency
+			if !strings.Contains(err.Error(), "already closed") {
+				closeErrors = errors.Join(closeErrors, err)
+			}
 		}
 	}
 	if s.tlsServer != nil {
 		if err := s.tlsServer.Close(); err != nil {
-			closeErrors = errors.Join(closeErrors, err)
+			// Ignore "server already closed" errors for idempotency
+			if !strings.Contains(err.Error(), "already closed") {
+				closeErrors = errors.Join(closeErrors, err)
+			}
 		}
 	}
 	return closeErrors

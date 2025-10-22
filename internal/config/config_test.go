@@ -4,105 +4,253 @@ import (
 	"testing"
 )
 
-func TestNew(t *testing.T) {
-	config := New()
+func TestNew_DefaultValues(t *testing.T) {
+	cfg := New()
 
-	if config.ListenAddr != DefaultListenAddr {
-		t.Errorf("Expected ListenAddr %s, got %s", DefaultListenAddr, config.ListenAddr)
+	if cfg.ListenAddr != DefaultListenAddr {
+		t.Errorf("Expected ListenAddr %s, got %s", DefaultListenAddr, cfg.ListenAddr)
 	}
-
-	if config.ListenAddrTLS != DefaultListenAddrTLS {
-		t.Errorf("Expected ListenAddrTLS %s, got %s", DefaultListenAddrTLS, config.ListenAddrTLS)
+	if cfg.ListenAddrTLS != DefaultListenAddrTLS {
+		t.Errorf("Expected ListenAddrTLS %s, got %s", DefaultListenAddrTLS, cfg.ListenAddrTLS)
 	}
-
-	if config.MaxMessageSize != DefaultMaxMessageSize {
-		t.Errorf("Expected MaxMessageSize %d, got %d", DefaultMaxMessageSize, config.MaxMessageSize)
+	if cfg.ServerName != DefaultServerName {
+		t.Errorf("Expected ServerName %s, got %s", DefaultServerName, cfg.ServerName)
 	}
-
-	if config.ReadTimeout != DefaultReadTimeout {
-		t.Errorf("Expected ReadTimeout %v, got %v", DefaultReadTimeout, config.ReadTimeout)
+	if cfg.MaxMessageSize != DefaultMaxMessageSize {
+		t.Errorf("Expected MaxMessageSize %d, got %d", DefaultMaxMessageSize, cfg.MaxMessageSize)
 	}
-
-	if config.WriteTimeout != DefaultWriteTimeout {
-		t.Errorf("Expected WriteTimeout %v, got %v", DefaultWriteTimeout, config.WriteTimeout)
+	if cfg.ReadTimeout != DefaultReadTimeout {
+		t.Errorf("Expected ReadTimeout %v, got %v", DefaultReadTimeout, cfg.ReadTimeout)
+	}
+	if cfg.WriteTimeout != DefaultWriteTimeout {
+		t.Errorf("Expected WriteTimeout %v, got %v", DefaultWriteTimeout, cfg.WriteTimeout)
+	}
+	if cfg.SentryEnv != DefaultSentryEnv {
+		t.Errorf("Expected SentryEnv %s, got %s", DefaultSentryEnv, cfg.SentryEnv)
+	}
+	if cfg.MetricsAddr != DefaultMetricsAddr {
+		t.Errorf("Expected MetricsAddr %s, got %s", DefaultMetricsAddr, cfg.MetricsAddr)
+	}
+	if !cfg.EnableSPF {
+		t.Error("Expected EnableSPF to be true")
+	}
+	if !cfg.EnableDKIM {
+		t.Error("Expected EnableDKIM to be true")
+	}
+	if !cfg.EnableDMARC {
+		t.Error("Expected EnableDMARC to be true")
 	}
 }
 
-func TestWithOptions(t *testing.T) {
-	config := New(
-		WithListenAddr(":2525"),
-		WithWebhookURL("http://test.com/webhook"),
+func TestNew_WithOptions(t *testing.T) {
+	cfg := New(
+		WithListenAddr("127.0.0.1:2525"),
+		WithWebhookURL("http://test.example.com/webhook"),
 		WithVerbose(true),
+		WithAuth(false, true, true),
 	)
 
-	if config.ListenAddr != ":2525" {
-		t.Errorf("Expected ListenAddr :2525, got %s", config.ListenAddr)
+	if cfg.ListenAddr != "127.0.0.1:2525" {
+		t.Errorf("Expected ListenAddr '127.0.0.1:2525', got '%s'", cfg.ListenAddr)
 	}
-
-	if config.WebhookURL != "http://test.com/webhook" {
-		t.Errorf("Expected WebhookURL http://test.com/webhook, got %s", config.WebhookURL)
+	if cfg.WebhookURL != "http://test.example.com/webhook" {
+		t.Errorf("Expected WebhookURL 'http://test.example.com/webhook', got '%s'", cfg.WebhookURL)
 	}
+	if !cfg.Verbose {
+		t.Error("Expected Verbose to be true")
+	}
+	if cfg.EnableSPF {
+		t.Error("Expected EnableSPF to be false")
+	}
+}
 
-	if !config.Verbose {
+func TestWithListenAddr(t *testing.T) {
+	cfg := New(WithListenAddr("127.0.0.1:2525"))
+	if cfg.ListenAddr != "127.0.0.1:2525" {
+		t.Errorf("Expected ListenAddr '127.0.0.1:2525', got '%s'", cfg.ListenAddr)
+	}
+}
+
+func TestWithListenAddrTLS(t *testing.T) {
+	cfg := New(WithListenAddrTLS("127.0.0.1:465"))
+	if cfg.ListenAddrTLS != "127.0.0.1:465" {
+		t.Errorf("Expected ListenAddrTLS '127.0.0.1:465', got '%s'", cfg.ListenAddrTLS)
+	}
+}
+
+func TestWithWebhookURL(t *testing.T) {
+	cfg := New(WithWebhookURL("http://test.example.com/webhook"))
+	if cfg.WebhookURL != "http://test.example.com/webhook" {
+		t.Errorf("Expected WebhookURL 'http://test.example.com/webhook', got '%s'", cfg.WebhookURL)
+	}
+}
+
+func TestWithWebhookAuth(t *testing.T) {
+	cfg := New(WithWebhookAuth("testuser", "testpass"))
+	if cfg.WebhookUser != "testuser" {
+		t.Errorf("Expected WebhookUser 'testuser', got '%s'", cfg.WebhookUser)
+	}
+	if cfg.WebhookPass != "testpass" {
+		t.Errorf("Expected WebhookPass 'testpass', got '%s'", cfg.WebhookPass)
+	}
+}
+
+func TestWithTLS(t *testing.T) {
+	cfg := New(WithTLS("/path/to/cert.pem", "/path/to/key.pem"))
+	if cfg.CertFile != "/path/to/cert.pem" {
+		t.Errorf("Expected CertFile '/path/to/cert.pem', got '%s'", cfg.CertFile)
+	}
+	if cfg.KeyFile != "/path/to/key.pem" {
+		t.Errorf("Expected KeyFile '/path/to/key.pem', got '%s'", cfg.KeyFile)
+	}
+}
+
+func TestWithAuth(t *testing.T) {
+	cfg := New(WithAuth(false, false, false))
+	if cfg.EnableSPF {
+		t.Error("Expected EnableSPF to be false")
+	}
+	if cfg.EnableDKIM {
+		t.Error("Expected EnableDKIM to be false")
+	}
+	if cfg.EnableDMARC {
+		t.Error("Expected EnableDMARC to be false")
+	}
+}
+
+func TestWithVerbose(t *testing.T) {
+	cfg := New(WithVerbose(true))
+	if !cfg.Verbose {
 		t.Error("Expected Verbose to be true")
 	}
 }
 
-func TestValidate(t *testing.T) {
-	tests := []struct {
-		name    string
-		config  *Config
-		wantErr bool
-	}{
-		{
-			name: "valid config",
-			config: &Config{
-				WebhookURL: "http://test.com/webhook",
-			},
-			wantErr: false,
-		},
-		{
-			name: "missing webhook URL",
-			config: &Config{
-				WebhookURL: "",
-			},
-			wantErr: true,
-		},
-		{
-			name: "cert file without key file",
-			config: &Config{
-				WebhookURL: "http://test.com/webhook",
-				CertFile:   "cert.pem",
-				KeyFile:    "",
-			},
-			wantErr: true,
-		},
-		{
-			name: "key file without cert file",
-			config: &Config{
-				WebhookURL: "http://test.com/webhook",
-				CertFile:   "",
-				KeyFile:    "key.pem",
-			},
-			wantErr: true,
-		},
-		{
-			name: "sentry enabled without DSN",
-			config: &Config{
-				WebhookURL:   "http://test.com/webhook",
-				EnableSentry: true,
-				SentryDSN:    "",
-			},
-			wantErr: true,
-		},
+func TestWithSentry(t *testing.T) {
+	cfg := New(WithSentry("https://test@sentry.io/123456", "test", "v1.0.0"))
+	if !cfg.EnableSentry {
+		t.Error("Expected EnableSentry to be true")
+	}
+	if cfg.SentryDSN != "https://test@sentry.io/123456" {
+		t.Errorf("Expected SentryDSN 'https://test@sentry.io/123456', got '%s'", cfg.SentryDSN)
+	}
+	if cfg.SentryEnv != "test" {
+		t.Errorf("Expected SentryEnv 'test', got '%s'", cfg.SentryEnv)
+	}
+	if cfg.SentryRelease != "v1.0.0" {
+		t.Errorf("Expected SentryRelease 'v1.0.0', got '%s'", cfg.SentryRelease)
+	}
+}
+
+func TestWithMetrics(t *testing.T) {
+	cfg := New(WithMetrics("127.0.0.1:9091", "test-api-key", "testuser", "testpass"))
+	if !cfg.EnableMetrics {
+		t.Error("Expected EnableMetrics to be true")
+	}
+	if cfg.MetricsAddr != "127.0.0.1:9091" {
+		t.Errorf("Expected MetricsAddr '127.0.0.1:9091', got '%s'", cfg.MetricsAddr)
+	}
+	if cfg.MetricsAPIKey != "test-api-key" {
+		t.Errorf("Expected MetricsAPIKey 'test-api-key', got '%s'", cfg.MetricsAPIKey)
+	}
+	if cfg.MetricsUsername != "testuser" {
+		t.Errorf("Expected MetricsUsername 'testuser', got '%s'", cfg.MetricsUsername)
+	}
+	if cfg.MetricsPassword != "testpass" {
+		t.Errorf("Expected MetricsPassword 'testpass', got '%s'", cfg.MetricsPassword)
+	}
+}
+
+func TestValidate_ValidConfig(t *testing.T) {
+	cfg := &Config{
+		WebhookURL: "http://test.example.com/webhook",
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			err := tt.config.Validate()
-			if (err != nil) != tt.wantErr {
-				t.Errorf("Validate() error = %v, wantErr %v", err, tt.wantErr)
-			}
-		})
+	err := cfg.Validate()
+	if err != nil {
+		t.Errorf("Expected no error for valid config, got %v", err)
+	}
+}
+
+func TestValidate_MissingWebhookURL(t *testing.T) {
+	cfg := &Config{}
+
+	err := cfg.Validate()
+	if err == nil {
+		t.Error("Expected error for missing webhook URL")
+	}
+	if err.Error() != "webhook URL is required" {
+		t.Errorf("Expected error 'webhook URL is required', got '%s'", err.Error())
+	}
+}
+
+func TestValidate_CertFileWithoutKeyFile(t *testing.T) {
+	cfg := &Config{
+		WebhookURL: "http://test.example.com/webhook",
+		CertFile:   "/path/to/cert.pem",
+	}
+
+	err := cfg.Validate()
+	if err == nil {
+		t.Error("Expected error for cert file without key file")
+	}
+	if err.Error() != "TLS key file is required when certificate file is provided" {
+		t.Errorf("Expected error about key file requirement, got '%s'", err.Error())
+	}
+}
+
+func TestValidate_KeyFileWithoutCertFile(t *testing.T) {
+	cfg := &Config{
+		WebhookURL: "http://test.example.com/webhook",
+		KeyFile:    "/path/to/key.pem",
+	}
+
+	err := cfg.Validate()
+	if err == nil {
+		t.Error("Expected error for key file without cert file")
+	}
+	if err.Error() != "TLS certificate file is required when key file is provided" {
+		t.Errorf("Expected error about cert file requirement, got '%s'", err.Error())
+	}
+}
+
+func TestValidate_SentryEnabledWithoutDSN(t *testing.T) {
+	cfg := &Config{
+		WebhookURL:   "http://test.example.com/webhook",
+		EnableSentry: true,
+		SentryDSN:    "",
+	}
+
+	err := cfg.Validate()
+	if err == nil {
+		t.Error("Expected error for Sentry enabled without DSN")
+	}
+	if err.Error() != "sentry DSN is required when Sentry is enabled" {
+		t.Errorf("Expected error about Sentry DSN requirement, got '%s'", err.Error())
+	}
+}
+
+func TestValidate_SentryEnabledWithDSN(t *testing.T) {
+	cfg := &Config{
+		WebhookURL:   "http://test.example.com/webhook",
+		EnableSentry: true,
+		SentryDSN:    "https://test@sentry.io/123456",
+	}
+
+	err := cfg.Validate()
+	if err != nil {
+		t.Errorf("Expected no error for Sentry enabled with DSN, got %v", err)
+	}
+}
+
+func TestValidate_BothCertAndKeyFiles(t *testing.T) {
+	cfg := &Config{
+		WebhookURL: "http://test.example.com/webhook",
+		CertFile:   "/path/to/cert.pem",
+		KeyFile:    "/path/to/key.pem",
+	}
+
+	err := cfg.Validate()
+	if err != nil {
+		t.Errorf("Expected no error for both cert and key files, got %v", err)
 	}
 }

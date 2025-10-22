@@ -2,6 +2,7 @@ package smtp
 
 import (
 	"context"
+	"fmt"
 	"inboundparse/internal/observability"
 	"inboundparse/internal/processor"
 	"io"
@@ -105,6 +106,12 @@ func (s *Session) Rcpt(to string, opts *smtp.RcptOptions) error {
 		Str("session_id", s.sessionID).
 		Str("to", to).
 		Msg("RCPT TO received")
+
+	// Check max recipients limit
+	if s.config.MaxRecipients > 0 && len(s.to) >= s.config.MaxRecipients {
+		return fmt.Errorf("too many recipients")
+	}
+
 	s.to = append(s.to, to)
 	return nil
 }
@@ -120,6 +127,11 @@ func (s *Session) Data(r io.Reader) error {
 	// Track active session
 	sessionCleanup := s.metrics.TrackSession()
 	defer sessionCleanup()
+
+	// Check if there are recipients
+	if len(s.to) == 0 {
+		return fmt.Errorf("no recipients")
+	}
 
 	// Get remote IP
 	var remoteIP net.IP

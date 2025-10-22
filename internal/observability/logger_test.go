@@ -82,9 +82,72 @@ func TestDefaultLogger(t *testing.T) {
 	}
 }
 
+func TestLoggerConfig_DefaultValues(t *testing.T) {
+	config := LoggerConfig{}
+
+	if config.Verbose {
+		t.Error("Expected Verbose to be false by default")
+	}
+}
+
+func TestLoggerConfig_WithVerbose(t *testing.T) {
+	config := LoggerConfig{Verbose: true}
+
+	if !config.Verbose {
+		t.Error("Expected Verbose to be true")
+	}
+}
+
+func TestLogger_LogLevels(t *testing.T) {
+	logger := NewLogger(LoggerConfig{Verbose: true})
+
+	// Test different log levels
+	logger.Debug().Msg("debug message")
+	logger.Info().Msg("info message")
+	logger.Warn().Msg("warn message")
+	logger.Error().Msg("error message")
+	// Skip Fatal() as it calls os.Exit(1) and would terminate the test process
+	// logger.Fatal().Msg("fatal message")
+
+	// If we get here without panicking, the test passes
+}
+
+func TestLogger_WithFields(t *testing.T) {
+	logger := NewLogger(LoggerConfig{Verbose: true})
+
+	// Test logging with fields
+	logger.Info().
+		Str("key1", "value1").
+		Int("key2", 42).
+		Bool("key3", true).
+		Msg("message with fields")
+
+	// If we get here without panicking, the test passes
+}
+
+func TestLogger_WithError(t *testing.T) {
+	logger := NewLogger(LoggerConfig{Verbose: true})
+
+	// Test logging with error
+	err := &testError{message: "test error"}
+	logger.Error().Err(err).Msg("error occurred")
+
+	// If we get here without panicking, the test passes
+}
+
+// Helper functions and types
+
 func contains(s, substr string) bool {
 	return len(s) >= len(substr) && (s == substr || len(substr) == 0 ||
 		(len(s) > len(substr) && (s[:len(substr)] == substr ||
 			s[len(s)-len(substr):] == substr ||
 			contains(s[1:], substr))))
+}
+
+type testError struct {
+	message string
+}
+
+func (e *testError) Error() string {
+	return e.message
 }
