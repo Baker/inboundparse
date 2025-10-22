@@ -11,18 +11,12 @@ help:
 
 build: ## Build the binary
 	@echo "Building $(BINARY_NAME)..."
-	go build -o $(BINARY_NAME) ./cmd/inboundparse/
+	go build -o $(BINARY_NAME)
 
 deps: ## Download dependencies
 	@echo "Downloading dependencies..."
 	go mod tidy
 	go mod download
-
-run: build ## Run with default port
-	@echo "Starting inboundparse server..."
-	@echo "Webhook URL: $${WEBHOOK_URL:-http://localhost:8080/webhook}"
-	@echo "SMTP listening on :25 (run as root or use port >1024)"
-	./$(BINARY_NAME)
 
 run-dev: build ## Run with non-privileged port
 	@echo "Starting inboundparse server on port 2525..."
@@ -53,23 +47,6 @@ down: ## Stop the docker containers
 
 dev: down up ## Restart the docker containers
 
-test-email: ## Test email sending
-	@echo "Sending test email via telnet..."
-	@echo "Connect with: telnet localhost 2525"
-	@echo "Then use SMTP commands:"
-	@echo "  HELO test.com"
-	@echo "  MAIL FROM:<test@example.com>"
-	@echo "  RCPT TO:<recipient@example.com>"
-	@echo "  DATA"
-	@echo "  Subject: Test Email"
-	@echo "  From: test@example.com"
-	@echo "  To: recipient@example.com"
-	@echo "  "
-	@echo "  This is a test email body."
-	@echo "  ."
-	@echo "  QUIT"
-
-
 status: ## Show service status
 	@echo "Checking service status..."
 	@docker-compose ps 2>/dev/null || echo "Docker Compose not running"
@@ -78,13 +55,24 @@ status: ## Show service status
 ci: ## Run CI workflow
 	gh act push -W .github/workflows/ci.yml
 
+format: ## Format the code
+	@echo "Running golangci-lint..."
+	@command -v $(GOBIN)/golangci-lint >/dev/null 2>&1 || go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
+	@$(GOBIN)/golangci-lint fmt
+
+vet: ## Vet the code
+	@echo "Vetting code..."
+	go vet ./...
+
 lint: ## Lint (golangci-lint) + vuln scan (govulncheck)
 	@echo "Running golangci-lint..."
-	@command -v $(GOBIN)/golangci-lint >/dev/null 2>&1 || go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+	@command -v $(GOBIN)/golangci-lint >/dev/null 2>&1 || go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
 	@$(GOBIN)/golangci-lint run --fix --timeout=5m
 	@echo "Running govulncheck..."
 	@command -v $(GOBIN)/govulncheck >/dev/null 2>&1 || go install golang.org/x/vuln/cmd/govulncheck@latest
 	@$(GOBIN)/govulncheck ./...
+
+fl: format lint vet ## Format, lint, and vet the code
 
 verify-deps: ## Verify and report dependency status
 	@echo "Verifying dependencies..."
