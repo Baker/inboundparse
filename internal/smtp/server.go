@@ -1,70 +1,59 @@
-package main
+package smtp
 
 import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"inboundparse/internal/config"
+	"inboundparse/internal/observability"
 	"net"
 	"time"
 
 	"github.com/emersion/go-smtp"
 	"github.com/pires/go-proxyproto"
-	"github.com/rs/zerolog/log"
 )
 
+// ServerConfig holds SMTP server configuration
 type ServerConfig struct {
 	ListenAddr     string
 	ListenAddrTLS  string
-	WebhookURL     string
-	WebhookUser    string
-	WebhookPass    string
 	ServerName     string
 	MaxMessageSize int64
-	ReadTimeout    int
-	WriteTimeout   int
-	EnableSPF      bool
-	EnableDKIM     bool
-	EnableDMARC    bool
-	Verbose        bool
+	ReadTimeout    time.Duration
+	WriteTimeout   time.Duration
 	CertFile       string
 	KeyFile        string
-	// Sentry configuration
-	EnableSentry  bool
-	SentryDSN     string
-	SentryEnv     string
-	SentryRelease string
-	// Metrics configuration
-	EnableMetrics   bool
-	MetricsAddr     string
-	MetricsAPIKey   string
-	MetricsUsername string
-	MetricsPassword string
+	MaxRecipients  int
 }
 
+// SMTPServer manages SMTP servers
 type SMTPServer struct {
-	config    *ServerConfig
+	config    ServerConfig
 	server    *smtp.Server
 	tlsServer *smtp.Server
+	logger    observability.Logger
 }
 
-func NewSMTPServer(config *ServerConfig) (*SMTPServer, error) {
+// NewSMTPServer creates a new SMTP server
+func NewSMTPServer(
+	config ServerConfig,
+	backend *Backend,
+	logger observability.Logger,
+) (*SMTPServer, error) {
 	var tlsServer *smtp.Server
-	backend := &Backend{
-		config: config,
-	}
 
 	server := smtp.NewServer(backend)
 	server.Addr = config.ListenAddr
 	server.Domain = config.ServerName
 	server.MaxMessageBytes = config.MaxMessageSize
-	server.MaxRecipients = 100       // Allow multiple recipients
+	server.MaxRecipients = config.MaxRecipients
 	server.AllowInsecureAuth = false // Disallow AUTH before TLS
-	server.ReadTimeout = time.Duration(config.ReadTimeout) * time.Second
-	server.WriteTimeout = time.Duration(config.WriteTimeout) * time.Second
+	server.ReadTimeout = config.ReadTimeout
+	server.WriteTimeout = config.WriteTimeout
 
 	// Optionally enable TLS
 	if config.CertFile != "" && config.KeyFile != "" {
-		log.Debug().
+		logger.Debug().
 			Str("cert_file", config.CertFile).
 			Str("key_file", config.KeyFile).
 			Msg("Loading TLS certificate")
@@ -75,10 +64,10 @@ func NewSMTPServer(config *ServerConfig) (*SMTPServer, error) {
 		tlsServer = smtp.NewServer(backend)
 		tlsServer.Addr = config.ListenAddrTLS
 		tlsServer.Domain = config.ServerName
-		tlsServer.WriteTimeout = time.Duration(config.WriteTimeout) * time.Second
-		tlsServer.ReadTimeout = time.Duration(config.ReadTimeout) * time.Second
+		tlsServer.WriteTimeout = config.WriteTimeout
+		tlsServer.ReadTimeout = config.ReadTimeout
 		tlsServer.MaxMessageBytes = config.MaxMessageSize
-		tlsServer.MaxRecipients = 100
+		tlsServer.MaxRecipients = config.MaxRecipients
 		tlsServer.AllowInsecureAuth = false
 		tlsServer.TLSConfig = &tls.Config{
 			ServerName:   config.ServerName,
@@ -92,27 +81,29 @@ func NewSMTPServer(config *ServerConfig) (*SMTPServer, error) {
 		config:    config,
 		server:    server,
 		tlsServer: tlsServer,
+		logger:    logger,
 	}, nil
 }
 
+// Start starts the SMTP server
 func (s *SMTPServer) Start() error {
 	if s.tlsServer != nil {
 		go func() {
-			log.Info().
+			s.logger.Info().
 				Str("address", s.config.ListenAddr).
 				Msg("Starting plain SMTP server")
 			if err := s.listenAndServeWithProxy(s.server, s.config.ListenAddr); err != nil {
-				log.Error().
+				s.logger.Error().
 					Err(err).
 					Msg("Plain SMTP server stopped with error")
 			}
 		}()
-		log.Info().
+		s.logger.Info().
 			Str("address", s.config.ListenAddrTLS).
 			Msg("Starting TLS SMTP server")
 		return s.listenAndServeWithProxy(s.tlsServer, s.config.ListenAddrTLS)
 	}
-	log.Info().
+	s.logger.Info().
 		Str("address", s.config.ListenAddr).
 		Msg("Starting plain SMTP server")
 	return s.listenAndServeWithProxy(s.server, s.config.ListenAddr)
@@ -137,6 +128,7 @@ func (s *SMTPServer) listenAndServeWithProxy(server *smtp.Server, addr string) e
 	return server.Serve(proxyListener)
 }
 
+// Stop stops the SMTP server
 func (s *SMTPServer) Stop() error {
 	var closeErrors error
 	if s.server != nil {
@@ -150,4 +142,25 @@ func (s *SMTPServer) Stop() error {
 		}
 	}
 	return closeErrors
+}
+
+// NewSMTPServerFromConfig creates a new SMTP server from application config
+func NewSMTPServerFromConfig(
+	appConfig *config.Config,
+	backend *Backend,
+	logger observability.Logger,
+) (*SMTPServer, error) {
+	serverConfig := ServerConfig{
+		ListenAddr:     appConfig.ListenAddr,
+		ListenAddrTLS:  appConfig.ListenAddrTLS,
+		ServerName:     appConfig.ServerName,
+		MaxMessageSize: appConfig.MaxMessageSize,
+		ReadTimeout:    appConfig.ReadTimeout,
+		WriteTimeout:   appConfig.WriteTimeout,
+		CertFile:       appConfig.CertFile,
+		KeyFile:        appConfig.KeyFile,
+		MaxRecipients:  100, // Default value
+	}
+
+	return NewSMTPServer(serverConfig, backend, logger)
 }

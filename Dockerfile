@@ -13,7 +13,7 @@ RUN go mod download
 COPY . .
 
 # Build the binary
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o inboundparse .
+RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o inboundparse ./cmd/inboundparse
 
 # Final stage
 FROM alpine:latest

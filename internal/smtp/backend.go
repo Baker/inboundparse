@@ -1,16 +1,42 @@
-package main
+package smtp
 
 import (
+	"context"
+	"inboundparse/internal/observability"
+	"inboundparse/internal/processor"
 	"io"
+	"net"
 
 	"github.com/emersion/go-smtp"
 	"github.com/google/uuid"
-	"github.com/rs/zerolog/log"
 )
+
+// BackendConfig holds backend configuration
+type BackendConfig struct {
+	MaxRecipients int
+}
 
 // Backend implements smtp.Backend
 type Backend struct {
-	config *ServerConfig
+	config           BackendConfig
+	messageProcessor *processor.MessageProcessor
+	metrics          observability.MetricsCollector
+	logger           observability.Logger
+}
+
+// NewBackend creates a new SMTP backend
+func NewBackend(
+	config BackendConfig,
+	messageProcessor *processor.MessageProcessor,
+	metrics observability.MetricsCollector,
+	logger observability.Logger,
+) *Backend {
+	return &Backend{
+		config:           config,
+		messageProcessor: messageProcessor,
+		metrics:          metrics,
+		logger:           logger,
+	}
 }
 
 // NewSession is called when a new SMTP session is created
@@ -22,34 +48,40 @@ func (b *Backend) NewSession(c *smtp.Conn) (smtp.Session, error) {
 	}
 
 	// Track connection metrics
-	cleanup := TrackConnection()
+	cleanup := b.metrics.TrackConnection()
 
-	log.Debug().
+	b.logger.Debug().
 		Str("session_id", sessionID).
 		Str("remote_addr", remote).
 		Msg("New SMTP session started")
 
 	return &Session{
-		config:    b.config,
-		conn:      c,
-		sessionID: sessionID,
-		cleanup:   cleanup,
+		config:           b.config,
+		messageProcessor: b.messageProcessor,
+		metrics:          b.metrics,
+		logger:           b.logger,
+		conn:             c,
+		sessionID:        sessionID,
+		cleanup:          cleanup,
 	}, nil
 }
 
 // Session implements smtp.Session
 type Session struct {
-	config    *ServerConfig
-	conn      *smtp.Conn
-	from      string
-	to        []string
-	sessionID string
-	cleanup   func() // cleanup function for connection tracking
+	config           BackendConfig
+	messageProcessor *processor.MessageProcessor
+	metrics          observability.MetricsCollector
+	logger           observability.Logger
+	conn             *smtp.Conn
+	from             string
+	to               []string
+	sessionID        string
+	cleanup          func() // cleanup function for connection tracking
 }
 
 // AuthPlain handles PLAIN authentication (we'll accept any or none)
 func (s *Session) AuthPlain(username, password string) error {
-	log.Debug().
+	s.logger.Debug().
 		Str("session_id", s.sessionID).
 		Str("username", username).
 		Msg("AUTH PLAIN attempted")
@@ -59,7 +91,7 @@ func (s *Session) AuthPlain(username, password string) error {
 
 // Mail is called when the MAIL FROM command is received
 func (s *Session) Mail(from string, opts *smtp.MailOptions) error {
-	log.Debug().
+	s.logger.Debug().
 		Str("session_id", s.sessionID).
 		Str("from", from).
 		Msg("MAIL FROM received")
@@ -69,7 +101,7 @@ func (s *Session) Mail(from string, opts *smtp.MailOptions) error {
 
 // Rcpt is called when a RCPT TO command is received
 func (s *Session) Rcpt(to string, opts *smtp.RcptOptions) error {
-	log.Debug().
+	s.logger.Debug().
 		Str("session_id", s.sessionID).
 		Str("to", to).
 		Msg("RCPT TO received")
@@ -79,31 +111,33 @@ func (s *Session) Rcpt(to string, opts *smtp.RcptOptions) error {
 
 // Data is called when the DATA command is received
 func (s *Session) Data(r io.Reader) error {
-	log.Info().
+	s.logger.Info().
 		Str("session_id", s.sessionID).
 		Str("from", s.from).
 		Strs("to", s.to).
 		Msg("Receiving message data")
 
 	// Track active session
-	sessionCleanup := TrackSession()
+	sessionCleanup := s.metrics.TrackSession()
 	defer sessionCleanup()
 
-	// Process the email message
-	processor := &MessageProcessor{
-		config:    s.config,
-		from:      s.from,
-		to:        s.to,
-		conn:      s.conn,
-		sessionID: s.sessionID,
+	// Get remote IP
+	var remoteIP net.IP
+	if s.conn != nil && s.conn.Conn() != nil {
+		addr := s.conn.Conn().RemoteAddr()
+		if tcpAddr, ok := addr.(*net.TCPAddr); ok {
+			remoteIP = tcpAddr.IP
+		}
 	}
 
-	return processor.ProcessMessage(r)
+	// Process the email message
+	ctx := context.Background() // TODO: Add proper context with timeout
+	return s.messageProcessor.ProcessMessage(ctx, r, s.from, s.to, s.sessionID, remoteIP)
 }
 
 // Reset is called when the RSET command is received
 func (s *Session) Reset() {
-	log.Debug().
+	s.logger.Debug().
 		Str("session_id", s.sessionID).
 		Msg("Session reset")
 	s.from = ""
@@ -112,7 +146,7 @@ func (s *Session) Reset() {
 
 // Logout is called when the session is closed
 func (s *Session) Logout() error {
-	log.Debug().
+	s.logger.Debug().
 		Str("session_id", s.sessionID).
 		Msg("Session logout")
 
