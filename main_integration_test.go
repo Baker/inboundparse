@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"os"
 	"testing"
 )
@@ -442,4 +443,104 @@ func TestLoadCoreConfig_PartialOverride(t *testing.T) {
 	if *webhookURL != "initial-webhook" {
 		t.Errorf("Expected webhookURL to remain 'initial-webhook', got %q", *webhookURL)
 	}
+}
+
+func TestMain_FullInitialization(t *testing.T) {
+	// This test exercises the full initialization path in main()
+	// without starting the blocking SMTP server
+
+	// Skip if already parsed (to avoid conflicts in parallel tests)
+	if !flag.Parsed() {
+		flag.Parse()
+	}
+
+	// Set up environment for full initialization
+	os.Setenv("INBOUNDPARSE_TEST_INIT_ONLY", "1")
+	os.Setenv("WEBHOOK_URL", "https://test.example.com/webhook")
+	os.Setenv("LISTEN_ADDR", "127.0.0.1:2525")
+	os.Setenv("ENABLE_SPF", "true")
+	os.Setenv("ENABLE_DKIM", "true")
+	os.Setenv("ENABLE_DMARC", "true")
+	os.Setenv("VERBOSE", "false")
+
+	defer func() {
+		os.Unsetenv("INBOUNDPARSE_TEST_INIT_ONLY")
+		os.Unsetenv("WEBHOOK_URL")
+		os.Unsetenv("LISTEN_ADDR")
+		os.Unsetenv("ENABLE_SPF")
+		os.Unsetenv("ENABLE_DKIM")
+		os.Unsetenv("ENABLE_DMARC")
+		os.Unsetenv("VERBOSE")
+	}()
+
+	// This should run through initialization without blocking
+	main()
+
+	// If we got here, initialization succeeded
+}
+
+func TestMain_WithSentryEnabled(t *testing.T) {
+	// Test initialization with Sentry enabled but no DSN (should warn)
+	if !flag.Parsed() {
+		flag.Parse()
+	}
+
+	os.Setenv("INBOUNDPARSE_TEST_INIT_ONLY", "1")
+	os.Setenv("WEBHOOK_URL", "https://test.example.com/webhook")
+	os.Setenv("ENABLE_SENTRY", "true")
+	os.Setenv("SENTRY_DSN", "") // Empty DSN should trigger warning
+
+	defer func() {
+		os.Unsetenv("INBOUNDPARSE_TEST_INIT_ONLY")
+		os.Unsetenv("WEBHOOK_URL")
+		os.Unsetenv("ENABLE_SENTRY")
+		os.Unsetenv("SENTRY_DSN")
+	}()
+
+	// Should complete without error (just warns)
+	main()
+}
+
+func TestMain_WithMetricsEnabled(t *testing.T) {
+	// Test initialization with metrics enabled
+	if !flag.Parsed() {
+		flag.Parse()
+	}
+
+	os.Setenv("INBOUNDPARSE_TEST_INIT_ONLY", "1")
+	os.Setenv("WEBHOOK_URL", "https://test.example.com/webhook")
+	os.Setenv("ENABLE_METRICS", "true")
+	os.Setenv("METRICS_ADDR", "127.0.0.1:9999")
+	os.Setenv("METRICS_API_KEY", "test-key")
+
+	defer func() {
+		os.Unsetenv("INBOUNDPARSE_TEST_INIT_ONLY")
+		os.Unsetenv("WEBHOOK_URL")
+		os.Unsetenv("ENABLE_METRICS")
+		os.Unsetenv("METRICS_ADDR")
+		os.Unsetenv("METRICS_API_KEY")
+	}()
+
+	// Should complete without error
+	main()
+}
+
+func TestMain_VerboseMode(t *testing.T) {
+	// Test initialization with verbose logging enabled
+	if !flag.Parsed() {
+		flag.Parse()
+	}
+
+	os.Setenv("INBOUNDPARSE_TEST_INIT_ONLY", "1")
+	os.Setenv("WEBHOOK_URL", "https://test.example.com/webhook")
+	os.Setenv("VERBOSE", "true")
+
+	defer func() {
+		os.Unsetenv("INBOUNDPARSE_TEST_INIT_ONLY")
+		os.Unsetenv("WEBHOOK_URL")
+		os.Unsetenv("VERBOSE")
+	}()
+
+	// Should complete without error
+	main()
 }

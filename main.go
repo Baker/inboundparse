@@ -181,6 +181,11 @@ func main() {
 			Msg("TLS certificates configured")
 	}
 
+	// Test hook - allow tests to exit before starting the blocking server
+	if os.Getenv("INBOUNDPARSE_TEST_INIT_ONLY") == "1" {
+		return
+	}
+
 	if err := server.Start(); err != nil {
 		logger.Fatal().Err(err).Msg("Failed to start SMTP server")
 	}
