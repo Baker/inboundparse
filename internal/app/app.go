@@ -32,6 +32,10 @@ type App struct {
 
 // NewApp creates a new application instance
 func NewApp(cfg *config.Config) (*App, error) {
+	if cfg == nil {
+		return nil, fmt.Errorf("config cannot be nil")
+	}
+
 	// Initialize logger first
 	logger := observability.NewLogger(observability.LoggerConfig{
 		Verbose: cfg.Verbose,

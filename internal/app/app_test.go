@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"inboundparse/internal/config"
 	"inboundparse/internal/domain"
 	"io"
 	"net"
@@ -95,56 +96,29 @@ func (m *mockMetricsServer) Stop(ctx context.Context) error {
 }
 
 func TestNewApp(t *testing.T) {
-	// Skip this test to avoid duplicate metrics registration issues
-	t.Skip("Skipping due to duplicate metrics registration in tests")
+	config := &config.Config{
+		ListenAddr: "127.0.0.1:0",
+		WebhookURL: "http://localhost:8080/webhook",
+		ServerName: "test",
+		Verbose:    true,
+	}
+
+	app, err := NewApp(config)
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+	if app == nil {
+		t.Fatal("Expected non-nil app")
+	}
 }
 
 func TestNewApp_InvalidConfig(t *testing.T) {
-	// Skip this test to avoid duplicate metrics registration issues
-	t.Skip("Skipping due to duplicate metrics registration in tests")
-}
-
-func TestApp_Run_Success(t *testing.T) {
-	// Skip this test to avoid duplicate metrics registration issues
-	t.Skip("Skipping due to duplicate metrics registration in tests")
-}
-
-func TestApp_Stop(t *testing.T) {
-	// Skip this test to avoid duplicate metrics registration issues
-	t.Skip("Skipping due to duplicate metrics registration in tests")
-}
-
-func TestApp_Stop_MultipleTimes(t *testing.T) {
-	// Skip this test to avoid duplicate metrics registration issues
-	t.Skip("Skipping due to duplicate metrics registration in tests")
-}
-
-func TestApp_Config(t *testing.T) {
-	// Skip this test to avoid duplicate metrics registration issues
-	t.Skip("Skipping due to duplicate metrics registration in tests")
-}
-
-func TestApp_Components(t *testing.T) {
-	// Skip this test to avoid duplicate metrics registration issues
-	t.Skip("Skipping due to duplicate metrics registration in tests")
-}
-
-func TestApp_WithMetricsEnabled(t *testing.T) {
-	// Skip this test to avoid duplicate metrics registration issues
-	t.Skip("Skipping due to duplicate metrics registration in tests")
-}
-
-func TestApp_WithSentryEnabled(t *testing.T) {
-	// Skip this test to avoid duplicate metrics registration issues
-	t.Skip("Skipping due to duplicate metrics registration in tests")
-}
-
-func TestApp_WithTLS(t *testing.T) {
-	// Skip this test to avoid duplicate metrics registration issues
-	t.Skip("Skipping due to duplicate metrics registration in tests")
-}
-
-func TestApp_WithAuthDisabled(t *testing.T) {
-	// Skip this test to avoid duplicate metrics registration issues
-	t.Skip("Skipping due to duplicate metrics registration in tests")
+	// Test with nil config - this should return an error
+	app, err := NewApp(nil)
+	if err == nil {
+		t.Error("Expected error with nil config")
+	}
+	if app != nil {
+		t.Error("Expected nil app with nil config")
+	}
 }

@@ -4,7 +4,93 @@ import (
 	"context"
 	"testing"
 	"time"
+
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 )
+
+// createTestMetricsCollector creates a metrics collector using a custom registry for testing
+func createTestMetricsCollector(registry *prometheus.Registry) MetricsCollector {
+	factory := promauto.With(registry)
+
+	return &metricsCollector{
+		// Connection metrics
+		smtpConnectionsTotal: factory.NewCounter(prometheus.CounterOpts{
+			Name: "smtp_connections_total",
+			Help: "Total number of SMTP connections",
+		}),
+		smtpConnectionsActive: factory.NewGauge(prometheus.GaugeOpts{
+			Name: "smtp_connections_active",
+			Help: "Number of active SMTP connections",
+		}),
+		smtpActiveSessions: factory.NewGauge(prometheus.GaugeOpts{
+			Name: "smtp_active_sessions",
+			Help: "Number of active SMTP sessions",
+		}),
+		smtpConnectionDuration: factory.NewHistogram(prometheus.HistogramOpts{
+			Name:    "smtp_connection_duration_seconds",
+			Help:    "Duration of SMTP connections in seconds",
+			Buckets: prometheus.DefBuckets,
+		}),
+		// Message metrics
+		smtpMessagesTotal: factory.NewCounter(prometheus.CounterOpts{
+			Name: "smtp_messages_total",
+			Help: "Total number of SMTP messages",
+		}),
+		smtpMessagesProcessed: factory.NewCounterVec(prometheus.CounterOpts{
+			Name: "smtp_messages_processed_total",
+			Help: "Total number of SMTP messages processed",
+		}, []string{"success"}),
+		smtpMessagesFailed: factory.NewCounter(prometheus.CounterOpts{
+			Name: "smtp_messages_failed_total",
+			Help: "Total number of failed SMTP messages",
+		}),
+		smtpMessageSize: factory.NewHistogram(prometheus.HistogramOpts{
+			Name:    "smtp_message_size_bytes",
+			Help:    "Size of SMTP messages in bytes",
+			Buckets: prometheus.ExponentialBuckets(1024, 2, 20), // 1KB to 1GB
+		}),
+		// Authentication metrics
+		spfResults: factory.NewCounterVec(prometheus.CounterOpts{
+			Name: "spf_results_total",
+			Help: "Total number of SPF checks",
+		}, []string{"result"}),
+		dkimResults: factory.NewCounterVec(prometheus.CounterOpts{
+			Name: "dkim_results_total",
+			Help: "Total number of DKIM checks",
+		}, []string{"valid"}),
+		dmarcResults: factory.NewCounterVec(prometheus.CounterOpts{
+			Name: "dmarc_results_total",
+			Help: "Total number of DMARC checks",
+		}, []string{"result"}),
+		dmarcPolicies: factory.NewCounterVec(prometheus.CounterOpts{
+			Name: "dmarc_policies_total",
+			Help: "Total number of DMARC policies",
+		}, []string{"policy"}),
+		authChecksSPF: factory.NewCounter(prometheus.CounterOpts{
+			Name: "auth_checks_spf_total",
+			Help: "Total number of SPF authentication checks",
+		}),
+		authChecksDKIM: factory.NewCounter(prometheus.CounterOpts{
+			Name: "auth_checks_dkim_total",
+			Help: "Total number of DKIM authentication checks",
+		}),
+		authChecksDMARC: factory.NewCounter(prometheus.CounterOpts{
+			Name: "auth_checks_dmarc_total",
+			Help: "Total number of DMARC authentication checks",
+		}),
+		// Webhook metrics
+		webhookRequests: factory.NewCounterVec(prometheus.CounterOpts{
+			Name: "webhook_requests_total",
+			Help: "Total number of webhook requests",
+		}, []string{"status_code"}),
+		webhookDuration: factory.NewHistogram(prometheus.HistogramOpts{
+			Name:    "webhook_request_duration_seconds",
+			Help:    "Duration of webhook requests in seconds",
+			Buckets: prometheus.DefBuckets,
+		}),
+	}
+}
 
 func TestMetricsServer_Start_Disabled(t *testing.T) {
 	config := MetricsConfig{
@@ -83,8 +169,9 @@ func TestNewMetricsCollector(t *testing.T) {
 }
 
 func TestMetricsCollector_TrackConnection(t *testing.T) {
-	t.Skip("Skipping due to duplicate metrics registration in tests")
-	collector := NewMetricsCollector()
+	// Create a test-specific metrics collector using a custom registry
+	registry := prometheus.NewRegistry()
+	collector := createTestMetricsCollector(registry)
 
 	// Test connection tracking
 	cleanup := collector.TrackConnection()
@@ -97,8 +184,9 @@ func TestMetricsCollector_TrackConnection(t *testing.T) {
 }
 
 func TestMetricsCollector_TrackSession(t *testing.T) {
-	t.Skip("Skipping due to duplicate metrics registration in tests")
-	collector := NewMetricsCollector()
+	// Create a test-specific metrics collector using a custom registry
+	registry := prometheus.NewRegistry()
+	collector := createTestMetricsCollector(registry)
 
 	// Test session tracking
 	cleanup := collector.TrackSession()
@@ -111,8 +199,9 @@ func TestMetricsCollector_TrackSession(t *testing.T) {
 }
 
 func TestMetricsCollector_TrackMessage(t *testing.T) {
-	t.Skip("Skipping due to duplicate metrics registration in tests")
-	collector := NewMetricsCollector()
+	// Create a test-specific metrics collector using a custom registry
+	registry := prometheus.NewRegistry()
+	collector := createTestMetricsCollector(registry)
 
 	// Test message tracking
 	collector.TrackMessage(1024, true)
@@ -120,8 +209,9 @@ func TestMetricsCollector_TrackMessage(t *testing.T) {
 }
 
 func TestMetricsCollector_TrackSPFResult(t *testing.T) {
-	t.Skip("Skipping due to duplicate metrics registration in tests")
-	collector := NewMetricsCollector()
+	// Create a test-specific metrics collector using a custom registry
+	registry := prometheus.NewRegistry()
+	collector := createTestMetricsCollector(registry)
 
 	// Test SPF result tracking
 	collector.TrackSPFResult("pass")
@@ -130,8 +220,9 @@ func TestMetricsCollector_TrackSPFResult(t *testing.T) {
 }
 
 func TestMetricsCollector_TrackDKIMResult(t *testing.T) {
-	t.Skip("Skipping due to duplicate metrics registration in tests")
-	collector := NewMetricsCollector()
+	// Create a test-specific metrics collector using a custom registry
+	registry := prometheus.NewRegistry()
+	collector := createTestMetricsCollector(registry)
 
 	// Test DKIM result tracking
 	collector.TrackDKIMResult(true)
@@ -139,8 +230,9 @@ func TestMetricsCollector_TrackDKIMResult(t *testing.T) {
 }
 
 func TestMetricsCollector_TrackDMARCResult(t *testing.T) {
-	t.Skip("Skipping due to duplicate metrics registration in tests")
-	collector := NewMetricsCollector()
+	// Create a test-specific metrics collector using a custom registry
+	registry := prometheus.NewRegistry()
+	collector := createTestMetricsCollector(registry)
 
 	// Test DMARC result tracking
 	collector.TrackDMARCResult("pass", "quarantine")
@@ -149,8 +241,9 @@ func TestMetricsCollector_TrackDMARCResult(t *testing.T) {
 }
 
 func TestMetricsCollector_TrackWebhookRequest(t *testing.T) {
-	t.Skip("Skipping due to duplicate metrics registration in tests")
-	collector := NewMetricsCollector()
+	// Create a test-specific metrics collector using a custom registry
+	registry := prometheus.NewRegistry()
+	collector := createTestMetricsCollector(registry)
 
 	// Test webhook request tracking
 	collector.TrackWebhookRequest(200, 100*time.Millisecond)
@@ -182,10 +275,11 @@ func TestMetricsServer_Stop_AlreadyStopped(t *testing.T) {
 }
 
 func TestMetricsCollector_MultipleInstances(t *testing.T) {
-	t.Skip("Skipping due to duplicate metrics registration in tests")
-	// Test that we can create multiple metrics collectors
-	collector1 := NewMetricsCollector()
-	collector2 := NewMetricsCollector()
+	// Test that we can create multiple metrics collectors with separate registries
+	registry1 := prometheus.NewRegistry()
+	registry2 := prometheus.NewRegistry()
+	collector1 := createTestMetricsCollector(registry1)
+	collector2 := createTestMetricsCollector(registry2)
 
 	if collector1 == nil {
 		t.Error("Expected non-nil collector1")
@@ -199,8 +293,9 @@ func TestMetricsCollector_MultipleInstances(t *testing.T) {
 }
 
 func TestMetricsCollector_EdgeCases(t *testing.T) {
-	t.Skip("Skipping due to duplicate metrics registration in tests")
-	collector := NewMetricsCollector()
+	// Create a test-specific metrics collector using a custom registry
+	registry := prometheus.NewRegistry()
+	collector := createTestMetricsCollector(registry)
 
 	// Test with zero values
 	collector.TrackMessage(0, true)
@@ -229,8 +324,9 @@ func TestMetricsCollector_EdgeCases(t *testing.T) {
 }
 
 func TestMetricsCollector_ConcurrentAccess(t *testing.T) {
-	t.Skip("Skipping due to duplicate metrics registration in tests")
-	collector := NewMetricsCollector()
+	// Create a test-specific metrics collector using a custom registry
+	registry := prometheus.NewRegistry()
+	collector := createTestMetricsCollector(registry)
 
 	// Test concurrent access to metrics collector
 	done := make(chan bool, 10)
