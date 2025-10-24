@@ -11,7 +11,7 @@ help:
 
 build: ## Build the binary
 	@echo "Building $(BINARY_NAME)..."
-	go build -o $(BINARY_NAME)
+	go build -o $(BINARY_NAME) ./cmd/inboundparse
 
 deps: ## Download dependencies
 	@echo "Downloading dependencies..."

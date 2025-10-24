@@ -1,22 +1,49 @@
-package main
+package observability
 
 import (
 	"time"
 
 	"github.com/getsentry/sentry-go"
-	"github.com/rs/zerolog/log"
 )
 
-// InitSentry initializes Sentry error tracking
-func InitSentry(config *ServerConfig) error {
+// SentryConfig holds Sentry configuration
+type SentryConfig struct {
+	EnableSentry  bool
+	SentryDSN     string
+	SentryEnv     string
+	SentryRelease string
+}
+
+// SentryClient interface for error tracking
+type SentryClient interface {
+	Init(config SentryConfig) error
+	Flush()
+	CaptureError(err error, context map[string]interface{})
+	CaptureMessage(message string, level sentry.Level, context map[string]interface{})
+	RecoverWithSentry()
+}
+
+// sentryClient implements SentryClient interface
+type sentryClient struct {
+	enabled bool
+}
+
+// NewSentryClient creates a new Sentry client
+func NewSentryClient() SentryClient {
+	return &sentryClient{}
+}
+
+// Init initializes Sentry error tracking
+func (s *sentryClient) Init(config SentryConfig) error {
 	if !config.EnableSentry {
 		return nil
 	}
 
 	if config.SentryDSN == "" {
-		log.Warn().Msg("Sentry enabled but no DSN provided, skipping initialization")
-		return nil
+		return nil // Silently skip if no DSN provided
 	}
+
+	s.enabled = true
 
 	err := sentry.Init(sentry.ClientOptions{
 		Dsn:              config.SentryDSN,
@@ -29,27 +56,20 @@ func InitSentry(config *ServerConfig) error {
 			return event
 		},
 	})
-	if err != nil {
-		log.Error().Err(err).Msg("Failed to initialize Sentry")
-		return err
-	}
 
-	log.Info().
-		Str("environment", config.SentryEnv).
-		Str("release", config.SentryRelease).
-		Msg("Sentry error tracking initialized")
-
-	return nil
+	return err
 }
 
-// FlushSentry flushes any pending Sentry events
-func FlushSentry() {
-	sentry.Flush(2 * time.Second)
+// Flush flushes any pending Sentry events
+func (s *sentryClient) Flush() {
+	if s.enabled {
+		sentry.Flush(2 * time.Second)
+	}
 }
 
 // CaptureError sends an error to Sentry with optional context
-func CaptureError(err error, context map[string]interface{}) {
-	if err == nil {
+func (s *sentryClient) CaptureError(err error, context map[string]interface{}) {
+	if !s.enabled || err == nil {
 		return
 	}
 
@@ -64,7 +84,11 @@ func CaptureError(err error, context map[string]interface{}) {
 }
 
 // CaptureMessage sends a message to Sentry with optional context
-func CaptureMessage(message string, level sentry.Level, context map[string]interface{}) {
+func (s *sentryClient) CaptureMessage(message string, level sentry.Level, context map[string]interface{}) {
+	if !s.enabled {
+		return
+	}
+
 	hub := sentry.CurrentHub()
 	hub.WithScope(func(scope *sentry.Scope) {
 		scope.SetLevel(level)
@@ -76,7 +100,11 @@ func CaptureMessage(message string, level sentry.Level, context map[string]inter
 }
 
 // RecoverWithSentry recovers from panics and sends them to Sentry
-func RecoverWithSentry() {
+func (s *sentryClient) RecoverWithSentry() {
+	if !s.enabled {
+		return
+	}
+
 	if err := recover(); err != nil {
 		sentry.CurrentHub().Recover(err)
 		sentry.Flush(2 * time.Second)
