@@ -315,3 +315,31 @@ func (m *metricsServer) authMiddleware(next http.Handler) http.Handler {
 		next.ServeHTTP(w, r)
 	})
 }
+
+// NoOpMetricsCollector is a no-op implementation of MetricsCollector
+type NoOpMetricsCollector struct{}
+
+// TrackConnection returns a no-op function
+func (n *NoOpMetricsCollector) TrackConnection() func() {
+	return func() {}
+}
+
+// TrackSession returns a no-op function
+func (n *NoOpMetricsCollector) TrackSession() func() {
+	return func() {}
+}
+
+// TrackMessage does nothing
+func (n *NoOpMetricsCollector) TrackMessage(size int64, success bool) {}
+
+// TrackSPFResult does nothing
+func (n *NoOpMetricsCollector) TrackSPFResult(result string) {}
+
+// TrackDKIMResult does nothing
+func (n *NoOpMetricsCollector) TrackDKIMResult(valid bool) {}
+
+// TrackDMARCResult does nothing
+func (n *NoOpMetricsCollector) TrackDMARCResult(result, policy string) {}
+
+// TrackWebhookRequest does nothing
+func (n *NoOpMetricsCollector) TrackWebhookRequest(status int, duration time.Duration) {}

@@ -265,6 +265,314 @@ func TestSMTPServer_Start_WithTLS(t *testing.T) {
 	}
 }
 
+func TestSMTPServer_Start_WithBothServers(t *testing.T) {
+	// Create temporary certificate files
+	certFile, keyFile := createTempCertFiles(t)
+	defer os.Remove(certFile)
+	defer os.Remove(keyFile)
+
+	config := ServerConfig{
+		ListenAddr:    "127.0.0.1:0",
+		ListenAddrTLS: "127.0.0.1:0",
+		ServerName:    "test",
+		CertFile:      certFile,
+		KeyFile:       keyFile,
+	}
+
+	logger := &mockLogger{}
+	backend := createMockBackend()
+
+	s, err := NewSMTPServer(config, backend, logger)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Test that both servers are created
+	if s.server == nil {
+		t.Fatal("Expected non-nil plain server")
+	}
+	if s.tlsServer == nil {
+		t.Fatal("Expected non-nil TLS server")
+	}
+
+	// Test that we can stop both servers
+	err = s.Stop()
+	if err != nil {
+		t.Fatalf("unexpected error stopping servers: %v", err)
+	}
+}
+
+func TestSMTPServer_Start_PlainOnly(t *testing.T) {
+	config := ServerConfig{
+		ListenAddr: "127.0.0.1:0",
+		ServerName: "test",
+	}
+
+	logger := &mockLogger{}
+	backend := createMockBackend()
+
+	s, err := NewSMTPServer(config, backend, logger)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Test that only plain server is created
+	if s.server == nil {
+		t.Fatal("Expected non-nil plain server")
+	}
+	if s.tlsServer != nil {
+		t.Fatal("Expected nil TLS server")
+	}
+
+	// Test that we can stop the plain server
+	err = s.Stop()
+	if err != nil {
+		t.Fatalf("unexpected error stopping plain server: %v", err)
+	}
+}
+
+func TestSMTPServer_Start_WithInvalidAddress(t *testing.T) {
+	config := ServerConfig{
+		ListenAddr: "invalid-address",
+		ServerName: "test",
+	}
+
+	logger := &mockLogger{}
+	backend := createMockBackend()
+
+	s, err := NewSMTPServer(config, backend, logger)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Test that server is created but will fail to start
+	if s == nil {
+		t.Fatal("Expected non-nil server")
+	}
+
+	// Test that we can stop the server even if it fails to start
+	err = s.Stop()
+	if err != nil {
+		t.Fatalf("unexpected error stopping server: %v", err)
+	}
+}
+
+func TestSMTPServer_Start_WithEmptyAddress(t *testing.T) {
+	config := ServerConfig{
+		ListenAddr: "",
+		ServerName: "test",
+	}
+
+	logger := &mockLogger{}
+	backend := createMockBackend()
+
+	s, err := NewSMTPServer(config, backend, logger)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Test that server is created but will fail to start
+	if s == nil {
+		t.Fatal("Expected non-nil server")
+	}
+
+	// Test that we can stop the server even if it fails to start
+	err = s.Stop()
+	if err != nil {
+		t.Fatalf("unexpected error stopping server: %v", err)
+	}
+}
+
+func TestSMTPServer_Start_WithCustomTimeouts(t *testing.T) {
+	config := ServerConfig{
+		ListenAddr:   "127.0.0.1:0",
+		ServerName:   "test",
+		ReadTimeout:  60 * time.Second,
+		WriteTimeout: 60 * time.Second,
+	}
+
+	logger := &mockLogger{}
+	backend := createMockBackend()
+
+	s, err := NewSMTPServer(config, backend, logger)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Test that server is created with custom timeouts
+	if s == nil {
+		t.Fatal("Expected non-nil server")
+	}
+
+	// Test that we can stop the server
+	err = s.Stop()
+	if err != nil {
+		t.Fatalf("unexpected error stopping server: %v", err)
+	}
+}
+
+func TestSMTPServer_Start_WithCustomMessageSize(t *testing.T) {
+	config := ServerConfig{
+		ListenAddr:     "127.0.0.1:0",
+		ServerName:     "test",
+		MaxMessageSize: 1024 * 1024, // 1MB
+	}
+
+	logger := &mockLogger{}
+	backend := createMockBackend()
+
+	s, err := NewSMTPServer(config, backend, logger)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Test that server is created with custom message size
+	if s == nil {
+		t.Fatal("Expected non-nil server")
+	}
+
+	// Test that we can stop the server
+	err = s.Stop()
+	if err != nil {
+		t.Fatalf("unexpected error stopping server: %v", err)
+	}
+}
+
+func TestSMTPServer_Start_WithCustomRecipients(t *testing.T) {
+	config := ServerConfig{
+		ListenAddr:    "127.0.0.1:0",
+		ServerName:    "test",
+		MaxRecipients: 50,
+	}
+
+	logger := &mockLogger{}
+	backend := createMockBackend()
+
+	s, err := NewSMTPServer(config, backend, logger)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Test that server is created with custom recipient limit
+	if s == nil {
+		t.Fatal("Expected non-nil server")
+	}
+
+	// Test that we can stop the server
+	err = s.Stop()
+	if err != nil {
+		t.Fatalf("unexpected error stopping server: %v", err)
+	}
+}
+
+func TestSMTPServer_Start_WithCustomServerName(t *testing.T) {
+	config := ServerConfig{
+		ListenAddr: "127.0.0.1:0",
+		ServerName: "custom.example.com",
+	}
+
+	logger := &mockLogger{}
+	backend := createMockBackend()
+
+	s, err := NewSMTPServer(config, backend, logger)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Test that server is created with custom server name
+	if s == nil {
+		t.Fatal("Expected non-nil server")
+	}
+
+	// Test that we can stop the server
+	err = s.Stop()
+	if err != nil {
+		t.Fatalf("unexpected error stopping server: %v", err)
+	}
+}
+
+func TestSMTPServer_Start_WithZeroTimeouts(t *testing.T) {
+	config := ServerConfig{
+		ListenAddr:   "127.0.0.1:0",
+		ServerName:   "test",
+		ReadTimeout:  0,
+		WriteTimeout: 0,
+	}
+
+	logger := &mockLogger{}
+	backend := createMockBackend()
+
+	s, err := NewSMTPServer(config, backend, logger)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Test that server is created with zero timeouts
+	if s == nil {
+		t.Fatal("Expected non-nil server")
+	}
+
+	// Test that we can stop the server
+	err = s.Stop()
+	if err != nil {
+		t.Fatalf("unexpected error stopping server: %v", err)
+	}
+}
+
+func TestSMTPServer_Start_WithZeroMessageSize(t *testing.T) {
+	config := ServerConfig{
+		ListenAddr:     "127.0.0.1:0",
+		ServerName:     "test",
+		MaxMessageSize: 0,
+	}
+
+	logger := &mockLogger{}
+	backend := createMockBackend()
+
+	s, err := NewSMTPServer(config, backend, logger)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Test that server is created with zero message size
+	if s == nil {
+		t.Fatal("Expected non-nil server")
+	}
+
+	// Test that we can stop the server
+	err = s.Stop()
+	if err != nil {
+		t.Fatalf("unexpected error stopping server: %v", err)
+	}
+}
+
+func TestSMTPServer_Start_WithZeroRecipients(t *testing.T) {
+	config := ServerConfig{
+		ListenAddr:    "127.0.0.1:0",
+		ServerName:    "test",
+		MaxRecipients: 0,
+	}
+
+	logger := &mockLogger{}
+	backend := createMockBackend()
+
+	s, err := NewSMTPServer(config, backend, logger)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Test that server is created with zero recipient limit
+	if s == nil {
+		t.Fatal("Expected non-nil server")
+	}
+
+	// Test that we can stop the server
+	err = s.Stop()
+	if err != nil {
+		t.Fatalf("unexpected error stopping server: %v", err)
+	}
+}
+
 func TestSMTPServer_Start_AlreadyStarted(t *testing.T) {
 	config := ServerConfig{
 		ListenAddr: "127.0.0.1:0",

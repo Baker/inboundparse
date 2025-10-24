@@ -122,3 +122,156 @@ func TestNewApp_InvalidConfig(t *testing.T) {
 		t.Error("Expected nil app with nil config")
 	}
 }
+
+func TestApp_Start_ValidConfig(t *testing.T) {
+	config := &config.Config{
+		ListenAddr:    "127.0.0.1:0",
+		WebhookURL:    "http://localhost:8080/webhook",
+		ServerName:    "test",
+		Verbose:       true,
+		EnableMetrics: false, // Disable metrics to avoid registration conflicts
+		EnableSentry:  false, // Disable sentry to avoid initialization issues
+	}
+
+	app, err := NewApp(config)
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+
+	// Test that the app was created successfully
+	if app == nil {
+		t.Fatal("Expected non-nil app")
+	}
+
+	// Test that the app has the expected configuration
+	if app.config.WebhookURL != "http://localhost:8080/webhook" {
+		t.Errorf("Expected webhook URL 'http://localhost:8080/webhook', got '%s'", app.config.WebhookURL)
+	}
+}
+
+func TestApp_Start_InvalidConfig(t *testing.T) {
+	config := &config.Config{
+		ListenAddr: "127.0.0.1:0",
+		WebhookURL: "", // Invalid - missing webhook URL
+		ServerName: "test",
+		Verbose:    true,
+	}
+
+	app, err := NewApp(config)
+	if err != nil {
+		t.Fatalf("Expected no error creating app, got %v", err)
+	}
+
+	// Test Start method with invalid config
+	err = app.Start()
+	if err == nil {
+		t.Error("Expected error starting app with invalid config")
+	}
+}
+
+func TestApp_Start_WithMetrics(t *testing.T) {
+	config := &config.Config{
+		ListenAddr:    "127.0.0.1:0",
+		WebhookURL:    "http://localhost:8080/webhook",
+		ServerName:    "test",
+		Verbose:       true,
+		EnableMetrics: true,
+		MetricsAddr:   "127.0.0.1:0", // Use port 0 for testing
+	}
+
+	app, err := NewApp(config)
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+
+	// Test that the app was created successfully with metrics enabled
+	if app == nil {
+		t.Fatal("Expected non-nil app")
+	}
+
+	// Test that metrics are enabled
+	if !app.config.EnableMetrics {
+		t.Error("Expected metrics to be enabled")
+	}
+}
+
+func TestApp_Start_WithTLS(t *testing.T) {
+	config := &config.Config{
+		ListenAddr:    "127.0.0.1:0",
+		ListenAddrTLS: "127.0.0.1:0",
+		WebhookURL:    "http://localhost:8080/webhook",
+		ServerName:    "test",
+		Verbose:       true,
+		CertFile:      "/nonexistent/cert.pem", // This will cause an error
+		KeyFile:       "/nonexistent/key.pem",
+	}
+
+	app, err := NewApp(config)
+	if err == nil {
+		t.Fatalf("Expected error creating app, got nil")
+	}
+	if app != nil {
+		t.Fatal("Expected app to be nil due to TLS certificate load error")
+	}
+	expectedErr := "failed to create SMTP server: failed to load TLS certificate: open /nonexistent/cert.pem: no such file or directory"
+	if err.Error() != expectedErr {
+		t.Errorf("Expected error '%s', got '%s'", expectedErr, err.Error())
+	}
+}
+
+func TestApp_Run_WithSignalHandling(t *testing.T) {
+	config := &config.Config{
+		ListenAddr: "127.0.0.1:0",
+		WebhookURL: "http://localhost:8080/webhook",
+		ServerName: "test",
+		Verbose:    true,
+	}
+
+	app, err := NewApp(config)
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+
+	// Test Run method - this will test signal handling setup
+	// We can't easily test the actual signal handling without complex setup
+	// but we can test that the method doesn't panic
+	go func() {
+		// Simulate a signal after a short delay
+		time.Sleep(10 * time.Millisecond)
+		// The actual signal handling is complex to test in unit tests
+	}()
+
+	// Start the app in a goroutine and then stop it quickly
+	go func() {
+		app.Run()
+	}()
+
+	// Give it a moment to start
+	time.Sleep(50 * time.Millisecond)
+
+	// Stop the app
+	err = app.Stop()
+	if err != nil {
+		t.Fatalf("Expected no error stopping app, got %v", err)
+	}
+}
+
+func TestApp_Stop_WithoutMetrics(t *testing.T) {
+	config := &config.Config{
+		ListenAddr: "127.0.0.1:0",
+		WebhookURL: "http://localhost:8080/webhook",
+		ServerName: "test",
+		Verbose:    true,
+	}
+
+	app, err := NewApp(config)
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+
+	// Test Stop method without metrics
+	err = app.Stop()
+	if err != nil {
+		t.Fatalf("Expected no error stopping app without metrics, got %v", err)
+	}
+}

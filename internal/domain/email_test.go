@@ -197,3 +197,140 @@ func TestBody_Structure(t *testing.T) {
 		t.Errorf("Expected 1 attachment, got %d", len(body.Attachments))
 	}
 }
+
+func TestNewMessageProcessor(t *testing.T) {
+	// Test NewMessageProcessor constructor
+	from := "test@example.com"
+	to := []string{"recipient@example.com", "cc@example.com"}
+	sessionID := "test-session-123"
+
+	processor := NewMessageProcessor(from, to, sessionID)
+
+	if processor == nil {
+		t.Fatal("Expected non-nil MessageProcessor")
+	}
+
+	if processor.From != from {
+		t.Errorf("Expected From '%s', got '%s'", from, processor.From)
+	}
+
+	if len(processor.To) != len(to) {
+		t.Errorf("Expected %d recipients, got %d", len(to), len(processor.To))
+	}
+
+	for i, expectedTo := range to {
+		if processor.To[i] != expectedTo {
+			t.Errorf("Expected To[%d] '%s', got '%s'", i, expectedTo, processor.To[i])
+		}
+	}
+
+	if processor.SessionID != sessionID {
+		t.Errorf("Expected SessionID '%s', got '%s'", sessionID, processor.SessionID)
+	}
+
+	if processor.TestRemoteIP != "" {
+		t.Errorf("Expected empty TestRemoteIP, got '%s'", processor.TestRemoteIP)
+	}
+}
+
+func TestNewMessageProcessor_WithEmptyFrom(t *testing.T) {
+	// Test with empty from address
+	from := ""
+	to := []string{"recipient@example.com"}
+	sessionID := "test-session-123"
+
+	processor := NewMessageProcessor(from, to, sessionID)
+
+	if processor.From != "" {
+		t.Errorf("Expected empty From, got '%s'", processor.From)
+	}
+}
+
+func TestNewMessageProcessor_WithEmptyTo(t *testing.T) {
+	// Test with empty to addresses
+	from := "test@example.com"
+	to := []string{}
+	sessionID := "test-session-123"
+
+	processor := NewMessageProcessor(from, to, sessionID)
+
+	if len(processor.To) != 0 {
+		t.Errorf("Expected empty To slice, got %d items", len(processor.To))
+	}
+}
+
+func TestNewMessageProcessor_WithEmptySessionID(t *testing.T) {
+	// Test with empty session ID
+	from := "test@example.com"
+	to := []string{"recipient@example.com"}
+	sessionID := ""
+
+	processor := NewMessageProcessor(from, to, sessionID)
+
+	if processor.SessionID != "" {
+		t.Errorf("Expected empty SessionID, got '%s'", processor.SessionID)
+	}
+}
+
+func TestNewMessageProcessor_WithMultipleRecipients(t *testing.T) {
+	// Test with multiple recipients
+	from := "test@example.com"
+	to := []string{"recipient1@example.com", "recipient2@example.com", "recipient3@example.com"}
+	sessionID := "test-session-123"
+
+	processor := NewMessageProcessor(from, to, sessionID)
+
+	if len(processor.To) != 3 {
+		t.Errorf("Expected 3 recipients, got %d", len(processor.To))
+	}
+
+	expectedRecipients := []string{"recipient1@example.com", "recipient2@example.com", "recipient3@example.com"}
+	for i, expected := range expectedRecipients {
+		if processor.To[i] != expected {
+			t.Errorf("Expected To[%d] '%s', got '%s'", i, expected, processor.To[i])
+		}
+	}
+}
+
+func TestNewMessageProcessor_WithNilToSlice(t *testing.T) {
+	// Test with nil to slice
+	from := "test@example.com"
+	var to []string = nil
+	sessionID := "test-session-123"
+
+	processor := NewMessageProcessor(from, to, sessionID)
+
+	if processor.To != nil {
+		t.Errorf("Expected nil To slice, got %v", processor.To)
+	}
+}
+
+func TestNewMessageProcessor_WithSpecialCharacters(t *testing.T) {
+	// Test with special characters in addresses
+	from := "test+tag@example.com"
+	to := []string{"recipient+tag@example.com", "user.name@example.com"}
+	sessionID := "test-session-123"
+
+	processor := NewMessageProcessor(from, to, sessionID)
+
+	if processor.From != from {
+		t.Errorf("Expected From '%s', got '%s'", from, processor.From)
+	}
+
+	if len(processor.To) != len(to) {
+		t.Errorf("Expected %d recipients, got %d", len(to), len(processor.To))
+	}
+}
+
+func TestNewMessageProcessor_WithLongSessionID(t *testing.T) {
+	// Test with long session ID
+	from := "test@example.com"
+	to := []string{"recipient@example.com"}
+	sessionID := "very-long-session-id-" + string(make([]byte, 100))
+
+	processor := NewMessageProcessor(from, to, sessionID)
+
+	if processor.SessionID != sessionID {
+		t.Errorf("Expected SessionID '%s', got '%s'", sessionID, processor.SessionID)
+	}
+}

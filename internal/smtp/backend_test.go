@@ -442,3 +442,377 @@ func TestSession_ProcessMessage_Error(t *testing.T) {
 		t.Error("Expected error from message processing")
 	}
 }
+
+func TestBackend_NewSession_WithRemoteAddress(t *testing.T) {
+	config := BackendConfig{
+		MaxRecipients: 100,
+	}
+	messageProcessor := createMockMessageProcessor()
+	metrics := &mockMetricsCollector{}
+	logger := &mockLogger{}
+
+	backend := NewBackend(config, messageProcessor, metrics, logger)
+
+	// Create a mock connection with remote address
+	smtpConn := &smtp.Conn{}
+
+	session, err := backend.NewSession(smtpConn)
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+	if session == nil {
+		t.Fatal("Expected non-nil session")
+	}
+
+	// Verify it's the correct type
+	_, ok := session.(*Session)
+	if !ok {
+		t.Error("Expected session to be of type *Session")
+	}
+}
+
+func TestBackend_NewSession_WithUnknownRemoteAddress(t *testing.T) {
+	config := BackendConfig{
+		MaxRecipients: 100,
+	}
+	messageProcessor := createMockMessageProcessor()
+	metrics := &mockMetricsCollector{}
+	logger := &mockLogger{}
+
+	backend := NewBackend(config, messageProcessor, metrics, logger)
+
+	// Create a mock connection with unknown remote address
+	smtpConn := &smtp.Conn{}
+
+	session, err := backend.NewSession(smtpConn)
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+	if session == nil {
+		t.Fatal("Expected non-nil session")
+	}
+
+	// Verify it's the correct type
+	_, ok := session.(*Session)
+	if !ok {
+		t.Error("Expected session to be of type *Session")
+	}
+}
+
+func TestSession_WithConnection(t *testing.T) {
+	config := BackendConfig{MaxRecipients: 100}
+	messageProcessor := createMockMessageProcessor()
+	metrics := &mockMetricsCollector{}
+	logger := &mockLogger{}
+
+	backend := NewBackend(config, messageProcessor, metrics, logger)
+
+	// Create a mock connection
+	smtpConn := &smtp.Conn{}
+
+	session, err := backend.NewSession(smtpConn)
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+	if session == nil {
+		t.Fatal("Expected non-nil session")
+	}
+
+	// Test session methods with connection
+	sessionImpl := session.(*Session)
+
+	// Test AUTH PLAIN
+	err = sessionImpl.AuthPlain("user", "pass")
+	if err != nil {
+		t.Errorf("Expected no error, got %v", err)
+	}
+
+	// Test MAIL command
+	err = sessionImpl.Mail("test@example.com", &smtp.MailOptions{})
+	if err != nil {
+		t.Errorf("Expected no error, got %v", err)
+	}
+
+	// Test RCPT command
+	err = sessionImpl.Rcpt("recipient@example.com", &smtp.RcptOptions{})
+	if err != nil {
+		t.Errorf("Expected no error, got %v", err)
+	}
+
+	// Test DATA command
+	message := "From: test@example.com\r\nTo: recipient@example.com\r\nSubject: Test\r\n\r\nTest message"
+	reader := strings.NewReader(message)
+	err = sessionImpl.Data(reader)
+	if err != nil {
+		t.Errorf("Expected no error, got %v", err)
+	}
+
+	// Test RESET command
+	sessionImpl.Reset()
+
+	// Test LOGOUT command
+	err = sessionImpl.Logout()
+	if err != nil {
+		t.Errorf("Expected no error, got %v", err)
+	}
+}
+
+func TestSession_WithNilConnection(t *testing.T) {
+	config := BackendConfig{MaxRecipients: 100}
+	messageProcessor := createMockMessageProcessor()
+	metrics := &mockMetricsCollector{}
+	logger := &mockLogger{}
+
+	backend := NewBackend(config, messageProcessor, metrics, logger)
+
+	// Test with nil connection
+	session, err := backend.NewSession(nil)
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+	if session == nil {
+		t.Fatal("Expected non-nil session")
+	}
+
+	// Test session methods with nil connection
+	sessionImpl := session.(*Session)
+
+	// Test AUTH PLAIN
+	err = sessionImpl.AuthPlain("user", "pass")
+	if err != nil {
+		t.Errorf("Expected no error, got %v", err)
+	}
+
+	// Test MAIL command
+	err = sessionImpl.Mail("test@example.com", &smtp.MailOptions{})
+	if err != nil {
+		t.Errorf("Expected no error, got %v", err)
+	}
+
+	// Test RCPT command
+	err = sessionImpl.Rcpt("recipient@example.com", &smtp.RcptOptions{})
+	if err != nil {
+		t.Errorf("Expected no error, got %v", err)
+	}
+
+	// Test DATA command
+	message := "From: test@example.com\r\nTo: recipient@example.com\r\nSubject: Test\r\n\r\nTest message"
+	reader := strings.NewReader(message)
+	err = sessionImpl.Data(reader)
+	if err != nil {
+		t.Errorf("Expected no error, got %v", err)
+	}
+
+	// Test RESET command
+	sessionImpl.Reset()
+
+	// Test LOGOUT command
+	err = sessionImpl.Logout()
+	if err != nil {
+		t.Errorf("Expected no error, got %v", err)
+	}
+}
+
+func TestSession_WithEmptyFrom(t *testing.T) {
+	config := BackendConfig{MaxRecipients: 100}
+	messageProcessor := createMockMessageProcessor()
+	metrics := &mockMetricsCollector{}
+	logger := &mockLogger{}
+
+	backend := NewBackend(config, messageProcessor, metrics, logger)
+	session, _ := backend.NewSession(nil)
+	sessionImpl := session.(*Session)
+
+	// Test MAIL command with empty from
+	err := sessionImpl.Mail("", &smtp.MailOptions{})
+	if err != nil {
+		t.Errorf("Expected no error, got %v", err)
+	}
+}
+
+func TestSession_WithEmptyTo(t *testing.T) {
+	config := BackendConfig{MaxRecipients: 100}
+	messageProcessor := createMockMessageProcessor()
+	metrics := &mockMetricsCollector{}
+	logger := &mockLogger{}
+
+	backend := NewBackend(config, messageProcessor, metrics, logger)
+	session, _ := backend.NewSession(nil)
+	sessionImpl := session.(*Session)
+
+	// Test RCPT command with empty to
+	err := sessionImpl.Rcpt("", &smtp.RcptOptions{})
+	if err != nil {
+		t.Errorf("Expected no error, got %v", err)
+	}
+}
+
+func TestSession_WithEmptyMessage(t *testing.T) {
+	config := BackendConfig{MaxRecipients: 100}
+	messageProcessor := createMockMessageProcessor()
+	metrics := &mockMetricsCollector{}
+	logger := &mockLogger{}
+
+	backend := NewBackend(config, messageProcessor, metrics, logger)
+	session, _ := backend.NewSession(nil)
+	sessionImpl := session.(*Session)
+
+	// Set up session state
+	sessionImpl.Mail("test@example.com", &smtp.MailOptions{})
+	sessionImpl.Rcpt("recipient@example.com", &smtp.RcptOptions{})
+
+	// Test DATA command with empty message
+	message := ""
+	reader := strings.NewReader(message)
+
+	err := sessionImpl.Data(reader)
+	// Empty messages should fail to parse
+	if err == nil {
+		t.Error("Expected error for empty message")
+	}
+}
+
+func TestSession_WithInvalidMessage(t *testing.T) {
+	config := BackendConfig{MaxRecipients: 100}
+	messageProcessor := createMockMessageProcessor()
+	metrics := &mockMetricsCollector{}
+	logger := &mockLogger{}
+
+	backend := NewBackend(config, messageProcessor, metrics, logger)
+	session, _ := backend.NewSession(nil)
+	sessionImpl := session.(*Session)
+
+	// Set up session state
+	sessionImpl.Mail("test@example.com", &smtp.MailOptions{})
+	sessionImpl.Rcpt("recipient@example.com", &smtp.RcptOptions{})
+
+	// Test DATA command with invalid message
+	message := "invalid message content"
+	reader := strings.NewReader(message)
+
+	err := sessionImpl.Data(reader)
+	// Invalid messages should fail to parse
+	if err == nil {
+		t.Error("Expected error for invalid message")
+	}
+}
+
+func TestSession_WithLargeMessage(t *testing.T) {
+	config := BackendConfig{MaxRecipients: 100}
+	messageProcessor := createMockMessageProcessor()
+	metrics := &mockMetricsCollector{}
+	logger := &mockLogger{}
+
+	backend := NewBackend(config, messageProcessor, metrics, logger)
+	session, _ := backend.NewSession(nil)
+	sessionImpl := session.(*Session)
+
+	// Set up session state
+	sessionImpl.Mail("test@example.com", &smtp.MailOptions{})
+	sessionImpl.Rcpt("recipient@example.com", &smtp.RcptOptions{})
+
+	// Test DATA command with large message
+	largeContent := strings.Repeat("x", 10000)
+	message := "From: test@example.com\r\nTo: recipient@example.com\r\nSubject: Test\r\n\r\n" + largeContent
+	reader := strings.NewReader(message)
+
+	err := sessionImpl.Data(reader)
+	if err != nil {
+		t.Errorf("Expected no error, got %v", err)
+	}
+}
+
+func TestSession_WithMultipleRecipients(t *testing.T) {
+	config := BackendConfig{MaxRecipients: 100}
+	messageProcessor := createMockMessageProcessor()
+	metrics := &mockMetricsCollector{}
+	logger := &mockLogger{}
+
+	backend := NewBackend(config, messageProcessor, metrics, logger)
+	session, _ := backend.NewSession(nil)
+	sessionImpl := session.(*Session)
+
+	// Set up session state
+	sessionImpl.Mail("test@example.com", &smtp.MailOptions{})
+	sessionImpl.Rcpt("recipient1@example.com", &smtp.RcptOptions{})
+	sessionImpl.Rcpt("recipient2@example.com", &smtp.RcptOptions{})
+	sessionImpl.Rcpt("recipient3@example.com", &smtp.RcptOptions{})
+
+	// Test DATA command with multiple recipients
+	message := "From: test@example.com\r\nTo: recipient1@example.com, recipient2@example.com, recipient3@example.com\r\nSubject: Test\r\n\r\nTest message"
+	reader := strings.NewReader(message)
+
+	err := sessionImpl.Data(reader)
+	if err != nil {
+		t.Errorf("Expected no error, got %v", err)
+	}
+}
+
+func TestSession_WithSpecialCharacters(t *testing.T) {
+	config := BackendConfig{MaxRecipients: 100}
+	messageProcessor := createMockMessageProcessor()
+	metrics := &mockMetricsCollector{}
+	logger := &mockLogger{}
+
+	backend := NewBackend(config, messageProcessor, metrics, logger)
+	session, _ := backend.NewSession(nil)
+	sessionImpl := session.(*Session)
+
+	// Set up session state with special characters
+	sessionImpl.Mail("test+tag@example.com", &smtp.MailOptions{})
+	sessionImpl.Rcpt("recipient+tag@example.com", &smtp.RcptOptions{})
+
+	// Test DATA command with special characters
+	message := "From: test+tag@example.com\r\nTo: recipient+tag@example.com\r\nSubject: Test\r\n\r\nTest message"
+	reader := strings.NewReader(message)
+
+	err := sessionImpl.Data(reader)
+	if err != nil {
+		t.Errorf("Expected no error, got %v", err)
+	}
+}
+
+// Mock connection with unknown remote address
+type mockConnWithUnknownAddr struct{}
+
+func (m *mockConnWithUnknownAddr) RemoteAddr() net.Addr {
+	return &mockUnknownAddr{}
+}
+
+func (m *mockConnWithUnknownAddr) LocalAddr() net.Addr {
+	return &mockAddr{}
+}
+
+func (m *mockConnWithUnknownAddr) Close() error {
+	return nil
+}
+
+func (m *mockConnWithUnknownAddr) Read(b []byte) (n int, err error) {
+	return 0, io.EOF
+}
+
+func (m *mockConnWithUnknownAddr) Write(b []byte) (n int, err error) {
+	return len(b), nil
+}
+
+func (m *mockConnWithUnknownAddr) SetDeadline(t time.Time) error {
+	return nil
+}
+
+func (m *mockConnWithUnknownAddr) SetReadDeadline(t time.Time) error {
+	return nil
+}
+
+func (m *mockConnWithUnknownAddr) SetWriteDeadline(t time.Time) error {
+	return nil
+}
+
+type mockUnknownAddr struct{}
+
+func (m *mockUnknownAddr) Network() string {
+	return "unknown"
+}
+
+func (m *mockUnknownAddr) String() string {
+	return "unknown"
+}

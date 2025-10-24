@@ -54,7 +54,12 @@ func NewApp(cfg *config.Config) (*App, error) {
 	}
 
 	// Initialize metrics
-	metrics := observability.NewMetricsCollector()
+	var metrics observability.MetricsCollector
+	if cfg.EnableMetrics {
+		metrics = observability.NewMetricsCollector()
+	} else {
+		metrics = &observability.NoOpMetricsCollector{}
+	}
 
 	// Initialize auth checker
 	authChecker := auth.NewAuthChecker(auth.AuthConfig{
