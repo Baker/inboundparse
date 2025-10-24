@@ -5,4 +5,5 @@ threshold:
   file: 60
   total: 75
 exclude:
-  - cmd/inboundparse/main.go
+  paths: 
+    - cmd/inboundparse/main.go
