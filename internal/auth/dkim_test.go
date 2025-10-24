@@ -29,7 +29,12 @@ This is a test message.`
 
 	// Test new RFC 6376 compliant fields
 	if result.Details == nil {
-		t.Error("Expected Details field to be present")
+		t.Error("Expected Details field to be present (should be empty slice, not nil)")
+	}
+
+	// Details should be empty array when no signatures are found
+	if len(result.Details) != 0 {
+		t.Errorf("Expected empty Details array for message without signatures, got %d items", len(result.Details))
 	}
 }
 

@@ -33,7 +33,7 @@ func (d *dkimChecker) CheckDKIM(ctx context.Context, rawMessage string) (*domain
 	}
 
 	var signatures []string
-	var details []domain.DKIMSignatureDetail
+	details := make([]domain.DKIMSignatureDetail, 0) // Initialize as empty slice, not nil
 	hasValidSignature := false
 
 	// RFC 6376 Section 3.5: Parse each DKIM signature header
