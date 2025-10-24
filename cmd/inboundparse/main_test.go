@@ -5,53 +5,50 @@ import (
 	"testing"
 )
 
+// helper to catch panics
+func mustNotPanic(t *testing.T, fn func()) {
+	defer func() {
+		if r := recover(); r != nil {
+			t.Errorf("main() panicked: %v", r)
+		}
+	}()
+	fn()
+}
+
 func TestMain_WithTestExit(t *testing.T) {
-	// Test the test exit hook
 	os.Setenv("INBOUNDPARSE_TEST_EXIT", "1")
 	defer os.Unsetenv("INBOUNDPARSE_TEST_EXIT")
-
-	// This should return early without error
-	main()
+	mustNotPanic(t, main)
 }
 
 func TestMain_WithTestInitOnly(t *testing.T) {
-	// Test the test init only hook
 	os.Setenv("INBOUNDPARSE_TEST_EXIT", "1")
 	os.Setenv("INBOUNDPARSE_TEST_INIT_ONLY", "1")
 	defer func() {
 		os.Unsetenv("INBOUNDPARSE_TEST_EXIT")
 		os.Unsetenv("INBOUNDPARSE_TEST_INIT_ONLY")
 	}()
-
-	// This should return early without error
-	main()
+	mustNotPanic(t, main)
 }
 
 func TestMain_WithWebhookURL(t *testing.T) {
-	// Test with a valid webhook URL
 	os.Setenv("WEBHOOK_URL", "http://test.example.com/webhook")
 	os.Setenv("INBOUNDPARSE_TEST_EXIT", "1")
 	defer func() {
 		os.Unsetenv("WEBHOOK_URL")
 		os.Unsetenv("INBOUNDPARSE_TEST_EXIT")
 	}()
-
-	// This should not panic
-	main()
+	mustNotPanic(t, main)
 }
 
 func TestMain_WithoutWebhookURL(t *testing.T) {
-	// Test without webhook URL (should fail config validation)
 	os.Unsetenv("WEBHOOK_URL")
 	os.Setenv("INBOUNDPARSE_TEST_EXIT", "1")
 	defer os.Unsetenv("INBOUNDPARSE_TEST_EXIT")
-
-	// This should not panic (config validation happens after test exit check)
-	main()
+	mustNotPanic(t, main)
 }
 
 func TestMain_WithVerbose(t *testing.T) {
-	// Test with verbose logging
 	os.Setenv("WEBHOOK_URL", "http://test.example.com/webhook")
 	os.Setenv("VERBOSE", "true")
 	os.Setenv("INBOUNDPARSE_TEST_EXIT", "1")
@@ -60,13 +57,10 @@ func TestMain_WithVerbose(t *testing.T) {
 		os.Unsetenv("VERBOSE")
 		os.Unsetenv("INBOUNDPARSE_TEST_EXIT")
 	}()
-
-	// This should not panic
-	main()
+	mustNotPanic(t, main)
 }
 
 func TestMain_WithSentry(t *testing.T) {
-	// Test with Sentry enabled
 	os.Setenv("WEBHOOK_URL", "http://test.example.com/webhook")
 	os.Setenv("ENABLE_SENTRY", "true")
 	os.Setenv("SENTRY_DSN", "https://test@sentry.io/123456")
@@ -77,13 +71,10 @@ func TestMain_WithSentry(t *testing.T) {
 		os.Unsetenv("SENTRY_DSN")
 		os.Unsetenv("INBOUNDPARSE_TEST_EXIT")
 	}()
-
-	// This should not panic
-	main()
+	mustNotPanic(t, main)
 }
 
 func TestMain_WithMetrics(t *testing.T) {
-	// Test with metrics enabled
 	os.Setenv("WEBHOOK_URL", "http://test.example.com/webhook")
 	os.Setenv("ENABLE_METRICS", "true")
 	os.Setenv("METRICS_ADDR", "127.0.0.1:9091")
@@ -94,13 +85,10 @@ func TestMain_WithMetrics(t *testing.T) {
 		os.Unsetenv("METRICS_ADDR")
 		os.Unsetenv("INBOUNDPARSE_TEST_EXIT")
 	}()
-
-	// This should not panic
-	main()
+	mustNotPanic(t, main)
 }
 
 func TestMain_WithTLS(t *testing.T) {
-	// Test with TLS configuration
 	os.Setenv("WEBHOOK_URL", "http://test.example.com/webhook")
 	os.Setenv("CERT_FILE", "/path/to/cert.pem")
 	os.Setenv("KEY_FILE", "/path/to/key.pem")
@@ -111,13 +99,10 @@ func TestMain_WithTLS(t *testing.T) {
 		os.Unsetenv("KEY_FILE")
 		os.Unsetenv("INBOUNDPARSE_TEST_EXIT")
 	}()
-
-	// This should not panic
-	main()
+	mustNotPanic(t, main)
 }
 
 func TestMain_WithCustomListenAddr(t *testing.T) {
-	// Test with custom listen addresses
 	os.Setenv("WEBHOOK_URL", "http://test.example.com/webhook")
 	os.Setenv("LISTEN_ADDR", "127.0.0.1:2525")
 	os.Setenv("LISTEN_ADDR_TLS", "127.0.0.1:465")
@@ -128,13 +113,10 @@ func TestMain_WithCustomListenAddr(t *testing.T) {
 		os.Unsetenv("LISTEN_ADDR_TLS")
 		os.Unsetenv("INBOUNDPARSE_TEST_EXIT")
 	}()
-
-	// This should not panic
-	main()
+	mustNotPanic(t, main)
 }
 
 func TestMain_WithWebhookAuth(t *testing.T) {
-	// Test with webhook authentication
 	os.Setenv("WEBHOOK_URL", "http://test.example.com/webhook")
 	os.Setenv("WEBHOOK_USER", "testuser")
 	os.Setenv("WEBHOOK_PASS", "testpass")
@@ -145,13 +127,10 @@ func TestMain_WithWebhookAuth(t *testing.T) {
 		os.Unsetenv("WEBHOOK_PASS")
 		os.Unsetenv("INBOUNDPARSE_TEST_EXIT")
 	}()
-
-	// This should not panic
-	main()
+	mustNotPanic(t, main)
 }
 
 func TestMain_WithAuthDisabled(t *testing.T) {
-	// Test with authentication disabled
 	os.Setenv("WEBHOOK_URL", "http://test.example.com/webhook")
 	os.Setenv("ENABLE_SPF", "false")
 	os.Setenv("ENABLE_DKIM", "false")
@@ -164,13 +143,10 @@ func TestMain_WithAuthDisabled(t *testing.T) {
 		os.Unsetenv("ENABLE_DMARC")
 		os.Unsetenv("INBOUNDPARSE_TEST_EXIT")
 	}()
-
-	// This should not panic
-	main()
+	mustNotPanic(t, main)
 }
 
 func TestMain_WithCustomServerName(t *testing.T) {
-	// Test with custom server name
 	os.Setenv("WEBHOOK_URL", "http://test.example.com/webhook")
 	os.Setenv("SERVER_NAME", "custom.example.com")
 	os.Setenv("INBOUNDPARSE_TEST_EXIT", "1")
@@ -179,13 +155,10 @@ func TestMain_WithCustomServerName(t *testing.T) {
 		os.Unsetenv("SERVER_NAME")
 		os.Unsetenv("INBOUNDPARSE_TEST_EXIT")
 	}()
-
-	// This should not panic
-	main()
+	mustNotPanic(t, main)
 }
 
 func TestMain_WithCustomTimeouts(t *testing.T) {
-	// Test with custom timeouts
 	os.Setenv("WEBHOOK_URL", "http://test.example.com/webhook")
 	os.Setenv("READ_TIMEOUT", "60s")
 	os.Setenv("WRITE_TIMEOUT", "60s")
@@ -196,13 +169,10 @@ func TestMain_WithCustomTimeouts(t *testing.T) {
 		os.Unsetenv("WRITE_TIMEOUT")
 		os.Unsetenv("INBOUNDPARSE_TEST_EXIT")
 	}()
-
-	// This should not panic
-	main()
+	mustNotPanic(t, main)
 }
 
 func TestMain_WithCustomMessageSize(t *testing.T) {
-	// Test with custom message size
 	os.Setenv("WEBHOOK_URL", "http://test.example.com/webhook")
 	os.Setenv("MAX_MESSAGE_SIZE", "20971520") // 20MB
 	os.Setenv("INBOUNDPARSE_TEST_EXIT", "1")
@@ -211,13 +181,10 @@ func TestMain_WithCustomMessageSize(t *testing.T) {
 		os.Unsetenv("MAX_MESSAGE_SIZE")
 		os.Unsetenv("INBOUNDPARSE_TEST_EXIT")
 	}()
-
-	// This should not panic
-	main()
+	mustNotPanic(t, main)
 }
 
 func TestMain_WithMetricsAuth(t *testing.T) {
-	// Test with metrics authentication
 	os.Setenv("WEBHOOK_URL", "http://test.example.com/webhook")
 	os.Setenv("ENABLE_METRICS", "true")
 	os.Setenv("METRICS_API_KEY", "test-api-key")
@@ -232,13 +199,10 @@ func TestMain_WithMetricsAuth(t *testing.T) {
 		os.Unsetenv("METRICS_PASSWORD")
 		os.Unsetenv("INBOUNDPARSE_TEST_EXIT")
 	}()
-
-	// This should not panic
-	main()
+	mustNotPanic(t, main)
 }
 
 func TestMain_WithSentryConfig(t *testing.T) {
-	// Test with full Sentry configuration
 	os.Setenv("WEBHOOK_URL", "http://test.example.com/webhook")
 	os.Setenv("ENABLE_SENTRY", "true")
 	os.Setenv("SENTRY_DSN", "https://test@sentry.io/123456")
@@ -253,7 +217,20 @@ func TestMain_WithSentryConfig(t *testing.T) {
 		os.Unsetenv("SENTRY_RELEASE")
 		os.Unsetenv("INBOUNDPARSE_TEST_EXIT")
 	}()
+	mustNotPanic(t, main)
+}
 
-	// This should not panic
-	main()
+func TestMain_AppRunError(t *testing.T) {
+	os.Setenv("WEBHOOK_URL", "http://test.example.com/webhook")
+	os.Setenv("INBOUNDPARSE_TEST_INIT_ONLY", "1")
+	os.Unsetenv("INBOUNDPARSE_TEST_EXIT")
+	defer func() {
+		os.Unsetenv("WEBHOOK_URL")
+		os.Unsetenv("INBOUNDPARSE_TEST_INIT_ONLY")
+		// catch panics but expect main() to exit
+		if r := recover(); r != nil {
+			return
+		}
+	}()
+	mustNotPanic(t, main)
 }

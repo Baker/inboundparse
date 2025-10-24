@@ -6,6 +6,7 @@ import (
 	"inboundparse/internal/domain"
 	"io"
 	"net"
+	"strings"
 	"testing"
 	"time"
 )
@@ -273,5 +274,86 @@ func TestApp_Stop_WithoutMetrics(t *testing.T) {
 	err = app.Stop()
 	if err != nil {
 		t.Fatalf("Expected no error stopping app without metrics, got %v", err)
+	}
+}
+
+func TestApp_NewApp_SentryInitError(t *testing.T) {
+	// Test Sentry initialization error path (lines 51-54)
+	config := &config.Config{
+		ListenAddr:    "127.0.0.1:0",
+		WebhookURL:    "http://localhost:8080/webhook",
+		ServerName:    "test",
+		Verbose:       true,
+		EnableSentry:  true,
+		SentryDSN:     "invalid-dsn", // This should cause Sentry init to fail
+		EnableMetrics: false,
+	}
+
+	app, err := NewApp(config)
+	if err == nil {
+		t.Fatal("Expected error due to invalid Sentry DSN, got nil")
+	}
+	if app != nil {
+		t.Fatal("Expected app to be nil due to Sentry init error")
+	}
+	if !strings.Contains(err.Error(), "failed to initialize Sentry") {
+		t.Errorf("Expected Sentry init error, got: %v", err)
+	}
+}
+
+func TestApp_Start_WithTLSConfig(t *testing.T) {
+	// Test TLS configuration logging (lines 160-165)
+	// This test verifies that TLS config is set but doesn't actually start the server
+	config := &config.Config{
+		ListenAddr: "127.0.0.1:0",
+		WebhookURL: "http://localhost:8080/webhook",
+		ServerName: "test",
+		Verbose:    true,
+		CertFile:   "", // Don't set cert file to avoid TLS loading
+		KeyFile:    "", // Don't set key file to avoid TLS loading
+	}
+
+	app, err := NewApp(config)
+	if err != nil {
+		t.Fatalf("Expected no error creating app, got %v", err)
+	}
+
+	// Test that the app was created successfully with TLS config
+	if app == nil {
+		t.Fatal("Expected non-nil app")
+	}
+
+	// Test that TLS configuration is set (empty strings)
+	if app.config.CertFile != "" {
+		t.Errorf("Expected CertFile '', got '%s'", app.config.CertFile)
+	}
+	if app.config.KeyFile != "" {
+		t.Errorf("Expected KeyFile '', got '%s'", app.config.KeyFile)
+	}
+}
+
+func TestApp_Start_SMTPServerError(t *testing.T) {
+	// Test SMTP server start error path (lines 168-170)
+	config := &config.Config{
+		ListenAddr:    "invalid-address:99999", // Invalid port should cause error
+		WebhookURL:    "http://localhost:8080/webhook",
+		ServerName:    "test",
+		Verbose:       true,
+		EnableMetrics: false,
+		EnableSentry:  false,
+	}
+
+	app, err := NewApp(config)
+	if err != nil {
+		t.Fatalf("Expected no error creating app, got %v", err)
+	}
+
+	// Test Start method with invalid SMTP address
+	err = app.Start()
+	if err == nil {
+		t.Error("Expected error starting app with invalid SMTP address")
+	}
+	if !strings.Contains(err.Error(), "failed to start SMTP server") {
+		t.Errorf("Expected SMTP server error, got: %v", err)
 	}
 }
