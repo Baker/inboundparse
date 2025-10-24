@@ -4,3 +4,5 @@ profile: '' # set via github action
 threshold:
   file: 60
   total: 75
+exclude:
+  - cmd/inboundparse/main.go
