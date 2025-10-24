@@ -10,6 +10,7 @@ import (
 
 	"github.com/emersion/go-smtp"
 	"github.com/google/uuid"
+	"github.com/rs/zerolog"
 )
 
 // BackendConfig holds backend configuration
@@ -51,16 +52,23 @@ func (b *Backend) NewSession(c *smtp.Conn) (smtp.Session, error) {
 	// Track connection metrics
 	cleanup := b.metrics.TrackConnection()
 
-	b.logger.Debug().
+	// Create session-specific logger with context
+	sessionLogger := b.logger.With().
 		Str("session_id", sessionID).
 		Str("remote_addr", remote).
+		Logger()
+
+	sessionLogger.Debug().
 		Msg("New SMTP session started")
+
+	// Create a wrapper that implements observability.Logger interface
+	sessionLoggerWrapper := &sessionLoggerWrapper{logger: sessionLogger}
 
 	return &Session{
 		config:           b.config,
 		messageProcessor: b.messageProcessor,
 		metrics:          b.metrics,
-		logger:           b.logger,
+		logger:           sessionLoggerWrapper,
 		conn:             c,
 		sessionID:        sessionID,
 		cleanup:          cleanup,
@@ -93,7 +101,6 @@ func (s *Session) AuthPlain(username, password string) error {
 // Mail is called when the MAIL FROM command is received
 func (s *Session) Mail(from string, opts *smtp.MailOptions) error {
 	s.logger.Debug().
-		Str("session_id", s.sessionID).
 		Str("from", from).
 		Msg("MAIL FROM received")
 	s.from = from
@@ -103,7 +110,6 @@ func (s *Session) Mail(from string, opts *smtp.MailOptions) error {
 // Rcpt is called when a RCPT TO command is received
 func (s *Session) Rcpt(to string, opts *smtp.RcptOptions) error {
 	s.logger.Debug().
-		Str("session_id", s.sessionID).
 		Str("to", to).
 		Msg("RCPT TO received")
 
@@ -119,7 +125,6 @@ func (s *Session) Rcpt(to string, opts *smtp.RcptOptions) error {
 // Data is called when the DATA command is received
 func (s *Session) Data(r io.Reader) error {
 	s.logger.Info().
-		Str("session_id", s.sessionID).
 		Str("from", s.from).
 		Strs("to", s.to).
 		Msg("Receiving message data")
@@ -142,7 +147,7 @@ func (s *Session) Data(r io.Reader) error {
 		}
 	}
 
-	// Process the email message
+	// Process the email message with session-aware logger
 	ctx := context.Background() // TODO: Add proper context with timeout
 	return s.messageProcessor.ProcessMessage(ctx, r, s.from, s.to, s.sessionID, remoteIP)
 }
@@ -150,7 +155,6 @@ func (s *Session) Data(r io.Reader) error {
 // Reset is called when the RSET command is received
 func (s *Session) Reset() {
 	s.logger.Debug().
-		Str("session_id", s.sessionID).
 		Msg("Session reset")
 	s.from = ""
 	s.to = nil
@@ -159,7 +163,6 @@ func (s *Session) Reset() {
 // Logout is called when the session is closed
 func (s *Session) Logout() error {
 	s.logger.Debug().
-		Str("session_id", s.sessionID).
 		Msg("Session logout")
 
 	// Clean up connection tracking
@@ -168,4 +171,33 @@ func (s *Session) Logout() error {
 	}
 
 	return nil
+}
+
+// sessionLoggerWrapper wraps zerolog.Logger to implement observability.Logger interface
+type sessionLoggerWrapper struct {
+	logger zerolog.Logger
+}
+
+func (w *sessionLoggerWrapper) Debug() *zerolog.Event {
+	return w.logger.Debug()
+}
+
+func (w *sessionLoggerWrapper) Info() *zerolog.Event {
+	return w.logger.Info()
+}
+
+func (w *sessionLoggerWrapper) Warn() *zerolog.Event {
+	return w.logger.Warn()
+}
+
+func (w *sessionLoggerWrapper) Error() *zerolog.Event {
+	return w.logger.Error()
+}
+
+func (w *sessionLoggerWrapper) Fatal() *zerolog.Event {
+	return w.logger.Fatal()
+}
+
+func (w *sessionLoggerWrapper) With() zerolog.Context {
+	return w.logger.With()
 }

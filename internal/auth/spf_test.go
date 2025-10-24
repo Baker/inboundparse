@@ -31,6 +31,15 @@ func TestSPFChecker_CheckSPF_NoRemoteIP(t *testing.T) {
 	if result.Result != "temperror" {
 		t.Errorf("Expected result 'temperror', got %s", result.Result)
 	}
+
+	// Test new RFC 7208 compliant fields
+	if result.Sender != "test@example.com" {
+		t.Errorf("Expected sender 'test@example.com', got %s", result.Sender)
+	}
+
+	if result.Problem == "" {
+		t.Error("Expected problem description for temperror result")
+	}
 }
 
 func TestSPFChecker_CheckSPF_NoDomain(t *testing.T) {
@@ -44,6 +53,15 @@ func TestSPFChecker_CheckSPF_NoDomain(t *testing.T) {
 
 	if result.Result != "none" {
 		t.Errorf("Expected result 'none', got %s", result.Result)
+	}
+
+	// Test new RFC 7208 compliant fields
+	if result.Sender != "test@" {
+		t.Errorf("Expected sender 'test@', got %s", result.Sender)
+	}
+
+	if result.Problem == "" {
+		t.Error("Expected problem description for none result")
 	}
 }
 
@@ -59,6 +77,11 @@ func TestSPFChecker_CheckSPF_ValidDomain(t *testing.T) {
 	// Result depends on actual SPF record, but should not be empty
 	if result.Result == "" {
 		t.Error("Expected non-empty result")
+	}
+
+	// Test new RFC 7208 compliant fields
+	if result.Sender != "test@example.com" {
+		t.Errorf("Expected sender 'test@example.com', got %s", result.Sender)
 	}
 }
 

@@ -147,7 +147,7 @@ func TestDMARCChecker_CheckDMARC_WithSPFAndDKIMResults(t *testing.T) {
 		},
 	}
 
-	spfResult := &domain.SPFResult{Result: "pass"}
+	spfResult := &domain.SPFResult{Result: "pass", Sender: "test@example.com"}
 	dkimResult := &domain.DKIMResult{Valid: true}
 
 	result, err := checker.CheckDMARC(context.Background(), "raw message", headers, spfResult, dkimResult)
@@ -158,6 +158,20 @@ func TestDMARCChecker_CheckDMARC_WithSPFAndDKIMResults(t *testing.T) {
 	// Result should be "fail" since DMARC record will be found for example.com
 	if result.Result != "fail" {
 		t.Errorf("Expected result 'fail', got %s", result.Result)
+	}
+
+	// Test new RFC 7489 compliant fields
+	if result.Domain == "" {
+		t.Error("Expected domain field to be populated")
+	}
+
+	if result.SPFDomain != "example.com" {
+		t.Errorf("Expected SPF domain 'example.com', got %s", result.SPFDomain)
+	}
+
+	// Test alignment flags
+	if !result.SPFAligned {
+		t.Error("Expected SPF to be aligned (same domain)")
 	}
 }
 
@@ -178,6 +192,15 @@ func TestDMARCChecker_CheckDMARC_WithNilSPFResult(t *testing.T) {
 
 	if result.Result != "fail" {
 		t.Errorf("Expected result 'fail', got %s", result.Result)
+	}
+
+	// Test new RFC 7489 compliant fields
+	if result.SPFDomain != "" {
+		t.Error("Expected empty SPF domain for nil SPF result")
+	}
+
+	if result.SPFAligned {
+		t.Error("Expected SPF not to be aligned for nil SPF result")
 	}
 }
 
@@ -379,6 +402,38 @@ func TestDMARCChecker_CheckDMARC_WithComplexFromHeader(t *testing.T) {
 
 	if result.Result != "none" {
 		t.Errorf("Expected result 'none', got %s", result.Result)
+	}
+}
+
+func TestDMARCChecker_CheckDMARC_AlignmentBugFix(t *testing.T) {
+	checker := NewDMARCChecker()
+
+	headers := letters.Headers{
+		From: []*mail.Address{
+			{Address: "test@example.com"},
+		},
+	}
+
+	// Test the alignment bug fix: SPF result with different sender domain
+	spfResult := &domain.SPFResult{
+		Result: "pass",
+		Sender: "test@different.com", // Different domain from From header
+	}
+	dkimResult := &domain.DKIMResult{Valid: true}
+
+	result, err := checker.CheckDMARC(context.Background(), "raw message", headers, spfResult, dkimResult)
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+
+	// Test that SPF alignment is correctly calculated
+	if result.SPFDomain != "different.com" {
+		t.Errorf("Expected SPF domain 'different.com', got %s", result.SPFDomain)
+	}
+
+	// SPF should not be aligned since domains are different
+	if result.SPFAligned {
+		t.Error("Expected SPF not to be aligned (different domains)")
 	}
 }
 

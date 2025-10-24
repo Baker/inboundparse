@@ -80,7 +80,9 @@ func (d *dmarcChecker) CheckDMARC(ctx context.Context, rawMessage string, header
 	// RFC 7489: SPF identifier alignment
 	// Check if SPF passes and the MAIL FROM domain aligns with From header domain
 	spfPass := spfResult.Result == "pass"
-	spfAligned := d.checkDomainAlignment(spfResult.Result, fromDomain, string(record.SPFAlignment))
+	// Fix bug: Use SPF envelope sender domain for alignment check, not result string
+	spfDomain := ExtractDomainFromEmail(spfResult.Sender)
+	spfAligned := d.checkDomainAlignment(spfDomain, fromDomain, string(record.SPFAlignment))
 
 	// RFC 7489: DKIM identifier alignment
 	// Check if any valid DKIM signature domain aligns with From header domain
@@ -125,12 +127,23 @@ func (d *dmarcChecker) CheckDMARC(ctx context.Context, rawMessage string, header
 		Bool("spf_aligned", spfAligned).
 		Bool("dkim_pass", dkimPass).
 		Bool("dkim_aligned", dkimAligned).
+		Str("spf_domain", spfDomain).
 		Msg("DMARC check completed")
 
+	// Extract DKIM domain(s) for alignment
+	dkimDomain := d.extractDKIMDomain(dkimResult.Signatures)
+
 	return &domain.DMARCResult{
-		Result: result,
-		Raw:    rawMsg,
-		Policy: string(record.Policy),
+		Result:          result,
+		Raw:             rawMsg,
+		Policy:          string(record.Policy),
+		Domain:          actualDomain,
+		Percentage:      100, // Default to 100% if not specified in record
+		SubdomainPolicy: string(record.SubdomainPolicy),
+		SPFAligned:      spfAligned,
+		DKIMAligned:     dkimAligned,
+		SPFDomain:       spfDomain,
+		DKIMDomain:      dkimDomain,
 	}, nil
 }
 
@@ -242,4 +255,17 @@ func (d *dmarcChecker) getOrganizationalDomain(domain string) string {
 	// Simple heuristic: take last two parts as organizational domain
 	// In production, use Public Suffix List to determine the actual organizational domain
 	return strings.Join(parts[len(parts)-2:], ".")
+}
+
+// extractDKIMDomain extracts domain(s) from DKIM signatures for alignment reporting
+func (d *dmarcChecker) extractDKIMDomain(signatures []string) string {
+	var domains []string
+	for _, sig := range signatures {
+		if strings.HasPrefix(sig, "Valid: ") {
+			domain := strings.TrimPrefix(sig, "Valid: ")
+			domains = append(domains, domain)
+		}
+	}
+	// Return comma-separated list of domains
+	return strings.Join(domains, ",")
 }

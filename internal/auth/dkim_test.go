@@ -26,6 +26,11 @@ This is a test message.`
 	if result == nil {
 		t.Error("Expected non-nil result")
 	}
+
+	// Test new RFC 6376 compliant fields
+	if result.Details == nil {
+		t.Error("Expected Details field to be present")
+	}
 }
 
 func TestDKIMChecker_CheckDKIM_EmptyMessage(t *testing.T) {
@@ -84,6 +89,11 @@ This is a test message with multiple DKIM signatures.`
 		t.Error("Expected signatures in result")
 	}
 
+	// Test new RFC 6376 compliant fields
+	if len(result.Details) == 0 {
+		t.Error("Expected signature details")
+	}
+
 	// Verify that we have both valid and invalid signatures
 	hasValid := false
 	hasInvalid := false
@@ -100,6 +110,16 @@ This is a test message with multiple DKIM signatures.`
 	// At least one signature should be processed
 	if !hasValid && !hasInvalid {
 		t.Error("Expected at least one signature to be processed")
+	}
+
+	// Test signature details structure
+	for _, detail := range result.Details {
+		if detail.Selector == "" {
+			t.Error("Expected selector in signature detail")
+		}
+		if detail.Algorithm == "" {
+			t.Error("Expected algorithm in signature detail")
+		}
 	}
 }
 

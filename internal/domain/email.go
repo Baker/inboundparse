@@ -22,26 +22,50 @@ type AuthenticationResults struct {
 
 // SPFResult contains SPF validation results
 type SPFResult struct {
-	Result    string `json:"result"`
-	Raw       string `json:"raw"`
-	Mechanism string `json:"mechanism,omitempty"`
-	Qualifier string `json:"qualifier,omitempty"`
+	Result      string `json:"result"`
+	Raw         string `json:"raw"`
+	Mechanism   string `json:"mechanism,omitempty"`
+	Qualifier   string `json:"qualifier,omitempty"`
+	Explanation string `json:"explanation,omitempty"` // SPF explanation from DNS (RFC 7208 Section 6.2)
+	Problem     string `json:"problem,omitempty"`     // Description of any processing issues
+	Sender      string `json:"sender,omitempty"`      // The identity checked (MAIL FROM)
+}
+
+// DKIMSignatureDetail contains detailed information about a single DKIM signature
+type DKIMSignatureDetail struct {
+	Domain        string   `json:"domain"`               // d= tag
+	Selector      string   `json:"selector"`             // s= tag
+	Algorithm     string   `json:"algorithm"`            // a= tag
+	HeadersSigned []string `json:"headers_signed"`       // h= tag
+	BodyHash      string   `json:"body_hash"`            // bh= tag
+	Timestamp     int64    `json:"timestamp,omitempty"`  // t= tag
+	Expiration    int64    `json:"expiration,omitempty"` // x= tag
+	Valid         bool     `json:"valid"`
+	Error         string   `json:"error,omitempty"`
 }
 
 // DKIMResult contains DKIM validation results
 type DKIMResult struct {
-	Valid      bool     `json:"valid"`
-	Signatures []string `json:"signatures,omitempty"`
-	Raw        string   `json:"raw"`
-	Error      string   `json:"error,omitempty"`
+	Valid      bool                  `json:"valid"`
+	Signatures []string              `json:"signatures,omitempty"`
+	Details    []DKIMSignatureDetail `json:"details,omitempty"` // Per-signature structured data
+	Raw        string                `json:"raw"`
+	Error      string                `json:"error,omitempty"`
 }
 
 // DMARCResult contains DMARC validation results
 type DMARCResult struct {
-	Result string `json:"result"`
-	Raw    string `json:"raw"`
-	Policy string `json:"policy,omitempty"`
-	Error  string `json:"error,omitempty"`
+	Result          string `json:"result"`
+	Raw             string `json:"raw"`
+	Policy          string `json:"policy,omitempty"`
+	Error           string `json:"error,omitempty"`
+	Domain          string `json:"domain,omitempty"`           // Domain where policy was found
+	Percentage      int    `json:"percentage,omitempty"`       // pct= tag value (RFC 7489 Section 6.3)
+	SubdomainPolicy string `json:"subdomain_policy,omitempty"` // sp= tag value
+	SPFAligned      bool   `json:"spf_aligned"`                // Whether SPF identifier aligned
+	DKIMAligned     bool   `json:"dkim_aligned"`               // Whether DKIM identifier aligned
+	SPFDomain       string `json:"spf_domain,omitempty"`       // Domain used for SPF alignment check
+	DKIMDomain      string `json:"dkim_domain,omitempty"`      // Domain(s) used for DKIM alignment
 }
 
 // Attachment represents an email attachment
