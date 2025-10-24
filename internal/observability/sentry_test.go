@@ -454,3 +454,47 @@ func TestSentryClient_InitWithEmptyDSN(t *testing.T) {
 		t.Errorf("Expected no error with empty DSN, got %v", err)
 	}
 }
+
+func TestSentryClient_CaptureErrorWithContext(t *testing.T) {
+	// Test CaptureError with context (lines 76-82)
+	client := &sentryClient{enabled: true}
+
+	context := map[string]interface{}{
+		"user_id": "123",
+		"action":  "test_action",
+		"level":   "error",
+	}
+
+	// This should not panic
+	client.CaptureError(errors.New("test error"), context)
+}
+
+func TestSentryClient_CaptureMessageWithContext(t *testing.T) {
+	// Test CaptureMessage with context (lines 92-98)
+	client := &sentryClient{enabled: true}
+
+	context := map[string]interface{}{
+		"user_id": "123",
+		"action":  "test_action",
+		"level":   "info",
+	}
+
+	// This should not panic
+	client.CaptureMessage("test message", "info", context)
+}
+
+func TestSentryClient_CaptureErrorWithNilContext(t *testing.T) {
+	// Test CaptureError with nil context
+	client := &sentryClient{enabled: true}
+
+	// This should not panic
+	client.CaptureError(errors.New("test error"), nil)
+}
+
+func TestSentryClient_CaptureMessageWithNilContext(t *testing.T) {
+	// Test CaptureMessage with nil context
+	client := &sentryClient{enabled: true}
+
+	// This should not panic
+	client.CaptureMessage("test message", "info", nil)
+}
