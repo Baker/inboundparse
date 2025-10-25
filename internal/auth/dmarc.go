@@ -333,6 +333,7 @@ func (d *dmarcChecker) getParentDomain(domain string) string {
 func (d *dmarcChecker) isDMARCNotFoundError(err error) bool {
 	errorMsg := strings.ToLower(err.Error())
 	return strings.Contains(errorMsg, "not found") ||
+		strings.Contains(errorMsg, "no policy found") ||
 		strings.Contains(errorMsg, "no such host") ||
 		strings.Contains(errorMsg, "nxdomain") ||
 		strings.Contains(errorMsg, "no data")
