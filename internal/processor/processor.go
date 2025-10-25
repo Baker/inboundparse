@@ -54,13 +54,15 @@ func NewMessageProcessor(
 func (mp *MessageProcessor) ProcessMessage(ctx context.Context, r io.Reader, from string, to []string, sessionID string, remoteIP net.IP) error {
 	start := time.Now()
 
+	// Create session-aware logger with session_id context
+	sessionLogger := observability.NewSessionLogger(mp.logger, sessionID, "")
+
 	// Read the entire message
 	var buf bytes.Buffer
 	size, err := io.Copy(&buf, r)
 	if err != nil {
-		mp.logger.Error().
+		sessionLogger.Error().
 			Err(err).
-			Str("session_id", sessionID).
 			Msg("Failed to read message")
 		mp.sentry.CaptureError(err, map[string]interface{}{
 			"session_id": sessionID,
@@ -77,9 +79,8 @@ func (mp *MessageProcessor) ProcessMessage(ctx context.Context, r io.Reader, fro
 	// Parse the email
 	email, err := letters.ParseEmail(bytes.NewReader(buf.Bytes()))
 	if err != nil {
-		mp.logger.Error().
+		sessionLogger.Error().
 			Err(err).
-			Str("session_id", sessionID).
 			Int64("size", size).
 			Msg("Failed to parse message")
 		mp.sentry.CaptureError(err, map[string]interface{}{
@@ -93,8 +94,7 @@ func (mp *MessageProcessor) ProcessMessage(ctx context.Context, r io.Reader, fro
 		return fmt.Errorf("failed to parse message: %w", err)
 	}
 
-	mp.logger.Info().
-		Str("session_id", sessionID).
+	sessionLogger.Info().
 		Str("from", from).
 		Strs("to", to).
 		Str("subject", email.Headers.Subject).
@@ -119,11 +119,10 @@ func (mp *MessageProcessor) ProcessMessage(ctx context.Context, r io.Reader, fro
 
 	// Perform authentication checks
 	if mp.config.EnableSPF || mp.config.EnableDKIM || mp.config.EnableDMARC {
-		authResults, err := mp.performAuthenticationChecks(ctx, rawMessage, email.Headers, from, remoteIP)
+		authResults, err := mp.performAuthenticationChecks(ctx, rawMessage, email.Headers, from, remoteIP, sessionLogger)
 		if err != nil {
-			mp.logger.Warn().
+			sessionLogger.Warn().
 				Err(err).
-				Str("session_id", sessionID).
 				Msg("Authentication checks failed")
 			// Continue processing even if auth checks fail
 		} else {
@@ -136,9 +135,8 @@ func (mp *MessageProcessor) ProcessMessage(ctx context.Context, r io.Reader, fro
 
 	duration := time.Since(start)
 	if err != nil {
-		mp.logger.Error().
+		sessionLogger.Error().
 			Err(err).
-			Str("session_id", sessionID).
 			Str("message_id", string(email.Headers.MessageID)).
 			Dur("duration", duration).
 			Msg("Failed to process message")
@@ -146,8 +144,7 @@ func (mp *MessageProcessor) ProcessMessage(ctx context.Context, r io.Reader, fro
 		return err
 	}
 
-	mp.logger.Info().
-		Str("session_id", sessionID).
+	sessionLogger.Info().
 		Str("message_id", string(email.Headers.MessageID)).
 		Dur("duration", duration).
 		Msg("Message processed successfully")
@@ -157,10 +154,10 @@ func (mp *MessageProcessor) ProcessMessage(ctx context.Context, r io.Reader, fro
 }
 
 // performAuthenticationChecks runs all enabled authentication checks
-func (mp *MessageProcessor) performAuthenticationChecks(ctx context.Context, rawMessage string, headers letters.Headers, from string, remoteIP net.IP) (domain.AuthenticationResults, error) {
+func (mp *MessageProcessor) performAuthenticationChecks(ctx context.Context, rawMessage string, headers letters.Headers, from string, remoteIP net.IP, sessionLogger observability.Logger) (domain.AuthenticationResults, error) {
 	results := domain.AuthenticationResults{}
 
-	mp.logger.Debug().
+	sessionLogger.Debug().
 		Bool("spf_enabled", mp.config.EnableSPF).
 		Bool("dkim_enabled", mp.config.EnableDKIM).
 		Bool("dmarc_enabled", mp.config.EnableDMARC).
@@ -171,9 +168,9 @@ func (mp *MessageProcessor) performAuthenticationChecks(ctx context.Context, raw
 
 	// SPF Check
 	if mp.config.EnableSPF {
-		spfResult, err := mp.authChecker.CheckSPF(ctx, remoteIP, domain, from, mp.logger)
+		spfResult, err := mp.authChecker.CheckSPF(ctx, remoteIP, domain, from, sessionLogger, mp.metrics)
 		if err != nil {
-			mp.logger.Warn().
+			sessionLogger.Warn().
 				Err(err).
 				Msg("SPF check failed")
 			mp.sentry.CaptureError(err, map[string]interface{}{
@@ -189,9 +186,9 @@ func (mp *MessageProcessor) performAuthenticationChecks(ctx context.Context, raw
 
 	// DKIM Check
 	if mp.config.EnableDKIM {
-		dkimResult, err := mp.authChecker.CheckDKIM(ctx, rawMessage, mp.logger)
+		dkimResult, err := mp.authChecker.CheckDKIM(ctx, rawMessage, sessionLogger, mp.metrics)
 		if err != nil {
-			mp.logger.Warn().
+			sessionLogger.Warn().
 				Err(err).
 				Msg("DKIM check failed")
 			mp.sentry.CaptureError(err, map[string]interface{}{
@@ -206,9 +203,9 @@ func (mp *MessageProcessor) performAuthenticationChecks(ctx context.Context, raw
 
 	// DMARC Check - pass previously computed results to avoid redundant checks
 	if mp.config.EnableDMARC {
-		dmarcResult, err := mp.authChecker.CheckDMARC(ctx, rawMessage, headers, results.SPF, results.DKIM, mp.logger)
+		dmarcResult, err := mp.authChecker.CheckDMARC(ctx, rawMessage, headers, results.SPF, results.DKIM, sessionLogger, mp.metrics)
 		if err != nil {
-			mp.logger.Warn().
+			sessionLogger.Warn().
 				Err(err).
 				Msg("DMARC check failed")
 			mp.sentry.CaptureError(err, map[string]interface{}{
@@ -221,7 +218,7 @@ func (mp *MessageProcessor) performAuthenticationChecks(ctx context.Context, raw
 		}
 	}
 
-	mp.logger.Info().
+	sessionLogger.Info().
 		Interface("spf", results.SPF).
 		Interface("dkim", results.DKIM).
 		Interface("dmarc", results.DMARC).

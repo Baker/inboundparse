@@ -6,6 +6,7 @@ import (
 	"inboundparse/internal/domain"
 	"inboundparse/internal/observability"
 	"strings"
+	"time"
 
 	"github.com/emersion/go-msgauth/dkim"
 )
@@ -19,9 +20,26 @@ func NewDKIMChecker() DKIMChecker {
 }
 
 // CheckDKIM performs DKIM authentication check following RFC 6376
-func (d *dkimChecker) CheckDKIM(ctx context.Context, rawMessage string, logger observability.Logger) (*domain.DKIMResult, error) {
+func (d *dkimChecker) CheckDKIM(ctx context.Context, rawMessage string, logger observability.Logger, metrics observability.MetricsCollector) (*domain.DKIMResult, error) {
+	start := time.Now()
+	defer func() {
+		duration := time.Since(start)
+		metrics.TrackDKIMDuration(duration)
+	}()
 	verifications, err := dkim.Verify(strings.NewReader(rawMessage))
 	if err != nil {
+		// Determine error type for metrics
+		errorType := "verification_error"
+		switch {
+		case strings.Contains(err.Error(), "timeout"):
+			errorType = "timeout_error"
+		case strings.Contains(err.Error(), "parse"):
+			errorType = "parse_error"
+		case strings.Contains(err.Error(), "DNS"):
+			errorType = "dns_error"
+		}
+		metrics.TrackAuthError("dkim", errorType)
+
 		logger.Warn().
 			Err(err).
 			Msg("DKIM verification error")
@@ -70,6 +88,15 @@ func (d *dkimChecker) CheckDKIM(ctx context.Context, rawMessage string, logger o
 		Int("signature_count", len(verifications)).
 		Strs("signatures", signatures).
 		Msg("DKIM check completed")
+
+	// Track results by domain for each signature
+	for _, verification := range verifications {
+		if verification.Err == nil {
+			metrics.TrackDKIMResultByDomain(verification.Domain, "valid")
+		} else {
+			metrics.TrackDKIMResultByDomain(verification.Domain, "invalid")
+		}
+	}
 
 	return &domain.DKIMResult{
 		Valid:      hasValidSignature,

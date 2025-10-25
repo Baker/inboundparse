@@ -29,6 +29,16 @@ type MetricsCollector interface {
 	TrackDKIMResult(valid bool)
 	TrackDMARCResult(result, policy string)
 	TrackWebhookRequest(statusCode int, duration time.Duration)
+	TrackWebhookRequestSize(requestSize, responseSize int64)
+	TrackWebhookRetry(success bool)
+	TrackWebhookError(errorType string)
+	TrackSPFDuration(duration time.Duration)
+	TrackDKIMDuration(duration time.Duration)
+	TrackDMARCDuration(duration time.Duration)
+	TrackSPFResultByDomain(domain, result string)
+	TrackDKIMResultByDomain(domain, result string)
+	TrackDMARCResultByDomain(domain, result string)
+	TrackAuthError(checkType, errorType string)
 }
 
 // MetricsServer manages the Prometheus metrics HTTP server
@@ -61,8 +71,25 @@ type metricsCollector struct {
 	authChecksDMARC prometheus.Counter
 
 	// Webhook metrics
-	webhookRequests *prometheus.CounterVec
-	webhookDuration prometheus.Histogram
+	webhookRequests     *prometheus.CounterVec
+	webhookDuration     prometheus.Histogram
+	webhookRequestSize  prometheus.Histogram
+	webhookResponseSize prometheus.Histogram
+	webhookRetries      *prometheus.CounterVec
+	webhookErrors       *prometheus.CounterVec
+
+	// Authentication duration metrics
+	spfDuration   prometheus.Histogram
+	dkimDuration  prometheus.Histogram
+	dmarcDuration prometheus.Histogram
+
+	// Domain-based authentication metrics
+	spfResultsByDomain   *prometheus.CounterVec
+	dkimResultsByDomain  *prometheus.CounterVec
+	dmarcResultsByDomain *prometheus.CounterVec
+
+	// Authentication error metrics
+	authErrors *prometheus.CounterVec
 }
 
 // NewMetricsCollector creates a new metrics collector
@@ -146,6 +173,61 @@ func NewMetricsCollector() MetricsCollector {
 			Help:    "Duration of webhook requests in seconds",
 			Buckets: prometheus.DefBuckets,
 		}),
+		webhookRequestSize: promauto.NewHistogram(prometheus.HistogramOpts{
+			Name:    "webhook_request_size_bytes",
+			Help:    "Size of webhook request payloads in bytes",
+			Buckets: []float64{1024, 10240, 102400, 1048576, 10485760, 104857600},
+		}),
+		webhookResponseSize: promauto.NewHistogram(prometheus.HistogramOpts{
+			Name:    "webhook_response_size_bytes",
+			Help:    "Size of webhook response payloads in bytes",
+			Buckets: []float64{1024, 10240, 102400, 1048576, 10485760, 104857600},
+		}),
+		webhookRetries: promauto.NewCounterVec(prometheus.CounterOpts{
+			Name: "webhook_retry_attempts_total",
+			Help: "Total webhook retry attempts",
+		}, []string{"success"}),
+		webhookErrors: promauto.NewCounterVec(prometheus.CounterOpts{
+			Name: "webhook_errors_total",
+			Help: "Total webhook errors by type",
+		}, []string{"error_type"}),
+
+		// Authentication duration metrics
+		spfDuration: promauto.NewHistogram(prometheus.HistogramOpts{
+			Name:    "spf_check_duration_seconds",
+			Help:    "Duration of SPF authentication checks in seconds",
+			Buckets: prometheus.DefBuckets,
+		}),
+		dkimDuration: promauto.NewHistogram(prometheus.HistogramOpts{
+			Name:    "dkim_check_duration_seconds",
+			Help:    "Duration of DKIM authentication checks in seconds",
+			Buckets: prometheus.DefBuckets,
+		}),
+		dmarcDuration: promauto.NewHistogram(prometheus.HistogramOpts{
+			Name:    "dmarc_check_duration_seconds",
+			Help:    "Duration of DMARC authentication checks in seconds",
+			Buckets: prometheus.DefBuckets,
+		}),
+
+		// Domain-based authentication metrics
+		spfResultsByDomain: promauto.NewCounterVec(prometheus.CounterOpts{
+			Name: "spf_results_by_domain_total",
+			Help: "SPF authentication results by domain",
+		}, []string{"domain", "result"}),
+		dkimResultsByDomain: promauto.NewCounterVec(prometheus.CounterOpts{
+			Name: "dkim_results_by_domain_total",
+			Help: "DKIM authentication results by domain",
+		}, []string{"domain", "result"}),
+		dmarcResultsByDomain: promauto.NewCounterVec(prometheus.CounterOpts{
+			Name: "dmarc_results_by_domain_total",
+			Help: "DMARC authentication results by domain",
+		}, []string{"domain", "result"}),
+
+		// Authentication error metrics
+		authErrors: promauto.NewCounterVec(prometheus.CounterOpts{
+			Name: "auth_errors_total",
+			Help: "Authentication errors by check type and error type",
+		}, []string{"check_type", "error_type"}),
 	}
 }
 
@@ -211,6 +293,61 @@ func (m *metricsCollector) TrackDMARCResult(result, policy string) {
 func (m *metricsCollector) TrackWebhookRequest(statusCode int, duration time.Duration) {
 	m.webhookRequests.WithLabelValues(http.StatusText(statusCode)).Inc()
 	m.webhookDuration.Observe(duration.Seconds())
+}
+
+// TrackWebhookRequestSize records webhook request and response size metrics
+func (m *metricsCollector) TrackWebhookRequestSize(requestSize, responseSize int64) {
+	m.webhookRequestSize.Observe(float64(requestSize))
+	m.webhookResponseSize.Observe(float64(responseSize))
+}
+
+// TrackWebhookRetry records webhook retry attempts
+func (m *metricsCollector) TrackWebhookRetry(success bool) {
+	status := "failure"
+	if success {
+		status = "success"
+	}
+	m.webhookRetries.WithLabelValues(status).Inc()
+}
+
+// TrackWebhookError records webhook errors by type
+func (m *metricsCollector) TrackWebhookError(errorType string) {
+	m.webhookErrors.WithLabelValues(errorType).Inc()
+}
+
+// TrackSPFDuration records SPF check duration
+func (m *metricsCollector) TrackSPFDuration(duration time.Duration) {
+	m.spfDuration.Observe(duration.Seconds())
+}
+
+// TrackDKIMDuration records DKIM check duration
+func (m *metricsCollector) TrackDKIMDuration(duration time.Duration) {
+	m.dkimDuration.Observe(duration.Seconds())
+}
+
+// TrackDMARCDuration records DMARC check duration
+func (m *metricsCollector) TrackDMARCDuration(duration time.Duration) {
+	m.dmarcDuration.Observe(duration.Seconds())
+}
+
+// TrackSPFResultByDomain records SPF results by domain
+func (m *metricsCollector) TrackSPFResultByDomain(domain, result string) {
+	m.spfResultsByDomain.WithLabelValues(domain, result).Inc()
+}
+
+// TrackDKIMResultByDomain records DKIM results by domain
+func (m *metricsCollector) TrackDKIMResultByDomain(domain, result string) {
+	m.dkimResultsByDomain.WithLabelValues(domain, result).Inc()
+}
+
+// TrackDMARCResultByDomain records DMARC results by domain
+func (m *metricsCollector) TrackDMARCResultByDomain(domain, result string) {
+	m.dmarcResultsByDomain.WithLabelValues(domain, result).Inc()
+}
+
+// TrackAuthError records authentication errors by check type and error type
+func (m *metricsCollector) TrackAuthError(checkType, errorType string) {
+	m.authErrors.WithLabelValues(checkType, errorType).Inc()
 }
 
 // metricsServer implements MetricsServer interface
@@ -343,3 +480,33 @@ func (n *NoOpMetricsCollector) TrackDMARCResult(result, policy string) {}
 
 // TrackWebhookRequest does nothing
 func (n *NoOpMetricsCollector) TrackWebhookRequest(status int, duration time.Duration) {}
+
+// TrackWebhookRequestSize does nothing
+func (n *NoOpMetricsCollector) TrackWebhookRequestSize(requestSize, responseSize int64) {}
+
+// TrackWebhookRetry does nothing
+func (n *NoOpMetricsCollector) TrackWebhookRetry(success bool) {}
+
+// TrackWebhookError does nothing
+func (n *NoOpMetricsCollector) TrackWebhookError(errorType string) {}
+
+// TrackSPFDuration does nothing
+func (n *NoOpMetricsCollector) TrackSPFDuration(duration time.Duration) {}
+
+// TrackDKIMDuration does nothing
+func (n *NoOpMetricsCollector) TrackDKIMDuration(duration time.Duration) {}
+
+// TrackDMARCDuration does nothing
+func (n *NoOpMetricsCollector) TrackDMARCDuration(duration time.Duration) {}
+
+// TrackSPFResultByDomain does nothing
+func (n *NoOpMetricsCollector) TrackSPFResultByDomain(domain, result string) {}
+
+// TrackDKIMResultByDomain does nothing
+func (n *NoOpMetricsCollector) TrackDKIMResultByDomain(domain, result string) {}
+
+// TrackDMARCResultByDomain does nothing
+func (n *NoOpMetricsCollector) TrackDMARCResultByDomain(domain, result string) {}
+
+// TrackAuthError does nothing
+func (n *NoOpMetricsCollector) TrackAuthError(checkType, errorType string) {}

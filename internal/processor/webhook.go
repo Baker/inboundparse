@@ -5,10 +5,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"inboundparse/internal/observability"
 	"net/http"
 	"time"
-
-	"github.com/rs/zerolog/log"
 )
 
 // WebhookSender interface for sending webhook requests
@@ -26,17 +25,19 @@ type WebhookConfig struct {
 
 // webhookSender implements WebhookSender interface
 type webhookSender struct {
-	config WebhookConfig
-	client *http.Client
+	config  WebhookConfig
+	client  *http.Client
+	logger  observability.Logger
+	metrics observability.MetricsCollector
 }
 
 // NewWebhookSender creates a new webhook sender
-func NewWebhookSender(config WebhookConfig) WebhookSender {
+func NewWebhookSender(config WebhookConfig, logger observability.Logger, metrics observability.MetricsCollector) WebhookSender {
 	return &webhookSender{
-		config: config,
-		client: &http.Client{
-			Timeout: config.Timeout,
-		},
+		config:  config,
+		client:  &http.Client{Timeout: config.Timeout},
+		logger:  logger,
+		metrics: metrics,
 	}
 }
 
@@ -46,18 +47,26 @@ func (w *webhookSender) SendWebhook(ctx context.Context, payload interface{}) er
 
 	jsonData, err := json.Marshal(payload)
 	if err != nil {
-		log.Error().
+		w.logger.Error().
 			Err(err).
 			Msg("Failed to marshal webhook payload")
+		w.metrics.TrackWebhookError("marshal_error")
 		return fmt.Errorf("failed to marshal payload: %w", err)
 	}
 
+	requestSize := int64(len(jsonData))
+	w.logger.Debug().
+		Int64("request_size", requestSize).
+		Str("url", w.config.URL).
+		Msg("Sending webhook request")
+
 	req, err := http.NewRequestWithContext(ctx, "POST", w.config.URL, bytes.NewBuffer(jsonData))
 	if err != nil {
-		log.Error().
+		w.logger.Error().
 			Err(err).
-			Str("webhook_url", w.config.URL).
+			Str("url", w.config.URL).
 			Msg("Failed to create webhook request")
+		w.metrics.TrackWebhookError("request_creation_error")
 		return fmt.Errorf("failed to create request: %w", err)
 	}
 
@@ -73,35 +82,59 @@ func (w *webhookSender) SendWebhook(ctx context.Context, payload interface{}) er
 	duration := time.Since(start)
 
 	if err != nil {
-		log.Error().
+		w.logger.Error().
 			Err(err).
-			Str("webhook_url", w.config.URL).
+			Str("url", w.config.URL).
 			Dur("duration", duration).
 			Msg("Webhook request failed")
+
+		// Determine error type for metrics
+		errorType := "network_error"
+		if ctx.Err() == context.DeadlineExceeded {
+			errorType = "timeout_error"
+		}
+		w.metrics.TrackWebhookError(errorType)
 		return fmt.Errorf("webhook request failed: %w", err)
 	}
 	defer func() {
 		if closeErr := resp.Body.Close(); closeErr != nil {
-			log.Warn().
+			w.logger.Warn().
 				Err(closeErr).
 				Msg("Failed to close response body")
 		}
 	}()
 
-	if resp.StatusCode >= 400 {
-		log.Error().
-			Str("webhook_url", w.config.URL).
-			Int("status_code", resp.StatusCode).
-			Dur("duration", duration).
-			Msg("Webhook returned error status")
-		return fmt.Errorf("webhook returned error status: %d", resp.StatusCode)
-	}
+	// Track metrics
+	w.metrics.TrackWebhookRequest(resp.StatusCode, duration)
 
-	log.Info().
-		Str("webhook_url", w.config.URL).
+	// Track request/response size
+	responseSize := resp.ContentLength
+	if responseSize < 0 {
+		responseSize = 0 // Content-Length header not present
+	}
+	w.metrics.TrackWebhookRequestSize(requestSize, responseSize)
+
+	// Log response details
+	w.logger.Info().
 		Int("status_code", resp.StatusCode).
 		Dur("duration", duration).
-		Msg("Successfully sent email to webhook")
+		Int64("request_size", requestSize).
+		Int64("response_size", responseSize).
+		Msg("Webhook request completed")
+
+	if resp.StatusCode >= 400 {
+		errorType := "client_error"
+		if resp.StatusCode >= 500 {
+			errorType = "server_error"
+		}
+		w.metrics.TrackWebhookError(errorType)
+
+		w.logger.Warn().
+			Int("status_code", resp.StatusCode).
+			Str("url", w.config.URL).
+			Msg("Webhook request failed with non-success status")
+		return fmt.Errorf("webhook returned error status: %d", resp.StatusCode)
+	}
 
 	return nil
 }

@@ -6,6 +6,7 @@ import (
 	"inboundparse/internal/domain"
 	"inboundparse/internal/observability"
 	"strings"
+	"time"
 
 	"github.com/emersion/go-msgauth/dmarc"
 	"github.com/mnako/letters"
@@ -20,7 +21,12 @@ func NewDMARCChecker() DMARCChecker {
 }
 
 // CheckDMARC performs DMARC authentication check with hierarchical domain lookup following RFC 7489
-func (d *dmarcChecker) CheckDMARC(ctx context.Context, rawMessage string, headers letters.Headers, spfResult *domain.SPFResult, dkimResult *domain.DKIMResult, logger observability.Logger) (*domain.DMARCResult, error) {
+func (d *dmarcChecker) CheckDMARC(ctx context.Context, rawMessage string, headers letters.Headers, spfResult *domain.SPFResult, dkimResult *domain.DKIMResult, logger observability.Logger, metrics observability.MetricsCollector) (*domain.DMARCResult, error) {
+	start := time.Now()
+	defer func() {
+		duration := time.Since(start)
+		metrics.TrackDMARCDuration(duration)
+	}()
 	// Extract domain from From header (RFC5322.From) - this is what DMARC protects
 	if len(headers.From) == 0 || headers.From[0] == nil || len(headers.From[0].Address) == 0 {
 		logger.Debug().Msg("DMARC check: No From header found")
@@ -46,6 +52,15 @@ func (d *dmarcChecker) CheckDMARC(ctx context.Context, rawMessage string, header
 	// Look up DMARC policy with domain hierarchy traversal
 	record, actualDomain, err := d.lookupDMARCRecord(fromDomain)
 	if err != nil {
+		// Determine error type for metrics
+		errorType := "dns_error"
+		if strings.Contains(err.Error(), "timeout") {
+			errorType = "timeout_error"
+		} else if strings.Contains(err.Error(), "parse") {
+			errorType = "parse_error"
+		}
+		metrics.TrackAuthError("dmarc", errorType)
+
 		logger.Warn().
 			Err(err).
 			Str("domain", fromDomain).
@@ -141,6 +156,9 @@ func (d *dmarcChecker) CheckDMARC(ctx context.Context, rawMessage string, header
 
 	// Convert failure options to string representation
 	failureOptions := d.convertFailureOptionsToString(record.FailureOptions)
+
+	// Track result by domain
+	metrics.TrackDMARCResultByDomain(actualDomain, result)
 
 	return &domain.DMARCResult{
 		Result:          result,

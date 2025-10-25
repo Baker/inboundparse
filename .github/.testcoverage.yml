@@ -7,3 +7,4 @@ threshold:
 exclude:
   paths: 
     - cmd/inboundparse/main.go
+    - internal/auth/test_utils.go

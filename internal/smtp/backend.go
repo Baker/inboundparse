@@ -10,7 +10,6 @@ import (
 
 	"github.com/emersion/go-smtp"
 	"github.com/google/uuid"
-	"github.com/rs/zerolog"
 )
 
 // BackendConfig holds backend configuration
@@ -53,22 +52,16 @@ func (b *Backend) NewSession(c *smtp.Conn) (smtp.Session, error) {
 	cleanup := b.metrics.TrackConnection()
 
 	// Create session-specific logger with context
-	sessionLogger := b.logger.With().
-		Str("session_id", sessionID).
-		Str("remote_addr", remote).
-		Logger()
+	sessionLogger := observability.NewSessionLogger(b.logger, sessionID, remote)
 
 	sessionLogger.Debug().
 		Msg("New SMTP session started")
-
-	// Create a wrapper that implements observability.Logger interface
-	sessionLoggerWrapper := &sessionLoggerWrapper{logger: sessionLogger}
 
 	return &Session{
 		config:           b.config,
 		messageProcessor: b.messageProcessor,
 		metrics:          b.metrics,
-		logger:           sessionLoggerWrapper,
+		logger:           sessionLogger,
 		conn:             c,
 		sessionID:        sessionID,
 		cleanup:          cleanup,
@@ -171,33 +164,4 @@ func (s *Session) Logout() error {
 	}
 
 	return nil
-}
-
-// sessionLoggerWrapper wraps zerolog.Logger to implement observability.Logger interface
-type sessionLoggerWrapper struct {
-	logger zerolog.Logger
-}
-
-func (w *sessionLoggerWrapper) Debug() *zerolog.Event {
-	return w.logger.Debug()
-}
-
-func (w *sessionLoggerWrapper) Info() *zerolog.Event {
-	return w.logger.Info()
-}
-
-func (w *sessionLoggerWrapper) Warn() *zerolog.Event {
-	return w.logger.Warn()
-}
-
-func (w *sessionLoggerWrapper) Error() *zerolog.Event {
-	return w.logger.Error()
-}
-
-func (w *sessionLoggerWrapper) Fatal() *zerolog.Event {
-	return w.logger.Fatal()
-}
-
-func (w *sessionLoggerWrapper) With() zerolog.Context {
-	return w.logger.With()
 }

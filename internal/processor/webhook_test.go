@@ -34,7 +34,7 @@ func TestWebhookSender_SendWebhook_Success(t *testing.T) {
 		Timeout: 5 * time.Second,
 	}
 
-	sender := NewWebhookSender(config)
+	sender := NewWebhookSender(config, &mockLogger{}, &mockMetricsCollector{})
 
 	payload := map[string]interface{}{
 		"test": "data",
@@ -68,7 +68,7 @@ func TestWebhookSender_SendWebhook_WithAuth(t *testing.T) {
 		Timeout:  5 * time.Second,
 	}
 
-	sender := NewWebhookSender(config)
+	sender := NewWebhookSender(config, &mockLogger{}, &mockMetricsCollector{})
 
 	payload := map[string]interface{}{
 		"test": "data",
@@ -91,7 +91,7 @@ func TestWebhookSender_SendWebhook_ServerError(t *testing.T) {
 		Timeout: 5 * time.Second,
 	}
 
-	sender := NewWebhookSender(config)
+	sender := NewWebhookSender(config, &mockLogger{}, &mockMetricsCollector{})
 
 	payload := map[string]interface{}{
 		"test": "data",
@@ -115,7 +115,7 @@ func TestWebhookSender_SendWebhook_Timeout(t *testing.T) {
 		Timeout: 100 * time.Millisecond,
 	}
 
-	sender := NewWebhookSender(config)
+	sender := NewWebhookSender(config, &mockLogger{}, &mockMetricsCollector{})
 
 	payload := map[string]interface{}{
 		"test": "data",
@@ -133,7 +133,7 @@ func TestWebhookSender_SendWebhook_JSONMarshalError(t *testing.T) {
 		Timeout: 5 * time.Second,
 	}
 
-	sender := NewWebhookSender(config)
+	sender := NewWebhookSender(config, &mockLogger{}, &mockMetricsCollector{})
 
 	// Create a payload that will cause JSON marshal to fail
 	payload := map[string]interface{}{
@@ -152,7 +152,7 @@ func TestWebhookSender_SendWebhook_RequestCreationError(t *testing.T) {
 		Timeout: 5 * time.Second,
 	}
 
-	sender := NewWebhookSender(config)
+	sender := NewWebhookSender(config, &mockLogger{}, &mockMetricsCollector{})
 
 	// Create a payload that will cause request creation to fail
 	payload := map[string]interface{}{
@@ -161,7 +161,7 @@ func TestWebhookSender_SendWebhook_RequestCreationError(t *testing.T) {
 
 	// Test with invalid URL
 	config.URL = "invalid-url"
-	sender = NewWebhookSender(config)
+	sender = NewWebhookSender(config, &mockLogger{}, &mockMetricsCollector{})
 
 	err := sender.SendWebhook(context.Background(), payload)
 	if err == nil {
@@ -181,7 +181,7 @@ func TestWebhookSender_SendWebhook_ResponseBodyCloseError(t *testing.T) {
 		Timeout: 5 * time.Second,
 	}
 
-	sender := NewWebhookSender(config)
+	sender := NewWebhookSender(config, &mockLogger{}, &mockMetricsCollector{})
 
 	payload := map[string]interface{}{
 		"test": "data",
@@ -204,7 +204,7 @@ func TestWebhookSender_SendWebhook_ErrorStatus(t *testing.T) {
 		Timeout: 5 * time.Second,
 	}
 
-	sender := NewWebhookSender(config)
+	sender := NewWebhookSender(config, &mockLogger{}, &mockMetricsCollector{})
 
 	payload := map[string]interface{}{
 		"test": "data",
@@ -227,7 +227,7 @@ func TestWebhookSender_SendWebhook_NotFound(t *testing.T) {
 		Timeout: 5 * time.Second,
 	}
 
-	sender := NewWebhookSender(config)
+	sender := NewWebhookSender(config, &mockLogger{}, &mockMetricsCollector{})
 
 	payload := map[string]interface{}{
 		"test": "data",
@@ -250,7 +250,7 @@ func TestWebhookSender_SendWebhook_Unauthorized(t *testing.T) {
 		Timeout: 5 * time.Second,
 	}
 
-	sender := NewWebhookSender(config)
+	sender := NewWebhookSender(config, &mockLogger{}, &mockMetricsCollector{})
 
 	payload := map[string]interface{}{
 		"test": "data",
@@ -273,7 +273,7 @@ func TestWebhookSender_SendWebhook_Forbidden(t *testing.T) {
 		Timeout: 5 * time.Second,
 	}
 
-	sender := NewWebhookSender(config)
+	sender := NewWebhookSender(config, &mockLogger{}, &mockMetricsCollector{})
 
 	payload := map[string]interface{}{
 		"test": "data",
@@ -296,7 +296,7 @@ func TestWebhookSender_SendWebhook_InternalServerError(t *testing.T) {
 		Timeout: 5 * time.Second,
 	}
 
-	sender := NewWebhookSender(config)
+	sender := NewWebhookSender(config, &mockLogger{}, &mockMetricsCollector{})
 
 	payload := map[string]interface{}{
 		"test": "data",
@@ -319,7 +319,7 @@ func TestWebhookSender_SendWebhook_BadGateway(t *testing.T) {
 		Timeout: 5 * time.Second,
 	}
 
-	sender := NewWebhookSender(config)
+	sender := NewWebhookSender(config, &mockLogger{}, &mockMetricsCollector{})
 
 	payload := map[string]interface{}{
 		"test": "data",
@@ -342,7 +342,7 @@ func TestWebhookSender_SendWebhook_ServiceUnavailable(t *testing.T) {
 		Timeout: 5 * time.Second,
 	}
 
-	sender := NewWebhookSender(config)
+	sender := NewWebhookSender(config, &mockLogger{}, &mockMetricsCollector{})
 
 	payload := map[string]interface{}{
 		"test": "data",
@@ -365,7 +365,7 @@ func TestWebhookSender_SendWebhook_GatewayTimeout(t *testing.T) {
 		Timeout: 5 * time.Second,
 	}
 
-	sender := NewWebhookSender(config)
+	sender := NewWebhookSender(config, &mockLogger{}, &mockMetricsCollector{})
 
 	payload := map[string]interface{}{
 		"test": "data",
@@ -383,7 +383,7 @@ func TestWebhookSender_SendWebhook_NetworkError(t *testing.T) {
 		Timeout: 1 * time.Second,
 	}
 
-	sender := NewWebhookSender(config)
+	sender := NewWebhookSender(config, &mockLogger{}, &mockMetricsCollector{})
 
 	payload := map[string]interface{}{
 		"test": "data",
@@ -407,7 +407,7 @@ func TestWebhookSender_SendWebhook_ContextCancellation(t *testing.T) {
 		Timeout: 5 * time.Second,
 	}
 
-	sender := NewWebhookSender(config)
+	sender := NewWebhookSender(config, &mockLogger{}, &mockMetricsCollector{})
 
 	payload := map[string]interface{}{
 		"test": "data",
@@ -433,7 +433,7 @@ func TestWebhookSender_SendWebhook_WithCustomHeaders(t *testing.T) {
 		Timeout: 5 * time.Second,
 	}
 
-	sender := NewWebhookSender(config)
+	sender := NewWebhookSender(config, &mockLogger{}, &mockMetricsCollector{})
 
 	payload := map[string]interface{}{
 		"test": "data",
@@ -455,7 +455,7 @@ func TestWebhookSender_SendWebhook_WithEmptyPayload(t *testing.T) {
 		Timeout: 5 * time.Second,
 	}
 
-	sender := NewWebhookSender(config)
+	sender := NewWebhookSender(config, &mockLogger{}, &mockMetricsCollector{})
 
 	payload := map[string]interface{}{}
 
@@ -475,7 +475,7 @@ func TestWebhookSender_SendWebhook_WithNilPayload(t *testing.T) {
 		Timeout: 5 * time.Second,
 	}
 
-	sender := NewWebhookSender(config)
+	sender := NewWebhookSender(config, &mockLogger{}, &mockMetricsCollector{})
 
 	var payload interface{} = nil
 

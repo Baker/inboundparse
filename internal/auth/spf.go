@@ -7,6 +7,7 @@ import (
 	"inboundparse/internal/observability"
 	"net"
 	"strings"
+	"time"
 
 	"github.com/rs/zerolog/log"
 	"github.com/zaccone/spf"
@@ -21,7 +22,12 @@ func NewSPFChecker() SPFChecker {
 }
 
 // CheckSPF performs SPF authentication check following RFC 7208
-func (s *spfChecker) CheckSPF(ctx context.Context, remoteIP net.IP, domainName, from string, logger observability.Logger) (*domain.SPFResult, error) {
+func (s *spfChecker) CheckSPF(ctx context.Context, remoteIP net.IP, domainName, from string, logger observability.Logger, metrics observability.MetricsCollector) (*domain.SPFResult, error) {
+	start := time.Now()
+	defer func() {
+		duration := time.Since(start)
+		metrics.TrackSPFDuration(duration)
+	}()
 	if remoteIP == nil {
 		logger.Warn().Msg("SPF check: Failed to get remote IP")
 		return &domain.SPFResult{
@@ -49,6 +55,15 @@ func (s *spfChecker) CheckSPF(ctx context.Context, remoteIP net.IP, domainName, 
 	// RFC 7208 Section 2.4: Check MAIL FROM identity
 	result, mechanism, err := spf.CheckHost(remoteIP, domainName, from)
 	if err != nil {
+		// Determine error type for metrics
+		errorType := "dns_error"
+		if strings.Contains(err.Error(), "timeout") {
+			errorType = "timeout_error"
+		} else if strings.Contains(err.Error(), "parse") {
+			errorType = "parse_error"
+		}
+		metrics.TrackAuthError("spf", errorType)
+
 		logger.Warn().
 			Err(err).
 			Str("domain", domainName).
@@ -75,6 +90,9 @@ func (s *spfChecker) CheckSPF(ctx context.Context, remoteIP net.IP, domainName, 
 		Str("identity", from).
 		Str("explanation", explanation).
 		Msg("SPF check completed")
+
+	// Track result by domain
+	metrics.TrackSPFResultByDomain(domainName, result.String())
 
 	return &domain.SPFResult{
 		Result:      result.String(),

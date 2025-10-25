@@ -41,7 +41,7 @@ func TestDMARCChecker_CheckDMARC_NoFromHeader(t *testing.T) {
 		From: []*mail.Address{},
 	}
 
-	result, err := checker.CheckDMARC(context.Background(), "raw message", headers, nil, nil, &MockLogger{})
+	result, err := checker.CheckDMARC(context.Background(), "raw message", headers, nil, nil, &MockLogger{}, &mockMetricsCollector{})
 	if err != nil {
 		t.Fatalf("Expected no error, got %v", err)
 	}
@@ -58,7 +58,7 @@ func TestDMARCChecker_CheckDMARC_EmptyFromHeader(t *testing.T) {
 		From: []*mail.Address{nil},
 	}
 
-	result, err := checker.CheckDMARC(context.Background(), "raw message", headers, nil, nil, &MockLogger{})
+	result, err := checker.CheckDMARC(context.Background(), "raw message", headers, nil, nil, &MockLogger{}, &mockMetricsCollector{})
 	if err != nil {
 		t.Fatalf("Expected no error, got %v", err)
 	}
@@ -77,7 +77,7 @@ func TestDMARCChecker_CheckDMARC_NoDomainInFrom(t *testing.T) {
 		},
 	}
 
-	result, err := checker.CheckDMARC(context.Background(), "raw message", headers, nil, nil, &MockLogger{})
+	result, err := checker.CheckDMARC(context.Background(), "raw message", headers, nil, nil, &MockLogger{}, &mockMetricsCollector{})
 	if err != nil {
 		t.Fatalf("Expected no error, got %v", err)
 	}
@@ -127,7 +127,7 @@ func TestDMARCChecker_CheckDMARC_WithValidFromHeader(t *testing.T) {
 		},
 	}
 
-	result, err := checker.CheckDMARC(context.Background(), "raw message", headers, nil, nil, &MockLogger{})
+	result, err := checker.CheckDMARC(context.Background(), "raw message", headers, nil, nil, &MockLogger{}, &mockMetricsCollector{})
 	if err != nil {
 		t.Fatalf("Expected no error, got %v", err)
 	}
@@ -150,7 +150,7 @@ func TestDMARCChecker_CheckDMARC_WithSPFAndDKIMResults(t *testing.T) {
 	spfResult := &domain.SPFResult{Result: "pass", Sender: "test@example.com"}
 	dkimResult := &domain.DKIMResult{Valid: true}
 
-	result, err := checker.CheckDMARC(context.Background(), "raw message", headers, spfResult, dkimResult, &MockLogger{})
+	result, err := checker.CheckDMARC(context.Background(), "raw message", headers, spfResult, dkimResult, &MockLogger{}, &mockMetricsCollector{})
 	if err != nil {
 		t.Fatalf("Expected no error, got %v", err)
 	}
@@ -197,7 +197,7 @@ func TestDMARCChecker_CheckDMARC_WithNilSPFResult(t *testing.T) {
 	}
 
 	// Test with nil SPF result (should be handled gracefully)
-	result, err := checker.CheckDMARC(context.Background(), "raw message", headers, nil, nil, &MockLogger{})
+	result, err := checker.CheckDMARC(context.Background(), "raw message", headers, nil, nil, &MockLogger{}, &mockMetricsCollector{})
 	if err != nil {
 		t.Fatalf("Expected no error, got %v", err)
 	}
@@ -228,7 +228,7 @@ func TestDMARCChecker_CheckDMARC_WithNilDKIMResult(t *testing.T) {
 	spfResult := &domain.SPFResult{Result: "pass"}
 
 	// Test with nil DKIM result (should be handled gracefully)
-	result, err := checker.CheckDMARC(context.Background(), "raw message", headers, spfResult, nil, &MockLogger{})
+	result, err := checker.CheckDMARC(context.Background(), "raw message", headers, spfResult, nil, &MockLogger{}, &mockMetricsCollector{})
 	if err != nil {
 		t.Fatalf("Expected no error, got %v", err)
 	}
@@ -407,7 +407,7 @@ func TestDMARCChecker_CheckDMARC_WithComplexFromHeader(t *testing.T) {
 		},
 	}
 
-	result, err := checker.CheckDMARC(context.Background(), "raw message", headers, nil, nil, &MockLogger{})
+	result, err := checker.CheckDMARC(context.Background(), "raw message", headers, nil, nil, &MockLogger{}, &mockMetricsCollector{})
 	if err != nil {
 		t.Fatalf("Expected no error, got %v", err)
 	}
@@ -433,7 +433,7 @@ func TestDMARCChecker_CheckDMARC_AlignmentBugFix(t *testing.T) {
 	}
 	dkimResult := &domain.DKIMResult{Valid: true}
 
-	result, err := checker.CheckDMARC(context.Background(), "raw message", headers, spfResult, dkimResult, &MockLogger{})
+	result, err := checker.CheckDMARC(context.Background(), "raw message", headers, spfResult, dkimResult, &MockLogger{}, &mockMetricsCollector{})
 	if err != nil {
 		t.Fatalf("Expected no error, got %v", err)
 	}
@@ -460,7 +460,7 @@ func TestDMARCChecker_CheckDMARC_WithMultipleFromAddresses(t *testing.T) {
 		},
 	}
 
-	result, err := checker.CheckDMARC(context.Background(), "raw message", headers, nil, nil, &MockLogger{})
+	result, err := checker.CheckDMARC(context.Background(), "raw message", headers, nil, nil, &MockLogger{}, &mockMetricsCollector{})
 	if err != nil {
 		t.Fatalf("Expected no error, got %v", err)
 	}

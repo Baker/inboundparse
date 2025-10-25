@@ -39,15 +39,15 @@ func createMockMessageProcessor() *processor.MessageProcessor {
 // Mock implementations for testing
 type mockAuthChecker struct{}
 
-func (m *mockAuthChecker) CheckSPF(ctx context.Context, remoteIP net.IP, domainName, from string, logger observability.Logger) (*domain.SPFResult, error) {
+func (m *mockAuthChecker) CheckSPF(ctx context.Context, remoteIP net.IP, domainName, from string, logger observability.Logger, metrics observability.MetricsCollector) (*domain.SPFResult, error) {
 	return nil, nil
 }
 
-func (m *mockAuthChecker) CheckDKIM(ctx context.Context, rawMessage string, logger observability.Logger) (*domain.DKIMResult, error) {
+func (m *mockAuthChecker) CheckDKIM(ctx context.Context, rawMessage string, logger observability.Logger, metrics observability.MetricsCollector) (*domain.DKIMResult, error) {
 	return nil, nil
 }
 
-func (m *mockAuthChecker) CheckDMARC(ctx context.Context, rawMessage string, headers letters.Headers, spfResult *domain.SPFResult, dkimResult *domain.DKIMResult, logger observability.Logger) (*domain.DMARCResult, error) {
+func (m *mockAuthChecker) CheckDMARC(ctx context.Context, rawMessage string, headers letters.Headers, spfResult *domain.SPFResult, dkimResult *domain.DKIMResult, logger observability.Logger, metrics observability.MetricsCollector) (*domain.DMARCResult, error) {
 	return nil, nil
 }
 
@@ -80,6 +80,16 @@ func (m *mockMetricsCollector) TrackSPFResult(result string)                    
 func (m *mockMetricsCollector) TrackDKIMResult(valid bool)                                 {}
 func (m *mockMetricsCollector) TrackDMARCResult(result, policy string)                     {}
 func (m *mockMetricsCollector) TrackWebhookRequest(statusCode int, duration time.Duration) {}
+func (m *mockMetricsCollector) TrackWebhookRequestSize(requestSize, responseSize int64)    {}
+func (m *mockMetricsCollector) TrackWebhookRetry(success bool)                             {}
+func (m *mockMetricsCollector) TrackWebhookError(errorType string)                         {}
+func (m *mockMetricsCollector) TrackSPFDuration(duration time.Duration)                    {}
+func (m *mockMetricsCollector) TrackDKIMDuration(duration time.Duration)                   {}
+func (m *mockMetricsCollector) TrackDMARCDuration(duration time.Duration)                  {}
+func (m *mockMetricsCollector) TrackSPFResultByDomain(domain, result string)               {}
+func (m *mockMetricsCollector) TrackDKIMResultByDomain(domain, result string)              {}
+func (m *mockMetricsCollector) TrackDMARCResultByDomain(domain, result string)             {}
+func (m *mockMetricsCollector) TrackAuthError(checkType, errorType string)                 {}
 
 type mockLogger struct{}
 

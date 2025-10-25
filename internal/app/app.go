@@ -74,7 +74,7 @@ func NewApp(cfg *config.Config) (*App, error) {
 		Username: cfg.WebhookUser,
 		Password: cfg.WebhookPass,
 		Timeout:  30 * time.Second,
-	})
+	}, logger, metrics)
 
 	// Initialize message processor
 	messageProcessor := processor.NewMessageProcessor(
