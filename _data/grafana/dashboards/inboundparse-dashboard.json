@@ -825,6 +825,542 @@
         ],
         "title": "Webhook Status Distribution",
         "type": "piechart"
+      },
+      {
+        "datasource": "Prometheus",
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "palette-classic"
+            },
+            "custom": {
+              "axisLabel": "",
+              "axisPlacement": "auto",
+              "barAlignment": 0,
+              "drawStyle": "line",
+              "fillOpacity": 10,
+              "gradientMode": "none",
+              "hideFrom": {
+                "legend": false,
+                "tooltip": false,
+                "vis": false
+              },
+              "lineInterpolation": "linear",
+              "lineWidth": 1,
+              "pointSize": 5,
+              "scaleDistribution": {
+                "type": "linear"
+              },
+              "showPoints": "never",
+              "spanNulls": false,
+              "stacking": {
+                "group": "A",
+                "mode": "none"
+              },
+              "thresholdsStyle": {
+                "mode": "off"
+              }
+            },
+            "mappings": [],
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {
+                  "color": "green",
+                  "value": null
+                },
+                {
+                  "color": "red",
+                  "value": 80
+                }
+              ]
+            },
+            "unit": "s"
+          },
+          "overrides": []
+        },
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 0,
+          "y": 24
+        },
+        "id": 11,
+        "options": {
+          "legend": {
+            "calcs": [],
+            "displayMode": "list",
+            "placement": "bottom"
+          },
+          "tooltip": {
+            "mode": "single"
+          }
+        },
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, rate(message_read_duration_seconds_bucket[5m]))",
+            "interval": "",
+            "legendFormat": "Read P95",
+            "refId": "A"
+          },
+          {
+            "expr": "histogram_quantile(0.95, rate(message_parse_duration_seconds_bucket[5m]))",
+            "interval": "",
+            "legendFormat": "Parse P95",
+            "refId": "B"
+          },
+          {
+            "expr": "histogram_quantile(0.95, rate(message_auth_duration_seconds_bucket[5m]))",
+            "interval": "",
+            "legendFormat": "Auth P95",
+            "refId": "C"
+          },
+          {
+            "expr": "histogram_quantile(0.95, rate(message_webhook_duration_seconds_bucket[5m]))",
+            "interval": "",
+            "legendFormat": "Webhook P95",
+            "refId": "D"
+          },
+          {
+            "expr": "histogram_quantile(0.95, rate(message_total_processing_duration_seconds_bucket[5m]))",
+            "interval": "",
+            "legendFormat": "Total P95",
+            "refId": "E"
+          }
+        ],
+        "title": "Message Processing Stage Durations (95th Percentile)",
+        "type": "timeseries"
+      },
+      {
+        "datasource": "Prometheus",
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "palette-classic"
+            },
+            "custom": {
+              "axisLabel": "",
+              "axisPlacement": "auto",
+              "barAlignment": 0,
+              "drawStyle": "line",
+              "fillOpacity": 10,
+              "gradientMode": "none",
+              "hideFrom": {
+                "legend": false,
+                "tooltip": false,
+                "vis": false
+              },
+              "lineInterpolation": "linear",
+              "lineWidth": 1,
+              "pointSize": 5,
+              "scaleDistribution": {
+                "type": "linear"
+              },
+              "showPoints": "never",
+              "spanNulls": false,
+              "stacking": {
+                "group": "A",
+                "mode": "none"
+              },
+              "thresholdsStyle": {
+                "mode": "off"
+              }
+            },
+            "mappings": [],
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {
+                  "color": "green",
+                  "value": null
+                },
+                {
+                  "color": "red",
+                  "value": 80
+                }
+              ]
+            },
+            "unit": "short"
+          },
+          "overrides": []
+        },
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 12,
+          "y": 24
+        },
+        "id": 12,
+        "options": {
+          "legend": {
+            "calcs": [],
+            "displayMode": "list",
+            "placement": "bottom"
+          },
+          "tooltip": {
+            "mode": "single"
+          }
+        },
+        "targets": [
+          {
+            "expr": "rate(email_body_type_total[5m])",
+            "interval": "",
+            "legendFormat": "{{body_type}}",
+            "refId": "A"
+          }
+        ],
+        "title": "Email Body Types",
+        "type": "timeseries"
+      },
+      {
+        "datasource": "Prometheus",
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "palette-classic"
+            },
+            "custom": {
+              "axisLabel": "",
+              "axisPlacement": "auto",
+              "barAlignment": 0,
+              "drawStyle": "line",
+              "fillOpacity": 10,
+              "gradientMode": "none",
+              "hideFrom": {
+                "legend": false,
+                "tooltip": false,
+                "vis": false
+              },
+              "lineInterpolation": "linear",
+              "lineWidth": 1,
+              "pointSize": 5,
+              "scaleDistribution": {
+                "type": "linear"
+              },
+              "showPoints": "never",
+              "spanNulls": false,
+              "stacking": {
+                "group": "A",
+                "mode": "none"
+              },
+              "thresholdsStyle": {
+                "mode": "off"
+              }
+            },
+            "mappings": [],
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {
+                  "color": "green",
+                  "value": null
+                },
+                {
+                  "color": "red",
+                  "value": 80
+                }
+              ]
+            },
+            "unit": "short"
+          },
+          "overrides": []
+        },
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 0,
+          "y": 32
+        },
+        "id": 13,
+        "options": {
+          "legend": {
+            "calcs": [],
+            "displayMode": "list",
+            "placement": "bottom"
+          },
+          "tooltip": {
+            "mode": "single"
+          }
+        },
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, rate(email_attachment_count_bucket[5m]))",
+            "interval": "",
+            "legendFormat": "Attachment Count P95",
+            "refId": "A"
+          },
+          {
+            "expr": "histogram_quantile(0.95, rate(email_attachment_size_bytes_bucket[5m]))",
+            "interval": "",
+            "legendFormat": "Attachment Size P95 (bytes)",
+            "refId": "B"
+          },
+          {
+            "expr": "histogram_quantile(0.95, rate(email_header_count_bucket[5m]))",
+            "interval": "",
+            "legendFormat": "Header Count P95",
+            "refId": "C"
+          },
+          {
+            "expr": "histogram_quantile(0.95, rate(email_recipient_count_bucket[5m]))",
+            "interval": "",
+            "legendFormat": "Recipient Count P95",
+            "refId": "D"
+          }
+        ],
+        "title": "Email Characteristics (95th Percentile)",
+        "type": "timeseries"
+      },
+      {
+        "datasource": "Prometheus",
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "palette-classic"
+            },
+            "custom": {
+              "axisLabel": "",
+              "axisPlacement": "auto",
+              "barAlignment": 0,
+              "drawStyle": "line",
+              "fillOpacity": 10,
+              "gradientMode": "none",
+              "hideFrom": {
+                "legend": false,
+                "tooltip": false,
+                "vis": false
+              },
+              "lineInterpolation": "linear",
+              "lineWidth": 1,
+              "pointSize": 5,
+              "scaleDistribution": {
+                "type": "linear"
+              },
+              "showPoints": "never",
+              "spanNulls": false,
+              "stacking": {
+                "group": "A",
+                "mode": "none"
+              },
+              "thresholdsStyle": {
+                "mode": "off"
+              }
+            },
+            "mappings": [],
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {
+                  "color": "green",
+                  "value": null
+                },
+                {
+                  "color": "red",
+                  "value": 80
+                }
+              ]
+            },
+            "unit": "s"
+          },
+          "overrides": []
+        },
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 12,
+          "y": 32
+        },
+        "id": 14,
+        "options": {
+          "legend": {
+            "calcs": [],
+            "displayMode": "list",
+            "placement": "bottom"
+          },
+          "tooltip": {
+            "mode": "single"
+          }
+        },
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, rate(session_duration_seconds_bucket[5m]))",
+            "interval": "",
+            "legendFormat": "Session Duration P95",
+            "refId": "A"
+          },
+          {
+            "expr": "rate(session_commands_total[5m])",
+            "interval": "",
+            "legendFormat": "{{command}}/sec",
+            "refId": "B"
+          },
+          {
+            "expr": "rate(session_errors_total[5m])",
+            "interval": "",
+            "legendFormat": "{{error_type}} errors/sec",
+            "refId": "C"
+          },
+          {
+            "expr": "rate(session_messages_total[5m])",
+            "interval": "",
+            "legendFormat": "Messages/sec",
+            "refId": "D"
+          }
+        ],
+        "title": "Session Lifecycle Metrics",
+        "type": "timeseries"
+      },
+      {
+        "datasource": "Prometheus",
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "palette-classic"
+            },
+            "custom": {
+              "axisLabel": "",
+              "axisPlacement": "auto",
+              "barAlignment": 0,
+              "drawStyle": "line",
+              "fillOpacity": 10,
+              "gradientMode": "none",
+              "hideFrom": {
+                "legend": false,
+                "tooltip": false,
+                "vis": false
+              },
+              "lineInterpolation": "linear",
+              "lineWidth": 1,
+              "pointSize": 5,
+              "scaleDistribution": {
+                "type": "linear"
+              },
+              "showPoints": "never",
+              "spanNulls": false,
+              "stacking": {
+                "group": "A",
+                "mode": "none"
+              },
+              "thresholdsStyle": {
+                "mode": "off"
+              }
+            },
+            "mappings": [],
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {
+                  "color": "green",
+                  "value": null
+                },
+                {
+                  "color": "red",
+                  "value": 80
+                }
+              ]
+            },
+            "unit": "bytes"
+          },
+          "overrides": []
+        },
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 0,
+          "y": 40
+        },
+        "id": 15,
+        "options": {
+          "legend": {
+            "calcs": [],
+            "displayMode": "list",
+            "placement": "bottom"
+          },
+          "tooltip": {
+            "mode": "single"
+          }
+        },
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, rate(webhook_request_size_bytes_bucket[5m]))",
+            "interval": "",
+            "legendFormat": "Request Size P95",
+            "refId": "A"
+          },
+          {
+            "expr": "histogram_quantile(0.95, rate(webhook_response_size_bytes_bucket[5m]))",
+            "interval": "",
+            "legendFormat": "Response Size P95",
+            "refId": "B"
+          },
+          {
+            "expr": "rate(webhook_retries_total[5m])",
+            "interval": "",
+            "legendFormat": "{{success}} retries/sec",
+            "refId": "C"
+          },
+          {
+            "expr": "rate(webhook_errors_total[5m])",
+            "interval": "",
+            "legendFormat": "{{error_type}} errors/sec",
+            "refId": "D"
+          }
+        ],
+        "title": "Enhanced Webhook Metrics",
+        "type": "timeseries"
+      },
+      {
+        "datasource": "Prometheus",
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "palette-classic"
+            },
+            "custom": {
+              "hideFrom": {
+                "legend": false,
+                "tooltip": false,
+                "vis": false
+              }
+            },
+            "mappings": []
+          },
+          "overrides": []
+        },
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 12,
+          "y": 40
+        },
+        "id": 16,
+        "options": {
+          "legend": {
+            "displayMode": "list",
+            "placement": "bottom"
+          },
+          "pieType": "pie",
+          "reduceOptions": {
+            "calcs": [
+              "lastNotNull"
+            ],
+            "fields": "",
+            "values": false
+          },
+          "tooltip": {
+            "mode": "single"
+          }
+        },
+        "targets": [
+          {
+            "expr": "rate(webhook_errors_total[5m])",
+            "interval": "",
+            "legendFormat": "{{error_type}}",
+            "refId": "A"
+          }
+        ],
+        "title": "Webhook Error Types",
+        "type": "piechart"
       }
     ],
     "schemaVersion": 27,

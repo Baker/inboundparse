@@ -39,6 +39,24 @@ type MetricsCollector interface {
 	TrackDKIMResultByDomain(domain, result string)
 	TrackDMARCResultByDomain(domain, result string)
 	TrackAuthError(checkType, errorType string)
+	TrackMessageReadDuration(duration time.Duration)
+	TrackMessageParseDuration(duration time.Duration)
+	TrackMessageAuthDuration(duration time.Duration)
+	TrackMessageWebhookDuration(duration time.Duration)
+	TrackMessageTotalProcessingDuration(duration time.Duration)
+
+	// Email characteristics metrics
+	TrackEmailAttachmentCount(count int)
+	TrackEmailAttachmentSize(size int64)
+	TrackEmailBodyType(bodyType string)
+	TrackEmailHeaderCount(count int)
+	TrackEmailRecipientCount(count int)
+
+	// Session lifecycle metrics
+	TrackSessionDuration(duration time.Duration)
+	TrackSessionCommandCount(command string)
+	TrackSessionErrorCount(errorType string)
+	TrackSessionMessageCount()
 }
 
 // MetricsServer manages the Prometheus metrics HTTP server
@@ -90,6 +108,26 @@ type metricsCollector struct {
 
 	// Authentication error metrics
 	authErrors *prometheus.CounterVec
+
+	// Message processing stage metrics
+	messageReadDuration    prometheus.Histogram
+	messageParseDuration   prometheus.Histogram
+	messageAuthDuration    prometheus.Histogram
+	messageWebhookDuration prometheus.Histogram
+	messageTotalDuration   prometheus.Histogram
+
+	// Email characteristics metrics
+	emailAttachmentCount prometheus.Histogram
+	emailAttachmentSize  prometheus.Histogram
+	emailBodyType        *prometheus.CounterVec
+	emailHeaderCount     prometheus.Histogram
+	emailRecipientCount  prometheus.Histogram
+
+	// Session lifecycle metrics
+	sessionDuration     prometheus.Histogram
+	sessionCommands     *prometheus.CounterVec
+	sessionErrors       *prometheus.CounterVec
+	sessionMessageCount prometheus.Counter
 }
 
 // NewMetricsCollector creates a new metrics collector
@@ -228,6 +266,78 @@ func NewMetricsCollector() MetricsCollector {
 			Name: "auth_errors_total",
 			Help: "Authentication errors by check type and error type",
 		}, []string{"check_type", "error_type"}),
+
+		// Message processing stage metrics
+		messageReadDuration: promauto.NewHistogram(prometheus.HistogramOpts{
+			Name:    "message_read_duration_seconds",
+			Help:    "Duration of message reading stage in seconds",
+			Buckets: prometheus.DefBuckets,
+		}),
+		messageParseDuration: promauto.NewHistogram(prometheus.HistogramOpts{
+			Name:    "message_parse_duration_seconds",
+			Help:    "Duration of message parsing stage in seconds",
+			Buckets: prometheus.DefBuckets,
+		}),
+		messageAuthDuration: promauto.NewHistogram(prometheus.HistogramOpts{
+			Name:    "message_auth_duration_seconds",
+			Help:    "Duration of message authentication stage in seconds",
+			Buckets: prometheus.DefBuckets,
+		}),
+		messageWebhookDuration: promauto.NewHistogram(prometheus.HistogramOpts{
+			Name:    "message_webhook_duration_seconds",
+			Help:    "Duration of message webhook stage in seconds",
+			Buckets: prometheus.DefBuckets,
+		}),
+		messageTotalDuration: promauto.NewHistogram(prometheus.HistogramOpts{
+			Name:    "message_total_processing_duration_seconds",
+			Help:    "Total duration of message processing in seconds",
+			Buckets: prometheus.DefBuckets,
+		}),
+
+		// Email characteristics metrics
+		emailAttachmentCount: promauto.NewHistogram(prometheus.HistogramOpts{
+			Name:    "email_attachment_count",
+			Help:    "Number of attachments in emails",
+			Buckets: []float64{0, 1, 2, 3, 4, 5, 10, 15, 20, 25, 30, 50, 100},
+		}),
+		emailAttachmentSize: promauto.NewHistogram(prometheus.HistogramOpts{
+			Name:    "email_attachment_size_bytes",
+			Help:    "Size of email attachments in bytes",
+			Buckets: prometheus.ExponentialBuckets(1024, 2, 15), // 1KB to 32MB
+		}),
+		emailBodyType: promauto.NewCounterVec(prometheus.CounterOpts{
+			Name: "email_body_type_total",
+			Help: "Number of emails by body type (text, html, multipart)",
+		}, []string{"body_type"}),
+		emailHeaderCount: promauto.NewHistogram(prometheus.HistogramOpts{
+			Name:    "email_header_count",
+			Help:    "Number of headers in emails",
+			Buckets: []float64{0, 5, 10, 15, 20, 25, 30, 40, 50, 75, 100, 150, 200},
+		}),
+		emailRecipientCount: promauto.NewHistogram(prometheus.HistogramOpts{
+			Name:    "email_recipient_count",
+			Help:    "Number of recipients in emails",
+			Buckets: []float64{0, 1, 2, 3, 4, 5, 10, 15, 20, 25, 30, 50, 100},
+		}),
+
+		// Session lifecycle metrics
+		sessionDuration: promauto.NewHistogram(prometheus.HistogramOpts{
+			Name:    "session_duration_seconds",
+			Help:    "Duration of SMTP sessions in seconds",
+			Buckets: prometheus.DefBuckets,
+		}),
+		sessionCommands: promauto.NewCounterVec(prometheus.CounterOpts{
+			Name: "session_commands_total",
+			Help: "Number of SMTP commands executed per session",
+		}, []string{"command"}),
+		sessionErrors: promauto.NewCounterVec(prometheus.CounterOpts{
+			Name: "session_errors_total",
+			Help: "Number of SMTP session errors by type",
+		}, []string{"error_type"}),
+		sessionMessageCount: promauto.NewCounter(prometheus.CounterOpts{
+			Name: "session_messages_total",
+			Help: "Number of messages processed per session",
+		}),
 	}
 }
 
@@ -348,6 +458,76 @@ func (m *metricsCollector) TrackDMARCResultByDomain(domain, result string) {
 // TrackAuthError records authentication errors by check type and error type
 func (m *metricsCollector) TrackAuthError(checkType, errorType string) {
 	m.authErrors.WithLabelValues(checkType, errorType).Inc()
+}
+
+// TrackMessageReadDuration records message reading stage duration
+func (m *metricsCollector) TrackMessageReadDuration(duration time.Duration) {
+	m.messageReadDuration.Observe(duration.Seconds())
+}
+
+// TrackMessageParseDuration records message parsing stage duration
+func (m *metricsCollector) TrackMessageParseDuration(duration time.Duration) {
+	m.messageParseDuration.Observe(duration.Seconds())
+}
+
+// TrackMessageAuthDuration records message authentication stage duration
+func (m *metricsCollector) TrackMessageAuthDuration(duration time.Duration) {
+	m.messageAuthDuration.Observe(duration.Seconds())
+}
+
+// TrackMessageWebhookDuration records message webhook stage duration
+func (m *metricsCollector) TrackMessageWebhookDuration(duration time.Duration) {
+	m.messageWebhookDuration.Observe(duration.Seconds())
+}
+
+// TrackMessageTotalProcessingDuration records total message processing duration
+func (m *metricsCollector) TrackMessageTotalProcessingDuration(duration time.Duration) {
+	m.messageTotalDuration.Observe(duration.Seconds())
+}
+
+// TrackEmailAttachmentCount records the number of attachments in an email
+func (m *metricsCollector) TrackEmailAttachmentCount(count int) {
+	m.emailAttachmentCount.Observe(float64(count))
+}
+
+// TrackEmailAttachmentSize records the size of email attachments
+func (m *metricsCollector) TrackEmailAttachmentSize(size int64) {
+	m.emailAttachmentSize.Observe(float64(size))
+}
+
+// TrackEmailBodyType records the body type of emails
+func (m *metricsCollector) TrackEmailBodyType(bodyType string) {
+	m.emailBodyType.WithLabelValues(bodyType).Inc()
+}
+
+// TrackEmailHeaderCount records the number of headers in an email
+func (m *metricsCollector) TrackEmailHeaderCount(count int) {
+	m.emailHeaderCount.Observe(float64(count))
+}
+
+// TrackEmailRecipientCount records the number of recipients in an email
+func (m *metricsCollector) TrackEmailRecipientCount(count int) {
+	m.emailRecipientCount.Observe(float64(count))
+}
+
+// TrackSessionDuration records the duration of SMTP sessions
+func (m *metricsCollector) TrackSessionDuration(duration time.Duration) {
+	m.sessionDuration.Observe(duration.Seconds())
+}
+
+// TrackSessionCommandCount records the number of SMTP commands executed
+func (m *metricsCollector) TrackSessionCommandCount(command string) {
+	m.sessionCommands.WithLabelValues(command).Inc()
+}
+
+// TrackSessionErrorCount records the number of SMTP session errors by type
+func (m *metricsCollector) TrackSessionErrorCount(errorType string) {
+	m.sessionErrors.WithLabelValues(errorType).Inc()
+}
+
+// TrackSessionMessageCount records the number of messages processed per session
+func (m *metricsCollector) TrackSessionMessageCount() {
+	m.sessionMessageCount.Inc()
 }
 
 // metricsServer implements MetricsServer interface
@@ -510,3 +690,45 @@ func (n *NoOpMetricsCollector) TrackDMARCResultByDomain(domain, result string) {
 
 // TrackAuthError does nothing
 func (n *NoOpMetricsCollector) TrackAuthError(checkType, errorType string) {}
+
+// TrackMessageReadDuration does nothing
+func (n *NoOpMetricsCollector) TrackMessageReadDuration(duration time.Duration) {}
+
+// TrackMessageParseDuration does nothing
+func (n *NoOpMetricsCollector) TrackMessageParseDuration(duration time.Duration) {}
+
+// TrackMessageAuthDuration does nothing
+func (n *NoOpMetricsCollector) TrackMessageAuthDuration(duration time.Duration) {}
+
+// TrackMessageWebhookDuration does nothing
+func (n *NoOpMetricsCollector) TrackMessageWebhookDuration(duration time.Duration) {}
+
+// TrackMessageTotalProcessingDuration does nothing
+func (n *NoOpMetricsCollector) TrackMessageTotalProcessingDuration(duration time.Duration) {}
+
+// TrackEmailAttachmentCount does nothing
+func (n *NoOpMetricsCollector) TrackEmailAttachmentCount(count int) {}
+
+// TrackEmailAttachmentSize does nothing
+func (n *NoOpMetricsCollector) TrackEmailAttachmentSize(size int64) {}
+
+// TrackEmailBodyType does nothing
+func (n *NoOpMetricsCollector) TrackEmailBodyType(bodyType string) {}
+
+// TrackEmailHeaderCount does nothing
+func (n *NoOpMetricsCollector) TrackEmailHeaderCount(count int) {}
+
+// TrackEmailRecipientCount does nothing
+func (n *NoOpMetricsCollector) TrackEmailRecipientCount(count int) {}
+
+// TrackSessionDuration does nothing
+func (n *NoOpMetricsCollector) TrackSessionDuration(duration time.Duration) {}
+
+// TrackSessionCommandCount does nothing
+func (n *NoOpMetricsCollector) TrackSessionCommandCount(command string) {}
+
+// TrackSessionErrorCount does nothing
+func (n *NoOpMetricsCollector) TrackSessionErrorCount(errorType string) {}
+
+// TrackSessionMessageCount does nothing
+func (n *NoOpMetricsCollector) TrackSessionMessageCount() {}

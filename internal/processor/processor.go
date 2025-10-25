@@ -58,8 +58,12 @@ func (mp *MessageProcessor) ProcessMessage(ctx context.Context, r io.Reader, fro
 	sessionLogger := observability.NewSessionLogger(mp.logger, sessionID, "")
 
 	// Read the entire message
+	readStart := time.Now()
 	var buf bytes.Buffer
 	size, err := io.Copy(&buf, r)
+	readDuration := time.Since(readStart)
+	mp.metrics.TrackMessageReadDuration(readDuration)
+
 	if err != nil {
 		sessionLogger.Error().
 			Err(err).
@@ -77,7 +81,11 @@ func (mp *MessageProcessor) ProcessMessage(ctx context.Context, r io.Reader, fro
 	rawMessage := buf.String()
 
 	// Parse the email
+	parseStart := time.Now()
 	email, err := letters.ParseEmail(bytes.NewReader(buf.Bytes()))
+	parseDuration := time.Since(parseStart)
+	mp.metrics.TrackMessageParseDuration(parseDuration)
+
 	if err != nil {
 		sessionLogger.Error().
 			Err(err).
@@ -102,6 +110,9 @@ func (mp *MessageProcessor) ProcessMessage(ctx context.Context, r io.Reader, fro
 		Int64("size", size).
 		Msg("Message parsed successfully")
 
+	// Track email characteristics
+	mp.trackEmailCharacteristics(&email)
+
 	// Create webhook payload
 	payload := &domain.WebhookPayload{
 		Timestamp:        email.Headers.Date,
@@ -119,7 +130,11 @@ func (mp *MessageProcessor) ProcessMessage(ctx context.Context, r io.Reader, fro
 
 	// Perform authentication checks
 	if mp.config.EnableSPF || mp.config.EnableDKIM || mp.config.EnableDMARC {
+		authStart := time.Now()
 		authResults, err := mp.performAuthenticationChecks(ctx, rawMessage, email.Headers, from, remoteIP, sessionLogger)
+		authDuration := time.Since(authStart)
+		mp.metrics.TrackMessageAuthDuration(authDuration)
+
 		if err != nil {
 			sessionLogger.Warn().
 				Err(err).
@@ -131,9 +146,14 @@ func (mp *MessageProcessor) ProcessMessage(ctx context.Context, r io.Reader, fro
 	}
 
 	// Send to webhook
+	webhookStart := time.Now()
 	err = mp.webhookSender.SendWebhook(ctx, payload)
+	webhookDuration := time.Since(webhookStart)
+	mp.metrics.TrackMessageWebhookDuration(webhookDuration)
 
 	duration := time.Since(start)
+	mp.metrics.TrackMessageTotalProcessingDuration(duration)
+
 	if err != nil {
 		sessionLogger.Error().
 			Err(err).
@@ -225,4 +245,37 @@ func (mp *MessageProcessor) performAuthenticationChecks(ctx context.Context, raw
 		Msg("Authentication checks completed")
 
 	return results, nil
+}
+
+// trackEmailCharacteristics tracks various characteristics of the parsed email
+func (mp *MessageProcessor) trackEmailCharacteristics(email *letters.Email) {
+	// Track attachment count and size
+	attachmentCount := len(email.AttachedFiles)
+	mp.metrics.TrackEmailAttachmentCount(attachmentCount)
+
+	var totalAttachmentSize int64
+	for _, attachment := range email.AttachedFiles {
+		totalAttachmentSize += int64(len(attachment.Data))
+	}
+	if totalAttachmentSize > 0 {
+		mp.metrics.TrackEmailAttachmentSize(totalAttachmentSize)
+	}
+
+	// Track body type
+	bodyType := "text"
+	if email.HTML != "" {
+		bodyType = "html"
+	}
+	if len(email.AttachedFiles) > 0 {
+		bodyType = "multipart"
+	}
+	mp.metrics.TrackEmailBodyType(bodyType)
+
+	// Track header count
+	headerCount := len(email.Headers.ExtraHeaders)
+	mp.metrics.TrackEmailHeaderCount(headerCount)
+
+	// Track recipient count (To + CC + BCC)
+	recipientCount := len(email.Headers.To) + len(email.Headers.Cc) + len(email.Headers.Bcc)
+	mp.metrics.TrackEmailRecipientCount(recipientCount)
 }

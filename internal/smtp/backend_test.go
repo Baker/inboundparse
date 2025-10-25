@@ -90,6 +90,20 @@ func (m *mockMetricsCollector) TrackSPFResultByDomain(domain, result string)    
 func (m *mockMetricsCollector) TrackDKIMResultByDomain(domain, result string)              {}
 func (m *mockMetricsCollector) TrackDMARCResultByDomain(domain, result string)             {}
 func (m *mockMetricsCollector) TrackAuthError(checkType, errorType string)                 {}
+func (m *mockMetricsCollector) TrackMessageReadDuration(duration time.Duration)            {}
+func (m *mockMetricsCollector) TrackMessageParseDuration(duration time.Duration)           {}
+func (m *mockMetricsCollector) TrackMessageAuthDuration(duration time.Duration)            {}
+func (m *mockMetricsCollector) TrackMessageWebhookDuration(duration time.Duration)         {}
+func (m *mockMetricsCollector) TrackMessageTotalProcessingDuration(duration time.Duration) {}
+func (m *mockMetricsCollector) TrackEmailAttachmentCount(count int)                        {}
+func (m *mockMetricsCollector) TrackEmailAttachmentSize(size int64)                        {}
+func (m *mockMetricsCollector) TrackEmailBodyType(bodyType string)                         {}
+func (m *mockMetricsCollector) TrackEmailHeaderCount(count int)                            {}
+func (m *mockMetricsCollector) TrackEmailRecipientCount(count int)                         {}
+func (m *mockMetricsCollector) TrackSessionDuration(duration time.Duration)                {}
+func (m *mockMetricsCollector) TrackSessionCommandCount(command string)                    {}
+func (m *mockMetricsCollector) TrackSessionErrorCount(errorType string)                    {}
+func (m *mockMetricsCollector) TrackSessionMessageCount()                                  {}
 
 type mockLogger struct{}
 
