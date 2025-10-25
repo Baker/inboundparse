@@ -32,14 +32,12 @@ type SPFResult struct {
 }
 
 // DKIMSignatureDetail contains detailed information about a single DKIM signature
+// Only includes fields available from go-msgauth library
 type DKIMSignatureDetail struct {
-	Domain        string   `json:"domain"`               // d= tag
-	Selector      string   `json:"selector"`             // s= tag
-	Algorithm     string   `json:"algorithm"`            // a= tag
-	HeadersSigned []string `json:"headers_signed"`       // h= tag
-	BodyHash      string   `json:"body_hash"`            // bh= tag
-	Timestamp     int64    `json:"timestamp,omitempty"`  // t= tag
-	Expiration    int64    `json:"expiration,omitempty"` // x= tag
+	Domain        string   `json:"domain"`               // d= tag (from verification.Domain)
+	HeadersSigned []string `json:"headers_signed"`       // h= tag (from verification.HeaderKeys)
+	Timestamp     int64    `json:"timestamp,omitempty"`  // t= tag (from verification.Time)
+	Expiration    int64    `json:"expiration,omitempty"` // x= tag (from verification.Expiration)
 	Valid         bool     `json:"valid"`
 	Error         string   `json:"error,omitempty"`
 }
@@ -66,6 +64,12 @@ type DMARCResult struct {
 	DKIMAligned     bool   `json:"dkim_aligned"`               // Whether DKIM identifier aligned
 	SPFDomain       string `json:"spf_domain,omitempty"`       // Domain used for SPF alignment check
 	DKIMDomain      string `json:"dkim_domain,omitempty"`      // Domain(s) used for DKIM alignment
+	// Additional RFC 7489 compliant fields
+	SPFAlignment   string   `json:"spf_alignment,omitempty"`   // aspf= tag value (RFC 7489 Section 6.3)
+	DKIMAlignment  string   `json:"dkim_alignment,omitempty"`  // adkim= tag value (RFC 7489 Section 6.3)
+	FailureOptions string   `json:"failure_options,omitempty"` // fo= tag value (RFC 7489 Section 6.3)
+	ReportURIs     []string `json:"report_uris,omitempty"`     // rua= tag values (RFC 7489 Section 6.3)
+	FailureURIs    []string `json:"failure_uris,omitempty"`    // ruf= tag values (RFC 7489 Section 6.3)
 }
 
 // Attachment represents an email attachment

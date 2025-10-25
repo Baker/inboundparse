@@ -53,14 +53,14 @@ func (d *dkimChecker) CheckDKIM(ctx context.Context, rawMessage string) (*domain
 			hasValidSignature = true
 		}
 
-		// Extract additional signature details if available
-		// Note: The go-msgauth/dkim library doesn't expose all signature fields
-		// In a full implementation, we would parse the DKIM-Signature header directly
-		// to extract selector, algorithm, headers signed, body hash, timestamps, etc.
-		detail.Selector = "unknown"       // Would be extracted from s= tag
-		detail.Algorithm = "unknown"      // Would be extracted from a= tag
-		detail.HeadersSigned = []string{} // Would be extracted from h= tag
-		detail.BodyHash = "unknown"       // Would be extracted from bh= tag
+		// Extract available fields from go-msgauth Verification struct
+		detail.HeadersSigned = verification.HeaderKeys
+		if !verification.Time.IsZero() {
+			detail.Timestamp = verification.Time.Unix()
+		}
+		if !verification.Expiration.IsZero() {
+			detail.Expiration = verification.Expiration.Unix()
+		}
 
 		details = append(details, detail)
 	}

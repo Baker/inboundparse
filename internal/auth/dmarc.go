@@ -133,17 +133,32 @@ func (d *dmarcChecker) CheckDMARC(ctx context.Context, rawMessage string, header
 	// Extract DKIM domain(s) for alignment
 	dkimDomain := d.extractDKIMDomain(dkimResult.Signatures)
 
+	// Handle percentage - use actual value from record or default to 100
+	percentage := 100
+	if record.Percent != nil {
+		percentage = *record.Percent
+	}
+
+	// Convert failure options to string representation
+	failureOptions := d.convertFailureOptionsToString(record.FailureOptions)
+
 	return &domain.DMARCResult{
 		Result:          result,
 		Raw:             rawMsg,
 		Policy:          string(record.Policy),
 		Domain:          actualDomain,
-		Percentage:      100, // Default to 100% if not specified in record
+		Percentage:      percentage,
 		SubdomainPolicy: string(record.SubdomainPolicy),
 		SPFAligned:      spfAligned,
 		DKIMAligned:     dkimAligned,
 		SPFDomain:       spfDomain,
 		DKIMDomain:      dkimDomain,
+		// RFC 7489 compliant additional fields
+		SPFAlignment:   string(record.SPFAlignment),
+		DKIMAlignment:  string(record.DKIMAlignment),
+		FailureOptions: failureOptions,
+		ReportURIs:     record.ReportURIAggregate,
+		FailureURIs:    record.ReportURIFailure,
 	}, nil
 }
 
@@ -156,9 +171,11 @@ func (d *dmarcChecker) lookupDMARCRecord(domain string) (*dmarc.Record, string, 
 		if err == nil && record != nil {
 			return record, currentDomain, nil
 		}
-
-		// If there was an error other than "not found", return it
-		if err != nil && !d.isDMARCNotFoundError(err) {
+		// If the error is "dmarc: failed to lookup TXT record", continue as if not found
+		if err != nil && strings.Contains(err.Error(), "dmarc: failed to lookup TXT record") {
+			// continue down to parent domain
+		} else if err != nil && !d.isDMARCNotFoundError(err) {
+			// Early return for other errors (let outer logic handle)
 			return nil, "", err
 		}
 
@@ -268,4 +285,28 @@ func (d *dmarcChecker) extractDKIMDomain(signatures []string) string {
 	}
 	// Return comma-separated list of domains
 	return strings.Join(domains, ",")
+}
+
+// convertFailureOptionsToString converts DMARC failure options to string representation per RFC 7489
+func (d *dmarcChecker) convertFailureOptionsToString(options dmarc.FailureOptions) string {
+	var parts []string
+
+	if options&dmarc.FailureAll != 0 {
+		parts = append(parts, "0")
+	}
+	if options&dmarc.FailureAny != 0 {
+		parts = append(parts, "1")
+	}
+	if options&dmarc.FailureDKIM != 0 {
+		parts = append(parts, "d")
+	}
+	if options&dmarc.FailureSPF != 0 {
+		parts = append(parts, "s")
+	}
+
+	if len(parts) == 0 {
+		return "0" // Default to "0" (all) if no options specified
+	}
+
+	return strings.Join(parts, ":")
 }

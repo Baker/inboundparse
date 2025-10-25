@@ -174,6 +174,17 @@ func TestDMARCChecker_CheckDMARC_WithSPFAndDKIMResults(t *testing.T) {
 	if !result.SPFAligned {
 		t.Error("Expected SPF to be aligned (same domain)")
 	}
+
+	// Test additional RFC 7489 fields
+	if result.SPFAlignment == "" {
+		t.Error("Expected SPF alignment mode to be populated")
+	}
+	if result.DKIMAlignment == "" {
+		t.Error("Expected DKIM alignment mode to be populated")
+	}
+	if result.FailureOptions == "" {
+		t.Error("Expected failure options to be populated")
+	}
 }
 
 func TestDMARCChecker_CheckDMARC_WithNilSPFResult(t *testing.T) {
