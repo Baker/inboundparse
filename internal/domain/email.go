@@ -43,6 +43,14 @@ type DKIMSignatureDetail struct {
 	Error         string   `json:"error,omitempty"`
 }
 
+// DMARCLookupDetail contains detailed information about a single DMARC lookup attempt
+type DMARCLookupDetail struct {
+	Domain      string `json:"domain"`                // Domain where lookup was attempted
+	RecordFound bool   `json:"record_found"`          // Whether a record was found
+	PolicyUsed  string `json:"policy_used,omitempty"` // Which policy was applied (p or sp)
+	Error       string `json:"error,omitempty"`       // Any error during lookup
+}
+
 // DKIMResult contains DKIM validation results
 type DKIMResult struct {
 	Valid      bool                  `json:"valid"`
@@ -54,17 +62,18 @@ type DKIMResult struct {
 
 // DMARCResult contains DMARC validation results
 type DMARCResult struct {
-	Result          string `json:"result"`
-	Raw             string `json:"raw"`
-	Policy          string `json:"policy,omitempty"`
-	Error           string `json:"error,omitempty"`
-	Domain          string `json:"domain,omitempty"`           // Domain where policy was found
-	Percentage      int    `json:"percentage,omitempty"`       // pct= tag value (RFC 7489 Section 6.3)
-	SubdomainPolicy string `json:"subdomain_policy,omitempty"` // sp= tag value
-	SPFAligned      bool   `json:"spf_aligned"`                // Whether SPF identifier aligned
-	DKIMAligned     bool   `json:"dkim_aligned"`               // Whether DKIM identifier aligned
-	SPFDomain       string `json:"spf_domain,omitempty"`       // Domain used for SPF alignment check
-	DKIMDomain      string `json:"dkim_domain,omitempty"`      // Domain(s) used for DKIM alignment
+	Result          string              `json:"result"`
+	Raw             string              `json:"raw"`
+	Policy          string              `json:"policy,omitempty"`
+	Error           string              `json:"error,omitempty"`
+	Domain          string              `json:"domain,omitempty"`           // Domain where policy was found
+	Percentage      int                 `json:"percentage,omitempty"`       // pct= tag value (RFC 7489 Section 6.3)
+	SubdomainPolicy string              `json:"subdomain_policy,omitempty"` // sp= tag value
+	SPFAligned      bool                `json:"spf_aligned"`                // Whether SPF identifier aligned
+	DKIMAligned     bool                `json:"dkim_aligned"`               // Whether DKIM identifier aligned
+	SPFDomain       string              `json:"spf_domain,omitempty"`       // Domain used for SPF alignment check
+	DKIMDomain      string              `json:"dkim_domain,omitempty"`      // Domain(s) used for DKIM alignment
+	Details         []DMARCLookupDetail `json:"details,omitempty"`          // Per-domain lookup details
 	// Additional RFC 7489 compliant fields
 	SPFAlignment   string   `json:"spf_alignment,omitempty"`   // aspf= tag value (RFC 7489 Section 6.3)
 	DKIMAlignment  string   `json:"dkim_alignment,omitempty"`  // adkim= tag value (RFC 7489 Section 6.3)

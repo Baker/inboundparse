@@ -27,13 +27,52 @@ func (d *dmarcChecker) CheckDMARC(ctx context.Context, rawMessage string, header
 		duration := time.Since(start)
 		metrics.TrackDMARCDuration(duration)
 	}()
-	// Extract domain from From header (RFC5322.From) - this is what DMARC protects
+
+	// Extract and validate From domain
+	fromDomain, result := d.extractFromDomain(headers, logger)
+	if result != nil {
+		return result, nil
+	}
+
+	// Look up DMARC policy with domain hierarchy traversal
+	record, actualDomain, lookupDetails, err := d.lookupDMARCRecord(fromDomain)
+	if err != nil {
+		return d.handleLookupError(err, fromDomain, lookupDetails, logger, metrics), nil
+	}
+
+	if record == nil {
+		return d.handleNoRecordFound(fromDomain, lookupDetails, logger), nil
+	}
+
+	// Ensure we have valid SPF and DKIM results
+	spfResult, dkimResult = d.ensureValidResults(spfResult, dkimResult)
+
+	// Check SPF and DKIM alignment
+	spfPass, spfAligned, spfDomain := d.checkSPFAlignment(spfResult, fromDomain, record)
+	dkimPass, dkimAligned, dkimDomain := d.checkDKIMAlignmentAndExtractDomain(dkimResult, fromDomain, record)
+
+	// Determine which policy to apply and update lookup details
+	policyToApply, _ := d.determinePolicyToApply(record, actualDomain, fromDomain, lookupDetails)
+
+	// Evaluate DMARC policy
+	dmarcResult := d.evaluateDMARCPolicy(policyToApply, spfPass, spfAligned, dkimPass, dkimAligned)
+
+	// Create result message and log
+	rawMsg := d.createResultMessage(fromDomain, actualDomain, record, spfPass, spfAligned, dkimPass, dkimAligned, dmarcResult)
+	d.logDMARCCheck(logger, dmarcResult, fromDomain, actualDomain, record, spfPass, spfAligned, dkimPass, dkimAligned, spfDomain)
+
+	// Build and return final result
+	return d.buildDMARCResult(record, actualDomain, policyToApply, dmarcResult, rawMsg, spfAligned, dkimAligned, spfDomain, dkimDomain, lookupDetails, metrics), nil
+}
+
+// extractFromDomain extracts and validates the From domain from headers
+func (d *dmarcChecker) extractFromDomain(headers letters.Headers, logger observability.Logger) (string, *domain.DMARCResult) {
 	if len(headers.From) == 0 || headers.From[0] == nil || len(headers.From[0].Address) == 0 {
 		logger.Debug().Msg("DMARC check: No From header found")
-		return &domain.DMARCResult{
+		return "", &domain.DMARCResult{
 			Result: "none",
 			Raw:    "No From header found",
-		}, nil
+		}
 	}
 	fromHeader := headers.From[0].Address
 
@@ -43,46 +82,52 @@ func (d *dmarcChecker) CheckDMARC(ctx context.Context, rawMessage string, header
 		logger.Debug().
 			Str("from_header", fromHeader).
 			Msg("DMARC check: No domain found in From header")
-		return &domain.DMARCResult{
+		return "", &domain.DMARCResult{
 			Result: "none",
 			Raw:    "No domain found in From header",
-		}, nil
-	}
-
-	// Look up DMARC policy with domain hierarchy traversal
-	record, actualDomain, err := d.lookupDMARCRecord(fromDomain)
-	if err != nil {
-		// Determine error type for metrics
-		errorType := "dns_error"
-		if strings.Contains(err.Error(), "timeout") {
-			errorType = "timeout_error"
-		} else if strings.Contains(err.Error(), "parse") {
-			errorType = "parse_error"
 		}
-		metrics.TrackAuthError("dmarc", errorType)
-
-		logger.Warn().
-			Err(err).
-			Str("domain", fromDomain).
-			Msg("DMARC lookup error")
-		return &domain.DMARCResult{
-			Result: "none",
-			Raw:    fmt.Sprintf("DMARC lookup error: %v", err),
-			Error:  err.Error(),
-		}, nil
 	}
 
-	if record == nil {
-		logger.Debug().
-			Str("domain", fromDomain).
-			Msg("DMARC check: No record found")
-		return &domain.DMARCResult{
-			Result: "none",
-			Raw:    fmt.Sprintf("No DMARC record found for domain %s or its parent domains", fromDomain),
-		}, nil
-	}
+	return fromDomain, nil
+}
 
-	// Use passed results or perform checks if not available
+// handleLookupError handles DMARC lookup errors
+func (d *dmarcChecker) handleLookupError(err error, fromDomain string, lookupDetails []domain.DMARCLookupDetail, logger observability.Logger, metrics observability.MetricsCollector) *domain.DMARCResult {
+	// Determine error type for metrics
+	errorType := "dns_error"
+	if strings.Contains(err.Error(), "timeout") {
+		errorType = "timeout_error"
+	} else if strings.Contains(err.Error(), "parse") {
+		errorType = "parse_error"
+	}
+	metrics.TrackAuthError("dmarc", errorType)
+
+	logger.Warn().
+		Err(err).
+		Str("domain", fromDomain).
+		Msg("DMARC lookup error")
+	return &domain.DMARCResult{
+		Result:  "none",
+		Raw:     fmt.Sprintf("DMARC lookup error: %v", err),
+		Error:   err.Error(),
+		Details: lookupDetails,
+	}
+}
+
+// handleNoRecordFound handles the case when no DMARC record is found
+func (d *dmarcChecker) handleNoRecordFound(fromDomain string, lookupDetails []domain.DMARCLookupDetail, logger observability.Logger) *domain.DMARCResult {
+	logger.Debug().
+		Str("domain", fromDomain).
+		Msg("DMARC check: No record found")
+	return &domain.DMARCResult{
+		Result:  "none",
+		Raw:     fmt.Sprintf("No DMARC record found for domain %s or its parent domains", fromDomain),
+		Details: lookupDetails,
+	}
+}
+
+// ensureValidResults ensures SPF and DKIM results are valid
+func (d *dmarcChecker) ensureValidResults(spfResult *domain.SPFResult, dkimResult *domain.DKIMResult) (*domain.SPFResult, *domain.DKIMResult) {
 	if spfResult == nil {
 		// This shouldn't happen in normal flow, but handle gracefully
 		spfResult = &domain.SPFResult{Result: "none"}
@@ -91,48 +136,92 @@ func (d *dmarcChecker) CheckDMARC(ctx context.Context, rawMessage string, header
 		// This shouldn't happen in normal flow, but handle gracefully
 		dkimResult = &domain.DKIMResult{Valid: false}
 	}
+	return spfResult, dkimResult
+}
 
+// checkSPFAlignment checks SPF alignment and returns pass status, alignment, and domain
+func (d *dmarcChecker) checkSPFAlignment(spfResult *domain.SPFResult, fromDomain string, record *dmarc.Record) (bool, bool, string) {
 	// RFC 7489: SPF identifier alignment
 	// Check if SPF passes and the MAIL FROM domain aligns with From header domain
 	spfPass := spfResult.Result == "pass"
 	// Fix bug: Use SPF envelope sender domain for alignment check, not result string
 	spfDomain := ExtractDomainFromEmail(spfResult.Sender)
 	spfAligned := d.checkDomainAlignment(spfDomain, fromDomain, string(record.SPFAlignment))
+	return spfPass, spfAligned, spfDomain
+}
 
+// checkDKIMAlignmentAndExtractDomain checks DKIM alignment and returns pass status, alignment, and domain
+func (d *dmarcChecker) checkDKIMAlignmentAndExtractDomain(dkimResult *domain.DKIMResult, fromDomain string, record *dmarc.Record) (bool, bool, string) {
 	// RFC 7489: DKIM identifier alignment
 	// Check if any valid DKIM signature domain aligns with From header domain
 	dkimPass := dkimResult.Valid
 	dkimAligned := d.checkDKIMAlignment(dkimResult.Signatures, fromDomain, string(record.DKIMAlignment))
+	dkimDomain := d.extractDKIMDomain(dkimResult.Signatures)
+	return dkimPass, dkimAligned, dkimDomain
+}
 
+// determinePolicyToApply determines which policy to apply based on domain inheritance
+func (d *dmarcChecker) determinePolicyToApply(record *dmarc.Record, actualDomain, fromDomain string, lookupDetails []domain.DMARCLookupDetail) (dmarc.Policy, string) {
+	// Determine which policy to apply based on domain inheritance
+	// If record was found at a parent domain and original domain is a subdomain, use sp= if present
+	policyToApply := record.Policy
+	policyUsed := "p"
+
+	// Check if we found the record at a parent domain (inherited)
+	if actualDomain != fromDomain {
+		// Record was inherited from parent domain
+		// Use subdomain policy (sp=) if present, otherwise fall back to main policy (p=)
+		if record.SubdomainPolicy != "" {
+			policyToApply = record.SubdomainPolicy
+			policyUsed = "sp"
+		}
+	}
+
+	// Update lookup details to show which policy was used
+	for i := range lookupDetails {
+		if lookupDetails[i].Domain == actualDomain {
+			lookupDetails[i].PolicyUsed = policyUsed
+			break
+		}
+	}
+
+	return policyToApply, policyUsed
+}
+
+// evaluateDMARCPolicy evaluates the DMARC policy and returns the result
+func (d *dmarcChecker) evaluateDMARCPolicy(policyToApply dmarc.Policy, spfPass, spfAligned, dkimPass, dkimAligned bool) string {
 	// RFC 7489: DMARC policy evaluation
 	// DMARC passes if either:
 	// 1. SPF passes AND SPF identifier is aligned, OR
 	// 2. DKIM passes AND at least one DKIM signature identifier is aligned
-	var result string
 	dmarcPass := (spfPass && spfAligned) || (dkimPass && dkimAligned)
 
-	switch record.Policy {
+	switch policyToApply {
 	case dmarc.PolicyNone:
 		// RFC 7489: Policy "none" means monitor only - always report result but don't reject
 		if dmarcPass {
-			result = "pass"
-		} else {
-			result = "fail"
+			return "pass"
 		}
+		return "fail"
 	case dmarc.PolicyQuarantine, dmarc.PolicyReject:
 		// RFC 7489: For quarantine/reject policies, evaluate based on authentication results
 		if dmarcPass {
-			result = "pass"
-		} else {
-			result = "fail"
+			return "pass"
 		}
+		return "fail"
 	default:
-		result = "none"
+		return "none"
 	}
+}
 
-	rawMsg := fmt.Sprintf("DMARC evaluation for domain %s (policy found at %s): policy=%s, SPF pass=%v aligned=%v, DKIM pass=%v aligned=%v, result=%s",
+// createResultMessage creates the result message for logging
+func (d *dmarcChecker) createResultMessage(fromDomain, actualDomain string, record *dmarc.Record, spfPass, spfAligned, dkimPass, dkimAligned bool, result string) string {
+	return fmt.Sprintf("DMARC evaluation for domain %s (policy found at %s): policy=%s, SPF pass=%v aligned=%v, DKIM pass=%v aligned=%v, result=%s",
 		fromDomain, actualDomain, string(record.Policy), spfPass, spfAligned, dkimPass, dkimAligned, result)
+}
 
+// logDMARCCheck logs the DMARC check results
+func (d *dmarcChecker) logDMARCCheck(logger observability.Logger, result, fromDomain, actualDomain string, record *dmarc.Record, spfPass, spfAligned, dkimPass, dkimAligned bool, spfDomain string) {
 	logger.Debug().
 		Str("result", result).
 		Str("domain", fromDomain).
@@ -144,10 +233,10 @@ func (d *dmarcChecker) CheckDMARC(ctx context.Context, rawMessage string, header
 		Bool("dkim_aligned", dkimAligned).
 		Str("spf_domain", spfDomain).
 		Msg("DMARC check completed")
+}
 
-	// Extract DKIM domain(s) for alignment
-	dkimDomain := d.extractDKIMDomain(dkimResult.Signatures)
-
+// buildDMARCResult builds the final DMARC result
+func (d *dmarcChecker) buildDMARCResult(record *dmarc.Record, actualDomain string, policyToApply dmarc.Policy, result, rawMsg string, spfAligned, dkimAligned bool, spfDomain, dkimDomain string, lookupDetails []domain.DMARCLookupDetail, metrics observability.MetricsCollector) *domain.DMARCResult {
 	// Handle percentage - use actual value from record or default to 100
 	percentage := 100
 	if record.Percent != nil {
@@ -163,7 +252,7 @@ func (d *dmarcChecker) CheckDMARC(ctx context.Context, rawMessage string, header
 	return &domain.DMARCResult{
 		Result:          result,
 		Raw:             rawMsg,
-		Policy:          string(record.Policy),
+		Policy:          string(policyToApply),
 		Domain:          actualDomain,
 		Percentage:      percentage,
 		SubdomainPolicy: string(record.SubdomainPolicy),
@@ -171,30 +260,49 @@ func (d *dmarcChecker) CheckDMARC(ctx context.Context, rawMessage string, header
 		DKIMAligned:     dkimAligned,
 		SPFDomain:       spfDomain,
 		DKIMDomain:      dkimDomain,
+		Details:         lookupDetails,
 		// RFC 7489 compliant additional fields
 		SPFAlignment:   string(record.SPFAlignment),
 		DKIMAlignment:  string(record.DKIMAlignment),
 		FailureOptions: failureOptions,
 		ReportURIs:     record.ReportURIAggregate,
 		FailureURIs:    record.ReportURIFailure,
-	}, nil
+	}
 }
 
 // lookupDMARCRecord performs hierarchical DMARC record lookup per RFC 7489
-func (d *dmarcChecker) lookupDMARCRecord(domain string) (*dmarc.Record, string, error) {
-	currentDomain := domain
+func (d *dmarcChecker) lookupDMARCRecord(domainName string) (*dmarc.Record, string, []domain.DMARCLookupDetail, error) {
+	currentDomain := domainName
+	var details []domain.DMARCLookupDetail
 
 	for {
 		record, err := dmarc.Lookup(currentDomain)
-		if err == nil && record != nil {
-			return record, currentDomain, nil
+
+		// Create lookup detail for this attempt
+		detail := domain.DMARCLookupDetail{
+			Domain: currentDomain,
 		}
+
+		if err == nil && record != nil {
+			// Found a record
+			detail.RecordFound = true
+			details = append(details, detail)
+			return record, currentDomain, details, nil
+		}
+
+		// Record not found or error occurred
+		detail.RecordFound = false
+		if err != nil {
+			detail.Error = err.Error()
+		}
+		details = append(details, detail)
+
 		// If the error is "dmarc: failed to lookup TXT record", continue as if not found
 		if err != nil && strings.Contains(err.Error(), "dmarc: failed to lookup TXT record") {
 			// continue down to parent domain
 		} else if err != nil && !d.isDMARCNotFoundError(err) {
 			// Early return for other errors (let outer logic handle)
-			return nil, "", err
+			return nil, "", details, err
 		}
 
 		// RFC 7489: Move up the domain hierarchy
@@ -206,7 +314,7 @@ func (d *dmarcChecker) lookupDMARCRecord(domain string) (*dmarc.Record, string, 
 		currentDomain = nextDomain
 	}
 
-	return nil, "", nil
+	return nil, "", details, nil
 }
 
 // getParentDomain returns the parent domain or empty string if at top level

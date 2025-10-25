@@ -469,3 +469,140 @@ func TestDMARCChecker_CheckDMARC_WithMultipleFromAddresses(t *testing.T) {
 		t.Errorf("Expected result 'fail', got %s", result.Result)
 	}
 }
+
+func TestDMARCChecker_CheckDMARC_WithLookupDetails(t *testing.T) {
+	checker := NewDMARCChecker()
+
+	headers := letters.Headers{
+		From: []*mail.Address{
+			{Address: "test@example.com"},
+		},
+	}
+
+	result, err := checker.CheckDMARC(context.Background(), "raw message", headers, nil, nil, &MockLogger{}, &mockMetricsCollector{})
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+
+	// Test that Details field is populated
+	if result.Details == nil {
+		t.Error("Expected Details field to be populated")
+	}
+
+	// Should have at least one lookup attempt
+	if len(result.Details) == 0 {
+		t.Error("Expected at least one lookup attempt in Details")
+	}
+
+	// Check that the first detail has the correct domain
+	if len(result.Details) > 0 {
+		if result.Details[0].Domain != "example.com" {
+			t.Errorf("Expected first lookup domain to be 'example.com', got %s", result.Details[0].Domain)
+		}
+	}
+}
+
+func TestDMARCChecker_CheckDMARC_SubdomainPolicyInheritance(t *testing.T) {
+	checker := NewDMARCChecker()
+
+	// Test with subdomain that should inherit from parent
+	headers := letters.Headers{
+		From: []*mail.Address{
+			{Address: "test@sub.example.com"},
+		},
+	}
+
+	result, err := checker.CheckDMARC(context.Background(), "raw message", headers, nil, nil, &MockLogger{}, &mockMetricsCollector{})
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+
+	// Test that Details field is populated
+	if result.Details == nil {
+		t.Error("Expected Details field to be populated")
+	}
+
+	// Should have at least one lookup attempt
+	if len(result.Details) == 0 {
+		t.Error("Expected at least one lookup attempt")
+	}
+
+	// First attempt should be at subdomain
+	if result.Details[0].Domain != "sub.example.com" {
+		t.Errorf("Expected first lookup at 'sub.example.com', got %s", result.Details[0].Domain)
+	}
+
+	// If record was found at subdomain, that's fine - it means sub.example.com has its own DMARC record
+	// If not found, it should continue to parent domain
+	if !result.Details[0].RecordFound && len(result.Details) > 1 {
+		// Should show that record was not found at subdomain
+		if result.Details[0].RecordFound {
+			t.Error("Expected no record found at subdomain")
+		}
+
+		// Last attempt should be at parent domain
+		lastDetail := result.Details[len(result.Details)-1]
+		if lastDetail.Domain != "example.com" {
+			t.Errorf("Expected last lookup at 'example.com', got %s", lastDetail.Domain)
+		}
+	}
+}
+
+func TestDMARCChecker_CheckDMARC_PolicyUsedTracking(t *testing.T) {
+	checker := NewDMARCChecker()
+
+	headers := letters.Headers{
+		From: []*mail.Address{
+			{Address: "test@example.com"},
+		},
+	}
+
+	result, err := checker.CheckDMARC(context.Background(), "raw message", headers, nil, nil, &MockLogger{}, &mockMetricsCollector{})
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+
+	// Find the detail where record was found
+	var foundDetail *domain.DMARCLookupDetail
+	for i := range result.Details {
+		if result.Details[i].RecordFound {
+			foundDetail = &result.Details[i]
+			break
+		}
+	}
+
+	if foundDetail == nil {
+		t.Error("Expected to find a detail with RecordFound=true")
+	} else {
+		// Should show which policy was used
+		if foundDetail.PolicyUsed == "" {
+			t.Error("Expected PolicyUsed to be set for found record")
+		}
+	}
+}
+
+func TestDMARCChecker_CheckDMARC_ErrorTracking(t *testing.T) {
+	checker := NewDMARCChecker()
+
+	// Test with a domain that might cause DNS errors
+	headers := letters.Headers{
+		From: []*mail.Address{
+			{Address: "test@nonexistent-domain-that-should-fail.com"},
+		},
+	}
+
+	result, err := checker.CheckDMARC(context.Background(), "raw message", headers, nil, nil, &MockLogger{}, &mockMetricsCollector{})
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+
+	// Should have Details even if no record found
+	if result.Details == nil {
+		t.Error("Expected Details field to be populated even when no record found")
+	}
+
+	// Should have at least one lookup attempt
+	if len(result.Details) == 0 {
+		t.Error("Expected at least one lookup attempt")
+	}
+}
