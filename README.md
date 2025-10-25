@@ -19,8 +19,9 @@ A SMTP server that receives emails from any domain without authentication and fo
 ### Email Authentication (RFC Compliant)
 - 🧐 **SPF Validation (RFC 7208)**: Validates Sender Policy Framework with HELO and envelope sender
 - 🖊️ **DKIM Validation (RFC 6376)**: Verifies DomainKeys Identified Mail signatures with multi-signature support
-- 🕵️‍♂️ **DMARC Validation (RFC 7489)**: Evaluates DMARC policy with identifier alignment checking
+- 🕵️‍♂️ **DMARC Validation (RFC 7489)**: Evaluates DMARC policy with hierarchical domain lookup and subdomain policy inheritance
 - 📝 **Comprehensive Results**: Detailed authentication results with domain, mechanism, and alignment data
+- 🔍 **Domain Hierarchy Tracking**: Tracks all attempted DMARC lookups with detailed per-domain results
 
 ### Observability & Monitoring
 - 📋 **Structured Logging**: JSON-formatted logs with configurable levels
@@ -227,13 +228,69 @@ The service sends a JSON payload to your webhook with comprehensive email data:
     "dmarc": {
       "result": "pass",
       "policy": "reject",
-      "subdomain_policy": "reject",
+      "subdomain_policy": "quarantine",
       "percentage": 100,
-      "spf_alignment": "pass (relaxed)",
-      "dkim_alignment": "pass (relaxed)"
+      "spf_aligned": true,
+      "dkim_aligned": true,
+      "spf_domain": "example.com",
+      "dkim_domain": "example.com",
+      "details": [
+        {
+          "domain": "sub.example.com",
+          "record_found": false,
+          "error": "dmarc: no policy found for domain"
+        },
+        {
+          "domain": "example.com",
+          "record_found": true,
+          "policy_used": "sp"
+        }
+      ],
+      "spf_alignment": "relaxed",
+      "dkim_alignment": "relaxed",
+      "failure_options": "0",
+      "report_uris": ["mailto:dmarc@example.com"],
+      "failure_uris": ["mailto:dmarc-fail@example.com"]
     }
   }
 }
+```
+
+## 🔍 Enhanced DMARC Validation
+
+The DMARC validation now provides comprehensive domain hierarchy tracking and proper subdomain policy inheritance:
+
+### Domain Hierarchy Lookup
+- **Automatic Traversal**: When a subdomain has no DMARC record, the system automatically checks parent domains
+- **Complete Tracking**: Every attempted domain lookup is recorded in the `details` array
+- **Error Handling**: Distinguishes between "no record found" (continues traversal) and critical DNS errors (stops)
+
+### Subdomain Policy Inheritance
+- **Policy Selection**: Automatically applies the correct policy (`p=` or `sp=`) based on domain inheritance
+- **RFC 7489 Compliant**: Follows RFC 7489 specifications for subdomain policy handling
+- **Detailed Results**: Shows which policy was applied and where the record was found
+
+### Example Hierarchy Traversal
+For an email from `user@sub.example.com`:
+
+1. **First Attempt**: `sub.example.com` → No DMARC record found
+2. **Second Attempt**: `example.com` → DMARC record found with `sp=quarantine`
+3. **Result**: Applies quarantine policy (subdomain policy) to the subdomain
+
+The `details` array shows:
+```json
+"details": [
+  {
+    "domain": "sub.example.com",
+    "record_found": false,
+    "error": "dmarc: no policy found for domain"
+  },
+  {
+    "domain": "example.com", 
+    "record_found": true,
+    "policy_used": "sp"
+  }
+]
 ```
 
 ---
