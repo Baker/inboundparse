@@ -1294,7 +1294,7 @@
             "refId": "B"
           },
           {
-            "expr": "rate(webhook_retries_total[5m])",
+            "expr": "rate(webhook_retry_attempts_total[5m])",
             "interval": "",
             "legendFormat": "{{success}} retries/sec",
             "refId": "C"

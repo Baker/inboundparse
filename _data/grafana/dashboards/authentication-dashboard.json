@@ -731,37 +731,37 @@
         },
         "targets": [
           {
-            "expr": "histogram_quantile(0.95, rate(spf_duration_seconds_bucket[5m]))",
+            "expr": "histogram_quantile(0.95, rate(spf_check_duration_seconds_bucket[5m]))",
             "interval": "",
             "legendFormat": "SPF P95",
             "refId": "A"
           },
           {
-            "expr": "histogram_quantile(0.50, rate(spf_duration_seconds_bucket[5m]))",
+            "expr": "histogram_quantile(0.50, rate(spf_check_duration_seconds_bucket[5m]))",
             "interval": "",
             "legendFormat": "SPF P50",
             "refId": "B"
           },
           {
-            "expr": "histogram_quantile(0.95, rate(dkim_duration_seconds_bucket[5m]))",
+            "expr": "histogram_quantile(0.95, rate(dkim_check_duration_seconds_bucket[5m]))",
             "interval": "",
             "legendFormat": "DKIM P95",
             "refId": "C"
           },
           {
-            "expr": "histogram_quantile(0.50, rate(dkim_duration_seconds_bucket[5m]))",
+            "expr": "histogram_quantile(0.50, rate(dkim_check_duration_seconds_bucket[5m]))",
             "interval": "",
             "legendFormat": "DKIM P50",
             "refId": "D"
           },
           {
-            "expr": "histogram_quantile(0.95, rate(dmarc_duration_seconds_bucket[5m]))",
+            "expr": "histogram_quantile(0.95, rate(dmarc_check_duration_seconds_bucket[5m]))",
             "interval": "",
             "legendFormat": "DMARC P95",
             "refId": "E"
           },
           {
-            "expr": "histogram_quantile(0.50, rate(dmarc_duration_seconds_bucket[5m]))",
+            "expr": "histogram_quantile(0.50, rate(dmarc_check_duration_seconds_bucket[5m]))",
             "interval": "",
             "legendFormat": "DMARC P50",
             "refId": "F"
