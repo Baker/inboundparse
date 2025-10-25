@@ -23,7 +23,7 @@ func TestExtractDomainFromEmail(t *testing.T) {
 func TestSPFChecker_CheckSPF_NoRemoteIP(t *testing.T) {
 	checker := NewSPFChecker()
 
-	result, err := checker.CheckSPF(context.Background(), nil, "example.com", "test@example.com")
+	result, err := checker.CheckSPF(context.Background(), nil, "example.com", "test@example.com", &MockLogger{})
 	if err != nil {
 		t.Fatalf("Expected no error, got %v", err)
 	}
@@ -46,7 +46,7 @@ func TestSPFChecker_CheckSPF_NoDomain(t *testing.T) {
 	checker := NewSPFChecker()
 
 	remoteIP := net.ParseIP("192.168.1.1")
-	result, err := checker.CheckSPF(context.Background(), remoteIP, "", "test@")
+	result, err := checker.CheckSPF(context.Background(), remoteIP, "", "test@", &MockLogger{})
 	if err != nil {
 		t.Fatalf("Expected no error, got %v", err)
 	}
@@ -69,7 +69,7 @@ func TestSPFChecker_CheckSPF_ValidDomain(t *testing.T) {
 	checker := NewSPFChecker()
 
 	remoteIP := net.ParseIP("192.168.1.1")
-	result, err := checker.CheckSPF(context.Background(), remoteIP, "example.com", "test@example.com")
+	result, err := checker.CheckSPF(context.Background(), remoteIP, "example.com", "test@example.com", &MockLogger{})
 	if err != nil {
 		t.Fatalf("Expected no error, got %v", err)
 	}
@@ -90,7 +90,7 @@ func TestSPFChecker_CheckSPF_WithError(t *testing.T) {
 
 	// Test with a domain that might cause SPF lookup errors
 	remoteIP := net.ParseIP("192.168.1.1")
-	result, err := checker.CheckSPF(context.Background(), remoteIP, "nonexistent-domain-that-should-fail.com", "test@nonexistent-domain-that-should-fail.com")
+	result, err := checker.CheckSPF(context.Background(), remoteIP, "nonexistent-domain-that-should-fail.com", "test@nonexistent-domain-that-should-fail.com", &MockLogger{})
 	if err != nil {
 		t.Fatalf("Expected no error, got %v", err)
 	}
@@ -106,7 +106,7 @@ func TestSPFChecker_CheckSPF_WithInvalidIP(t *testing.T) {
 
 	// Test with an invalid IP address
 	remoteIP := net.ParseIP("invalid-ip")
-	result, err := checker.CheckSPF(context.Background(), remoteIP, "example.com", "test@example.com")
+	result, err := checker.CheckSPF(context.Background(), remoteIP, "example.com", "test@example.com", &MockLogger{})
 	if err != nil {
 		t.Fatalf("Expected no error, got %v", err)
 	}
@@ -122,7 +122,7 @@ func TestSPFChecker_CheckSPF_WithIPv6(t *testing.T) {
 
 	// Test with IPv6 address
 	remoteIP := net.ParseIP("2001:db8::1")
-	result, err := checker.CheckSPF(context.Background(), remoteIP, "example.com", "test@example.com")
+	result, err := checker.CheckSPF(context.Background(), remoteIP, "example.com", "test@example.com", &MockLogger{})
 	if err != nil {
 		t.Fatalf("Expected no error, got %v", err)
 	}
@@ -138,7 +138,7 @@ func TestSPFChecker_CheckSPF_WithLocalhost(t *testing.T) {
 
 	// Test with localhost IP
 	remoteIP := net.ParseIP("127.0.0.1")
-	result, err := checker.CheckSPF(context.Background(), remoteIP, "example.com", "test@example.com")
+	result, err := checker.CheckSPF(context.Background(), remoteIP, "example.com", "test@example.com", &MockLogger{})
 	if err != nil {
 		t.Fatalf("Expected no error, got %v", err)
 	}
@@ -154,7 +154,7 @@ func TestSPFChecker_CheckSPF_WithPrivateIP(t *testing.T) {
 
 	// Test with private IP address
 	remoteIP := net.ParseIP("10.0.0.1")
-	result, err := checker.CheckSPF(context.Background(), remoteIP, "example.com", "test@example.com")
+	result, err := checker.CheckSPF(context.Background(), remoteIP, "example.com", "test@example.com", &MockLogger{})
 	if err != nil {
 		t.Fatalf("Expected no error, got %v", err)
 	}
@@ -169,7 +169,7 @@ func TestSPFChecker_CheckSPF_WithEmptyFrom(t *testing.T) {
 	checker := NewSPFChecker()
 
 	remoteIP := net.ParseIP("192.168.1.1")
-	result, err := checker.CheckSPF(context.Background(), remoteIP, "example.com", "")
+	result, err := checker.CheckSPF(context.Background(), remoteIP, "example.com", "", &MockLogger{})
 	if err != nil {
 		t.Fatalf("Expected no error, got %v", err)
 	}
@@ -184,7 +184,7 @@ func TestSPFChecker_CheckSPF_WithMalformedFrom(t *testing.T) {
 	checker := NewSPFChecker()
 
 	remoteIP := net.ParseIP("192.168.1.1")
-	result, err := checker.CheckSPF(context.Background(), remoteIP, "example.com", "malformed-email-address")
+	result, err := checker.CheckSPF(context.Background(), remoteIP, "example.com", "malformed-email-address", &MockLogger{})
 	if err != nil {
 		t.Fatalf("Expected no error, got %v", err)
 	}
@@ -199,7 +199,7 @@ func TestSPFChecker_CheckSPF_WithSpecialCharactersInDomain(t *testing.T) {
 	checker := NewSPFChecker()
 
 	remoteIP := net.ParseIP("192.168.1.1")
-	result, err := checker.CheckSPF(context.Background(), remoteIP, "example-with-dashes.com", "test@example-with-dashes.com")
+	result, err := checker.CheckSPF(context.Background(), remoteIP, "example-with-dashes.com", "test@example-with-dashes.com", &MockLogger{})
 	if err != nil {
 		t.Fatalf("Expected no error, got %v", err)
 	}
@@ -214,7 +214,7 @@ func TestSPFChecker_CheckSPF_WithSubdomain(t *testing.T) {
 	checker := NewSPFChecker()
 
 	remoteIP := net.ParseIP("192.168.1.1")
-	result, err := checker.CheckSPF(context.Background(), remoteIP, "sub.example.com", "test@sub.example.com")
+	result, err := checker.CheckSPF(context.Background(), remoteIP, "sub.example.com", "test@sub.example.com", &MockLogger{})
 	if err != nil {
 		t.Fatalf("Expected no error, got %v", err)
 	}

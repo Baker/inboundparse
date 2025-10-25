@@ -4,11 +4,11 @@ import (
 	"context"
 	"fmt"
 	"inboundparse/internal/domain"
+	"inboundparse/internal/observability"
 	"strings"
 
 	"github.com/emersion/go-msgauth/dmarc"
 	"github.com/mnako/letters"
-	"github.com/rs/zerolog/log"
 )
 
 // dmarcChecker implements DMARCChecker interface
@@ -20,10 +20,10 @@ func NewDMARCChecker() DMARCChecker {
 }
 
 // CheckDMARC performs DMARC authentication check with hierarchical domain lookup following RFC 7489
-func (d *dmarcChecker) CheckDMARC(ctx context.Context, rawMessage string, headers letters.Headers, spfResult *domain.SPFResult, dkimResult *domain.DKIMResult) (*domain.DMARCResult, error) {
+func (d *dmarcChecker) CheckDMARC(ctx context.Context, rawMessage string, headers letters.Headers, spfResult *domain.SPFResult, dkimResult *domain.DKIMResult, logger observability.Logger) (*domain.DMARCResult, error) {
 	// Extract domain from From header (RFC5322.From) - this is what DMARC protects
 	if len(headers.From) == 0 || headers.From[0] == nil || len(headers.From[0].Address) == 0 {
-		log.Debug().Msg("DMARC check: No From header found")
+		logger.Debug().Msg("DMARC check: No From header found")
 		return &domain.DMARCResult{
 			Result: "none",
 			Raw:    "No From header found",
@@ -34,7 +34,7 @@ func (d *dmarcChecker) CheckDMARC(ctx context.Context, rawMessage string, header
 	// RFC 7489: The domain in the RFC5322.From field is the primary identifier
 	fromDomain := ExtractDomainFromEmail(fromHeader)
 	if fromDomain == "" {
-		log.Debug().
+		logger.Debug().
 			Str("from_header", fromHeader).
 			Msg("DMARC check: No domain found in From header")
 		return &domain.DMARCResult{
@@ -46,7 +46,7 @@ func (d *dmarcChecker) CheckDMARC(ctx context.Context, rawMessage string, header
 	// Look up DMARC policy with domain hierarchy traversal
 	record, actualDomain, err := d.lookupDMARCRecord(fromDomain)
 	if err != nil {
-		log.Warn().
+		logger.Warn().
 			Err(err).
 			Str("domain", fromDomain).
 			Msg("DMARC lookup error")
@@ -58,7 +58,7 @@ func (d *dmarcChecker) CheckDMARC(ctx context.Context, rawMessage string, header
 	}
 
 	if record == nil {
-		log.Debug().
+		logger.Debug().
 			Str("domain", fromDomain).
 			Msg("DMARC check: No record found")
 		return &domain.DMARCResult{
@@ -118,7 +118,7 @@ func (d *dmarcChecker) CheckDMARC(ctx context.Context, rawMessage string, header
 	rawMsg := fmt.Sprintf("DMARC evaluation for domain %s (policy found at %s): policy=%s, SPF pass=%v aligned=%v, DKIM pass=%v aligned=%v, result=%s",
 		fromDomain, actualDomain, string(record.Policy), spfPass, spfAligned, dkimPass, dkimAligned, result)
 
-	log.Debug().
+	logger.Debug().
 		Str("result", result).
 		Str("domain", fromDomain).
 		Str("actual_domain", actualDomain).

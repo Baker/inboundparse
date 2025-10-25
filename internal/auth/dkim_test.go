@@ -16,7 +16,7 @@ Date: Mon, 01 Jan 2024 12:00:00 +0000
 
 This is a test message.`
 
-	result, err := checker.CheckDKIM(context.Background(), rawMessage)
+	result, err := checker.CheckDKIM(context.Background(), rawMessage, &MockLogger{})
 	if err != nil {
 		t.Fatalf("Expected no error, got %v", err)
 	}
@@ -41,7 +41,7 @@ This is a test message.`
 func TestDKIMChecker_CheckDKIM_EmptyMessage(t *testing.T) {
 	checker := NewDKIMChecker()
 
-	result, err := checker.CheckDKIM(context.Background(), "")
+	result, err := checker.CheckDKIM(context.Background(), "", &MockLogger{})
 	if err != nil {
 		t.Fatalf("Expected no error, got %v", err)
 	}
@@ -57,7 +57,7 @@ func TestDKIMChecker_CheckDKIM_InvalidMessage(t *testing.T) {
 	// Create an invalid message that might cause parsing issues
 	rawMessage := "invalid message content"
 
-	result, err := checker.CheckDKIM(context.Background(), rawMessage)
+	result, err := checker.CheckDKIM(context.Background(), rawMessage, &MockLogger{})
 	if err != nil {
 		t.Fatalf("Expected no error, got %v", err)
 	}
@@ -80,7 +80,7 @@ DKIM-Signature: v=1; a=rsa-sha256; d=example.com; s=selector2; c=relaxed/relaxed
 
 This is a test message with multiple DKIM signatures.`
 
-	result, err := checker.CheckDKIM(context.Background(), rawMessage)
+	result, err := checker.CheckDKIM(context.Background(), rawMessage, &MockLogger{})
 	if err != nil {
 		t.Fatalf("Expected no error, got %v", err)
 	}
@@ -141,7 +141,7 @@ DKIM-Signature: v=1; a=rsa-sha256; d=example.com; s=selector; c=relaxed/relaxed;
 
 This is a test message with a valid DKIM signature.`
 
-	result, err := checker.CheckDKIM(context.Background(), rawMessage)
+	result, err := checker.CheckDKIM(context.Background(), rawMessage, &MockLogger{})
 	if err != nil {
 		t.Fatalf("Expected no error, got %v", err)
 	}
@@ -169,7 +169,7 @@ DKIM-Signature: v=1; a=rsa-sha256; d=example.com; s=selector; c=relaxed/relaxed;
 
 This is a test message with an invalid DKIM signature.`
 
-	result, err := checker.CheckDKIM(context.Background(), rawMessage)
+	result, err := checker.CheckDKIM(context.Background(), rawMessage, &MockLogger{})
 	if err != nil {
 		t.Fatalf("Expected no error, got %v", err)
 	}
@@ -196,7 +196,7 @@ DKIM-Signature: v=1; a=rsa-sha256; d=example.com; s=selector; c=relaxed/relaxed;
 
 This is a test message with a malformed DKIM signature.`
 
-	result, err := checker.CheckDKIM(context.Background(), rawMessage)
+	result, err := checker.CheckDKIM(context.Background(), rawMessage, &MockLogger{})
 	if err != nil {
 		t.Fatalf("Expected no error, got %v", err)
 	}

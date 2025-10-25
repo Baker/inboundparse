@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"inboundparse/internal/domain"
+	"inboundparse/internal/observability"
 	"net"
 	"strings"
 
@@ -20,50 +21,53 @@ func NewSPFChecker() SPFChecker {
 }
 
 // CheckSPF performs SPF authentication check following RFC 7208
-func (s *spfChecker) CheckSPF(ctx context.Context, remoteIP net.IP, domainName, from string) (*domain.SPFResult, error) {
+func (s *spfChecker) CheckSPF(ctx context.Context, remoteIP net.IP, domainName, from string, logger observability.Logger) (*domain.SPFResult, error) {
 	if remoteIP == nil {
-		log.Warn().Msg("SPF check: Failed to get remote IP")
+		logger.Warn().Msg("SPF check: Failed to get remote IP")
 		return &domain.SPFResult{
-			Result:  "temperror",
-			Raw:     "Failed to get remote IP",
-			Problem: "No remote IP address available for SPF evaluation",
-			Sender:  from,
+			Result:    "temperror",
+			Raw:       "Failed to get remote IP",
+			Problem:   "No remote IP address available for SPF evaluation",
+			Sender:    from,
+			IpAddress: remoteIP.String(),
 		}, nil
 	}
 
 	if domainName == "" {
-		log.Debug().
+		logger.Debug().
 			Str("from", from).
 			Msg("SPF check: No domain found in sender address")
 		return &domain.SPFResult{
-			Result:  "none",
-			Raw:     "No domain found in sender address",
-			Problem: "Unable to extract domain from MAIL FROM identity",
-			Sender:  from,
+			Result:    "none",
+			Raw:       "No domain found in sender address",
+			Problem:   "Unable to extract domain from MAIL FROM identity",
+			Sender:    from,
+			IpAddress: remoteIP.String(),
 		}, nil
 	}
 
 	// RFC 7208 Section 2.4: Check MAIL FROM identity
 	result, mechanism, err := spf.CheckHost(remoteIP, domainName, from)
 	if err != nil {
-		log.Warn().
+		logger.Warn().
 			Err(err).
 			Str("domain", domainName).
 			Str("remote_ip", remoteIP.String()).
 			Str("identity", from).
 			Msg("SPF check error")
 		return &domain.SPFResult{
-			Result:  "temperror",
-			Raw:     fmt.Sprintf("SPF check error: %v", err),
-			Problem: fmt.Sprintf("DNS lookup or processing error: %v", err),
-			Sender:  from,
+			Result:    "temperror",
+			Raw:       fmt.Sprintf("SPF check error: %v", err),
+			Problem:   fmt.Sprintf("DNS lookup or processing error: %v", err),
+			Sender:    from,
+			IpAddress: remoteIP.String(),
 		}, nil
 	}
 
 	// Extract explanation if available (RFC 7208 Section 6.2)
 	explanation := s.extractSPFExplanation(domainName, result)
 
-	log.Debug().
+	logger.Debug().
 		Str("result", result.String()).
 		Str("domain", domainName).
 		Str("remote_ip", remoteIP.String()).
@@ -78,6 +82,7 @@ func (s *spfChecker) CheckSPF(ctx context.Context, remoteIP net.IP, domainName, 
 		Mechanism:   mechanism,
 		Explanation: explanation,
 		Sender:      from,
+		IpAddress:   remoteIP.String(),
 	}, nil
 }
 

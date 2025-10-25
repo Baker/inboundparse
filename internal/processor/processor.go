@@ -171,7 +171,7 @@ func (mp *MessageProcessor) performAuthenticationChecks(ctx context.Context, raw
 
 	// SPF Check
 	if mp.config.EnableSPF {
-		spfResult, err := mp.authChecker.CheckSPF(ctx, remoteIP, domain, from)
+		spfResult, err := mp.authChecker.CheckSPF(ctx, remoteIP, domain, from, mp.logger)
 		if err != nil {
 			mp.logger.Warn().
 				Err(err).
@@ -189,7 +189,7 @@ func (mp *MessageProcessor) performAuthenticationChecks(ctx context.Context, raw
 
 	// DKIM Check
 	if mp.config.EnableDKIM {
-		dkimResult, err := mp.authChecker.CheckDKIM(ctx, rawMessage)
+		dkimResult, err := mp.authChecker.CheckDKIM(ctx, rawMessage, mp.logger)
 		if err != nil {
 			mp.logger.Warn().
 				Err(err).
@@ -206,7 +206,7 @@ func (mp *MessageProcessor) performAuthenticationChecks(ctx context.Context, raw
 
 	// DMARC Check - pass previously computed results to avoid redundant checks
 	if mp.config.EnableDMARC {
-		dmarcResult, err := mp.authChecker.CheckDMARC(ctx, rawMessage, headers, results.SPF, results.DKIM)
+		dmarcResult, err := mp.authChecker.CheckDMARC(ctx, rawMessage, headers, results.SPF, results.DKIM, mp.logger)
 		if err != nil {
 			mp.logger.Warn().
 				Err(err).

@@ -25,15 +25,15 @@ type mockAuthChecker struct {
 	dmarcErr    error
 }
 
-func (m *mockAuthChecker) CheckSPF(ctx context.Context, remoteIP net.IP, domainName, from string) (*domain.SPFResult, error) {
+func (m *mockAuthChecker) CheckSPF(ctx context.Context, remoteIP net.IP, domainName, from string, logger observability.Logger) (*domain.SPFResult, error) {
 	return m.spfResult, m.spfErr
 }
 
-func (m *mockAuthChecker) CheckDKIM(ctx context.Context, rawMessage string) (*domain.DKIMResult, error) {
+func (m *mockAuthChecker) CheckDKIM(ctx context.Context, rawMessage string, logger observability.Logger) (*domain.DKIMResult, error) {
 	return m.dkimResult, m.dkimErr
 }
 
-func (m *mockAuthChecker) CheckDMARC(ctx context.Context, rawMessage string, headers letters.Headers, spfResult *domain.SPFResult, dkimResult *domain.DKIMResult) (*domain.DMARCResult, error) {
+func (m *mockAuthChecker) CheckDMARC(ctx context.Context, rawMessage string, headers letters.Headers, spfResult *domain.SPFResult, dkimResult *domain.DKIMResult, logger observability.Logger) (*domain.DMARCResult, error) {
 	return m.dmarcResult, m.dmarcErr
 }
 

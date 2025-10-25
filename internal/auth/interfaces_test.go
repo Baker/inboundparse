@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"inboundparse/internal/domain"
+	"inboundparse/internal/observability"
 	"net"
 	"testing"
 
@@ -15,7 +16,7 @@ type mockSPFChecker struct {
 	err    error
 }
 
-func (m *mockSPFChecker) CheckSPF(ctx context.Context, remoteIP net.IP, domainName, from string) (*domain.SPFResult, error) {
+func (m *mockSPFChecker) CheckSPF(ctx context.Context, remoteIP net.IP, domainName, from string, logger observability.Logger) (*domain.SPFResult, error) {
 	return m.result, m.err
 }
 
@@ -24,7 +25,7 @@ type mockDKIMChecker struct {
 	err    error
 }
 
-func (m *mockDKIMChecker) CheckDKIM(ctx context.Context, rawMessage string) (*domain.DKIMResult, error) {
+func (m *mockDKIMChecker) CheckDKIM(ctx context.Context, rawMessage string, logger observability.Logger) (*domain.DKIMResult, error) {
 	return m.result, m.err
 }
 
@@ -33,7 +34,7 @@ type mockDMARCChecker struct {
 	err    error
 }
 
-func (m *mockDMARCChecker) CheckDMARC(ctx context.Context, rawMessage string, headers letters.Headers, spfResult *domain.SPFResult, dkimResult *domain.DKIMResult) (*domain.DMARCResult, error) {
+func (m *mockDMARCChecker) CheckDMARC(ctx context.Context, rawMessage string, headers letters.Headers, spfResult *domain.SPFResult, dkimResult *domain.DKIMResult, logger observability.Logger) (*domain.DMARCResult, error) {
 	return m.result, m.err
 }
 
@@ -48,7 +49,7 @@ func TestAuthChecker_CheckSPF_Enabled(t *testing.T) {
 	remoteIP := net.ParseIP("192.168.1.1")
 
 	// Test with a domain that should have SPF records
-	result, err := authChecker.CheckSPF(ctx, remoteIP, "google.com", "test@google.com")
+	result, err := authChecker.CheckSPF(ctx, remoteIP, "google.com", "test@google.com", &MockLogger{})
 	if err != nil {
 		t.Fatalf("Expected no error, got %v", err)
 	}
@@ -72,7 +73,7 @@ func TestAuthChecker_CheckSPF_Disabled(t *testing.T) {
 	ctx := context.Background()
 	remoteIP := net.ParseIP("192.168.1.1")
 
-	result, err := authChecker.CheckSPF(ctx, remoteIP, "example.com", "test@example.com")
+	result, err := authChecker.CheckSPF(ctx, remoteIP, "example.com", "test@example.com", &MockLogger{})
 	if err != nil {
 		t.Fatalf("Expected no error, got %v", err)
 	}
@@ -91,7 +92,7 @@ func TestAuthChecker_CheckDKIM_Enabled(t *testing.T) {
 
 	ctx := context.Background()
 
-	result, err := authChecker.CheckDKIM(ctx, "test message")
+	result, err := authChecker.CheckDKIM(ctx, "test message", &MockLogger{})
 	if err != nil {
 		t.Fatalf("Expected no error, got %v", err)
 	}
@@ -112,7 +113,7 @@ func TestAuthChecker_CheckDKIM_Disabled(t *testing.T) {
 
 	ctx := context.Background()
 
-	result, err := authChecker.CheckDKIM(ctx, "test message")
+	result, err := authChecker.CheckDKIM(ctx, "test message", &MockLogger{})
 	if err != nil {
 		t.Fatalf("Expected no error, got %v", err)
 	}
@@ -134,7 +135,7 @@ func TestAuthChecker_CheckDMARC_Enabled(t *testing.T) {
 	spfResult := &domain.SPFResult{Result: "pass"}
 	dkimResult := &domain.DKIMResult{Valid: true}
 
-	result, err := authChecker.CheckDMARC(ctx, "test message", headers, spfResult, dkimResult)
+	result, err := authChecker.CheckDMARC(ctx, "test message", headers, spfResult, dkimResult, &MockLogger{})
 	if err != nil {
 		t.Fatalf("Expected no error, got %v", err)
 	}
@@ -160,7 +161,7 @@ func TestAuthChecker_CheckDMARC_Disabled(t *testing.T) {
 	spfResult := &domain.SPFResult{Result: "pass"}
 	dkimResult := &domain.DKIMResult{Valid: true}
 
-	result, err := authChecker.CheckDMARC(ctx, "test message", headers, spfResult, dkimResult)
+	result, err := authChecker.CheckDMARC(ctx, "test message", headers, spfResult, dkimResult, &MockLogger{})
 	if err != nil {
 		t.Fatalf("Expected no error, got %v", err)
 	}

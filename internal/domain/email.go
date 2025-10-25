@@ -29,6 +29,7 @@ type SPFResult struct {
 	Explanation string `json:"explanation,omitempty"` // SPF explanation from DNS (RFC 7208 Section 6.2)
 	Problem     string `json:"problem,omitempty"`     // Description of any processing issues
 	Sender      string `json:"sender,omitempty"`      // The identity checked (MAIL FROM)
+	IpAddress   string `json:"ip_address,omitempty"`  // The IP address checked (from remote IP)
 }
 
 // DKIMSignatureDetail contains detailed information about a single DKIM signature

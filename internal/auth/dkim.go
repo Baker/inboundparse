@@ -4,10 +4,10 @@ import (
 	"context"
 	"fmt"
 	"inboundparse/internal/domain"
+	"inboundparse/internal/observability"
 	"strings"
 
 	"github.com/emersion/go-msgauth/dkim"
-	"github.com/rs/zerolog/log"
 )
 
 // dkimChecker implements DKIMChecker interface
@@ -19,10 +19,10 @@ func NewDKIMChecker() DKIMChecker {
 }
 
 // CheckDKIM performs DKIM authentication check following RFC 6376
-func (d *dkimChecker) CheckDKIM(ctx context.Context, rawMessage string) (*domain.DKIMResult, error) {
+func (d *dkimChecker) CheckDKIM(ctx context.Context, rawMessage string, logger observability.Logger) (*domain.DKIMResult, error) {
 	verifications, err := dkim.Verify(strings.NewReader(rawMessage))
 	if err != nil {
-		log.Warn().
+		logger.Warn().
 			Err(err).
 			Msg("DKIM verification error")
 		return &domain.DKIMResult{
@@ -65,7 +65,7 @@ func (d *dkimChecker) CheckDKIM(ctx context.Context, rawMessage string) (*domain
 		details = append(details, detail)
 	}
 
-	log.Debug().
+	logger.Debug().
 		Bool("valid", hasValidSignature).
 		Int("signature_count", len(verifications)).
 		Strs("signatures", signatures).

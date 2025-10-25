@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"inboundparse/internal/domain"
+	"inboundparse/internal/observability"
 	"net"
 
 	"github.com/mnako/letters"
@@ -10,17 +11,17 @@ import (
 
 // SPFChecker interface for SPF validation
 type SPFChecker interface {
-	CheckSPF(ctx context.Context, remoteIP net.IP, domainName, from string) (*domain.SPFResult, error)
+	CheckSPF(ctx context.Context, remoteIP net.IP, domainName, from string, logger observability.Logger) (*domain.SPFResult, error)
 }
 
 // DKIMChecker interface for DKIM validation
 type DKIMChecker interface {
-	CheckDKIM(ctx context.Context, rawMessage string) (*domain.DKIMResult, error)
+	CheckDKIM(ctx context.Context, rawMessage string, logger observability.Logger) (*domain.DKIMResult, error)
 }
 
 // DMARCChecker interface for DMARC validation
 type DMARCChecker interface {
-	CheckDMARC(ctx context.Context, rawMessage string, headers letters.Headers, spfResult *domain.SPFResult, dkimResult *domain.DKIMResult) (*domain.DMARCResult, error)
+	CheckDMARC(ctx context.Context, rawMessage string, headers letters.Headers, spfResult *domain.SPFResult, dkimResult *domain.DKIMResult, logger observability.Logger) (*domain.DMARCResult, error)
 }
 
 // AuthChecker combines all authentication checkers
@@ -56,25 +57,25 @@ type authChecker struct {
 }
 
 // CheckSPF performs SPF authentication check
-func (a *authChecker) CheckSPF(ctx context.Context, remoteIP net.IP, domainName, from string) (*domain.SPFResult, error) {
+func (a *authChecker) CheckSPF(ctx context.Context, remoteIP net.IP, domainName, from string, logger observability.Logger) (*domain.SPFResult, error) {
 	if !a.config.EnableSPF {
 		return nil, nil
 	}
-	return a.spf.CheckSPF(ctx, remoteIP, domainName, from)
+	return a.spf.CheckSPF(ctx, remoteIP, domainName, from, logger)
 }
 
 // CheckDKIM performs DKIM authentication check
-func (a *authChecker) CheckDKIM(ctx context.Context, rawMessage string) (*domain.DKIMResult, error) {
+func (a *authChecker) CheckDKIM(ctx context.Context, rawMessage string, logger observability.Logger) (*domain.DKIMResult, error) {
 	if !a.config.EnableDKIM {
 		return nil, nil
 	}
-	return a.dkim.CheckDKIM(ctx, rawMessage)
+	return a.dkim.CheckDKIM(ctx, rawMessage, logger)
 }
 
 // CheckDMARC performs DMARC authentication check
-func (a *authChecker) CheckDMARC(ctx context.Context, rawMessage string, headers letters.Headers, spfResult *domain.SPFResult, dkimResult *domain.DKIMResult) (*domain.DMARCResult, error) {
+func (a *authChecker) CheckDMARC(ctx context.Context, rawMessage string, headers letters.Headers, spfResult *domain.SPFResult, dkimResult *domain.DKIMResult, logger observability.Logger) (*domain.DMARCResult, error) {
 	if !a.config.EnableDMARC {
 		return nil, nil
 	}
-	return a.dmarc.CheckDMARC(ctx, rawMessage, headers, spfResult, dkimResult)
+	return a.dmarc.CheckDMARC(ctx, rawMessage, headers, spfResult, dkimResult, logger)
 }
