@@ -256,44 +256,6 @@ The service sends a JSON payload to your webhook with comprehensive email data:
 }
 ```
 
-## 🔍 Enhanced DMARC Validation
-
-The DMARC validation now provides comprehensive domain hierarchy tracking and proper subdomain policy inheritance:
-
-### Domain Hierarchy Lookup
-- **Automatic Traversal**: When a subdomain has no DMARC record, the system automatically checks parent domains
-- **Complete Tracking**: Every attempted domain lookup is recorded in the `details` array
-- **Error Handling**: Distinguishes between "no record found" (continues traversal) and critical DNS errors (stops)
-
-### Subdomain Policy Inheritance
-- **Policy Selection**: Automatically applies the correct policy (`p=` or `sp=`) based on domain inheritance
-- **RFC 7489 Compliant**: Follows RFC 7489 specifications for subdomain policy handling
-- **Detailed Results**: Shows which policy was applied and where the record was found
-
-### Example Hierarchy Traversal
-For an email from `user@sub.example.com`:
-
-1. **First Attempt**: `sub.example.com` → No DMARC record found
-2. **Second Attempt**: `example.com` → DMARC record found with `sp=quarantine`
-3. **Result**: Applies quarantine policy (subdomain policy) to the subdomain
-
-The `details` array shows:
-```json
-"details": [
-  {
-    "domain": "sub.example.com",
-    "record_found": false,
-    "error": "dmarc: no policy found for domain"
-  },
-  {
-    "domain": "example.com", 
-    "record_found": true,
-    "policy_used": "sp"
-  }
-]
-```
-
----
 
 ## 🤝 Contributing
 
