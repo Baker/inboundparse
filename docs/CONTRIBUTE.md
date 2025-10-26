@@ -34,7 +34,7 @@ We appreciate all kinds of contributions:
 
 ### 2. Set Up Your Environment
 
-- **Ensure you have Go >= 1.20 installed.**
+- **Ensure you have Go >= 1.24 installed.**
 - Install dependencies:
   ```bash
   make deps
@@ -43,6 +43,12 @@ We appreciate all kinds of contributions:
   ```bash
   make build
   ```
+
+**Key Dependencies:**
+- `github.com/failsafe-go/failsafe-go` - Webhook resilience patterns (retry, rate limiting, circuit breaker)
+- `github.com/rs/zerolog` - High-performance structured logging
+- `github.com/getsentry/sentry-go` - Error tracking and performance monitoring
+- `github.com/prometheus/client_golang` - Metrics collection
 
 ### 3. Run Tests
 
@@ -62,13 +68,17 @@ We appreciate all kinds of contributions:
 - **Keep your branch up to date**:  
   Rebase or merge `upstream/main` regularly to minimize conflicts.
 
-- **Follow Go formatting**:  
-  Run `go fmt ./...` and `go vet ./...` before submitting.
+- **Format your code**:  
+  ```bash
+  make format
+  ```
 
 - **Lint your code**:  
   ```bash
   make lint
   ```
+
+_We also have `make fl` which does both._
 
 - **Include tests**:  
   Add or update tests for new features and bug fixes.
@@ -91,7 +101,7 @@ We appreciate all kinds of contributions:
 
 ## 📝 Code Style & Guidelines
 
-- Write clean, idiomatic Go (see `make lint`).
+- Write clean, idiomatic Go (see `make fl`).
 - Prefer clarity over cleverness.
 - Use descriptive variable and function names.
 - Keep functions short and focused.
@@ -106,13 +116,22 @@ We appreciate all kinds of contributions:
 | ------------------- | ------------------------------ |
 | `make deps`         | Install dependencies            |
 | `make build`        | Build binaries                  |
-| `make run`          | Run server (prod config)        |
 | `make run-dev`      | Run with development settings   |
-| `make lint`         | Run linter                      |
 | `make test`         | Run tests                       |
-| `make test-coverage`| Run tests with coverage report  |
+| `make coverage`     | Run tests with coverage report  |
+| `make format`       | Format code                     |
+| `make lint`         | Run linter and vulnerability scan |
+| `make vet`          | Vet the code                    |
+| `make fl`           | Format, lint, and vet code      |
+| `make check`        | Run deps, linters, and vulncheck |
+| `make clean`        | Clean build artifacts           |
 | `make up`           | Start dev stack (Docker)        |
 | `make down`         | Stop dev stack                  |
+| `make dev`          | Restart dev stack               |
+| `make status`       | Show service status             |
+| `make verify-deps`  | Verify dependency status        |
+| `make docker-build` | Build Docker image              |
+| `make ci`           | Run CI workflow                 |
 
 
 ---

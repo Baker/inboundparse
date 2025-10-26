@@ -111,7 +111,99 @@ CaptureError(err, map[string]interface{}{
 - **Message processing errors**: Parse failures, read errors
 - **Server errors**: TLS certificate issues, startup failures
 
-## 3. Prometheus Metrics
+## 3. Webhook Reliability
+
+### Implementation
+
+- **Library**: failsafe-go (resilience patterns for Go)
+- **Features**:
+  - Automatic retry with exponential backoff
+  - Rate limiting with token bucket algorithm
+  - Circuit breaker pattern for fault tolerance
+  - Configurable retry and rate limit policies
+
+### Retry Logic
+
+Webhook requests automatically retry on failure with exponential backoff:
+
+- **Max Retries**: Configurable maximum retry attempts (default: 3)
+- **Initial Delay**: Starting delay between retries (default: 1 second)
+- **Max Delay**: Maximum delay cap (default: 30 seconds)
+- **Multiplier**: Exponential backoff multiplier (default: 2.0)
+
+Example retry sequence with defaults:
+- Attempt 1: Immediate
+- Attempt 2: 1 second delay
+- Attempt 3: 2 second delay
+- Attempt 4: 4 second delay
+
+### Rate Limiting
+
+Smooth rate limiting using token bucket algorithm:
+
+- **Rate Limit**: Requests per second (default: 10)
+- **Burst Capacity**: Burst allowance (default: 20)
+- **Algorithm**: Token bucket for smooth rate limiting
+
+### Circuit Breaker
+
+Automatic service degradation to prevent cascading failures:
+
+- **Failure Threshold**: 5 consecutive failures trigger circuit open
+- **Success Threshold**: 3 consecutive successes reset circuit
+- **States**: Closed (normal), Open (failing), Half-Open (testing)
+
+### Configuration
+
+```bash
+# Retry configuration
+WEBHOOK_MAX_RETRIES=5
+WEBHOOK_RETRY_DELAY=2
+WEBHOOK_MAX_RETRY_DELAY=60
+WEBHOOK_RETRY_MULTIPLIER=1.5
+
+# Rate limiting
+WEBHOOK_RATE_LIMIT=20
+WEBHOOK_RATE_BURST=50
+```
+
+Or via flags:
+
+```bash
+./inboundparse \
+  -webhook-max-retries=5 \
+  -webhook-retry-delay=2 \
+  -webhook-max-retry-delay=60 \
+  -webhook-retry-multiplier=1.5 \
+  -webhook-rate-limit=20 \
+  -webhook-rate-burst=50
+```
+
+### Use Cases
+
+**High Volume Processing:**
+```bash
+WEBHOOK_RATE_LIMIT=100
+WEBHOOK_RATE_BURST=200
+WEBHOOK_MAX_RETRIES=5
+```
+
+**Sensitive Downstream Services:**
+```bash
+WEBHOOK_RATE_LIMIT=5
+WEBHOOK_RATE_BURST=10
+WEBHOOK_MAX_RETRIES=10
+WEBHOOK_RETRY_DELAY=5
+```
+
+**Fast Recovery:**
+```bash
+WEBHOOK_MAX_RETRIES=3
+WEBHOOK_RETRY_DELAY=1
+WEBHOOK_RETRY_MULTIPLIER=1.2
+```
+
+## 4. Prometheus Metrics
 
 ### Implementation
 

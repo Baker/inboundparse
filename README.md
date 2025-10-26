@@ -39,7 +39,9 @@ A SMTP server that receives emails from any domain without authentication and fo
 ### Webhook Integration
 - 🔐 **HTTP Basic Auth**: Secure webhook authentication
 - 📨 **Rich Payload**: Complete email data including headers and attachments
-- 🔁 **Error Handling**: Robust webhook delivery with retry logic
+- 🔁 **Reliability Features**: Automatic retry with exponential backoff, rate limiting, and circuit breaker
+- 🛡️ **Fault Tolerance**: Circuit breaker pattern prevents cascading failures
+- ⚡ **Rate Limiting**: Configurable requests per second to protect downstream endpoints
 - ✂️ **Content Processing**: Parsed text and HTML content extraction
 
 ## Quick Start
@@ -116,6 +118,12 @@ Usage of ./inboundparse:
   -webhook string           Webhook URL for email payloads (required)
   -webhook-user string      Basic auth username for webhook (optional)
   -webhook-pass string      Basic auth password for webhook (optional)
+  -webhook-max-retries int  Maximum webhook retry attempts (default 3)
+  -webhook-retry-delay int  Initial webhook retry delay in seconds (default 1)
+  -webhook-max-retry-delay int Maximum webhook retry delay in seconds (default 30)
+  -webhook-retry-multiplier float Webhook retry delay multiplier (default 2.0)
+  -webhook-rate-limit int   Webhook requests per second rate limit (default 10)
+  -webhook-rate-burst int   Webhook rate limit burst capacity (default 20)
   -name string              SMTP server name (default "mx.inboundparse.com")
   -max-size int             Max message size bytes (default 10485760)
   -read-timeout int         Read timeout (seconds, default 30)
@@ -143,49 +151,50 @@ Usage of ./inboundparse:
 
 You can configure InboundParse using environment variables or command line flags:
 
-#### Core Configuration
-- `WEBHOOK_URL` - Webhook URL (required)
-- `WEBHOOK_USER` - Basic auth username for webhook
-- `WEBHOOK_PASS` - Basic auth password for webhook
-- `LISTEN_ADDR` - SMTP server listen address (default: "0.0.0.0:25")
-- `LISTEN_ADDR_TLS` - TLS server listen address (default: "0.0.0.0:587")
-- `SERVER_NAME` - SMTP server name (default: "mx.inboundparse.com")
+#### Core Environment Variables
 
-#### TLS Configuration
-- `CERT_FILE` - TLS certificate file path
-- `KEY_FILE` - TLS private key file path
+- `WEBHOOK_URL`           Webhook URL to receive email payloads (**required**)
+- `WEBHOOK_USER`          Basic auth username for the webhook (optional)
+- `WEBHOOK_PASS`          Basic auth password for the webhook (optional)
 
-#### Feature Toggles
-- `ENABLE_SPF` - Enable SPF validation (default: true)
-- `ENABLE_DKIM` - Enable DKIM validation (default: true)
-- `ENABLE_DMARC` - Enable DMARC validation (default: true)
-- `VERBOSE` - Enable verbose logging (default: false)
+#### Webhook Reliability Configuration
 
-#### Logging Configuration
-- `LOG_LEVEL` - Log level (debug, info, warn, error) (default: "info")
-- `LOG_FORMAT` - Log format (json, console) (default: "json")
-- `LOG_OUTPUT` - Log output destination (default: "stdout")
+- `WEBHOOK_MAX_RETRIES`      Maximum retry attempts (default: `3`)
+- `WEBHOOK_RETRY_DELAY`      Initial retry delay in seconds (default: `1`)
+- `WEBHOOK_MAX_RETRY_DELAY`  Maximum retry delay in seconds (default: `30`)
+- `WEBHOOK_RETRY_MULTIPLIER` Exponential backoff multiplier (default: `2.0`)
+- `WEBHOOK_RATE_LIMIT`       Requests per second rate limit (default: `10`)
+- `WEBHOOK_RATE_BURST`       Rate limit burst capacity (default: `20`)
+- `LISTEN_ADDR`           SMTP listen address (default: `0.0.0.0:25`)
+- `LISTEN_ADDR_TLS`       TLS listen address (default: `0.0.0.0:587`)
+- `SERVER_NAME`           SMTP service name for banner (default: `mx.inboundparse.com`)
 
-#### Metrics Configuration
-- `ENABLE_METRICS` - Enable Prometheus metrics collection (default: false)
-- `METRICS_ADDR` - Metrics server listen address (default: "0.0.0.0:9090")
-- `METRICS_API_KEY` - Metrics API key
-- `METRICS_USERNAME` - Metrics username
-- `METRICS_PASSWORD` - Metrics password
+#### TLS Settings
 
-#### Sentry Configuration
-- `ENABLE_SENTRY` - Enable Sentry error tracking (default: false)
-- `SENTRY_DSN` - Sentry DSN for error tracking
-- `SENTRY_ENV` - Sentry environment (default: "production")
-- `SENTRY_RELEASE` - Sentry release version
+- `CERT_FILE`             Path to TLS certificate file (optional)
+- `KEY_FILE`              Path to TLS private key file (optional)
 
-#### Automatic Certificate Management
-- `ACME_SH_EMAIL` - Email for Let's Encrypt account registration
-- `MXDOMAIN` - Domain for SSL certificate (default: "mx.inboundparse.com")
-- `DNS_API` - DNS API provider (default: "dns_cf")
-- `CF_Token` - Cloudflare API token (required for dns_cf)
-- `CF_Zone_ID` - Cloudflare Zone ID (required for dns_cf)
+#### Feature Flags
 
+- `ENABLE_SPF`            Enable SPF checking (`true`/`false`, default: `true`)
+- `ENABLE_DKIM`           Enable DKIM checking (`true`/`false`, default: `true`)
+- `ENABLE_DMARC`          Enable DMARC checking (`true`/`false`, default: `true`)
+- `VERBOSE`               Enable verbose (debug) logging (`true`/`false`, default: `false`)
+
+#### Metrics (Prometheus)
+
+- `ENABLE_METRICS`        Enable Prometheus metrics endpoint (`true`/`false`, default: `false`)
+- `METRICS_ADDR`          Metrics endpoint listen address (default: `0.0.0.0:9090`)
+- `METRICS_API_KEY`       Bearer token used for metrics endpoint authentication (optional)
+- `METRICS_USERNAME`      Username for metrics endpoint basic auth (optional)
+- `METRICS_PASSWORD`      Password for metrics endpoint basic auth (optional)
+
+#### Sentry Error Tracking
+
+- `ENABLE_SENTRY`         Enable Sentry error tracking (`true`/`false`, default: `false`)
+- `SENTRY_DSN`            Sentry DSN (project key, required if Sentry enabled)
+- `SENTRY_ENV`            Sentry environment name (default: `production`)
+- `SENTRY_RELEASE`        Sentry release version (optional)
 
 ## Webhook Payload
 
@@ -240,7 +249,7 @@ The service sends a JSON payload to your webhook with comprehensive email data:
 
 ## 🤝 Contributing
 
-Contributions of all kinds are welcome! See [CONTRIBUTING.md](./docs/CONTRIBUTING.md) for guidelines, and don’t hesitate to open issues, fork, or create PRs.
+Contributions of all kinds are welcome! See [CONTRIBUTE.md](./docs/CONTRIBUTE.md) for guidelines, and don’t hesitate to open issues, fork, or create PRs.
 
 ---
 
