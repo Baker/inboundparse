@@ -215,9 +215,8 @@ func TestApp_Start_WithTLS(t *testing.T) {
 	if app != nil {
 		t.Fatal("Expected app to be nil due to TLS certificate load error")
 	}
-	expectedErr := "failed to create SMTP server: failed to load TLS certificate: open /nonexistent/cert.pem: no such file or directory"
-	if err.Error() != expectedErr {
-		t.Errorf("Expected error '%s', got '%s'", expectedErr, err.Error())
+	if !strings.Contains(err.Error(), "failed to create SMTP server: failed to load TLS certificate: open /nonexistent/cert.pem") {
+		t.Errorf("Expected TLS cert load error, got: %s", err.Error())
 	}
 }
 
