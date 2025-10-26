@@ -8,7 +8,22 @@ import (
 	"inboundparse/internal/observability"
 	"net/http"
 	"time"
+
+	"github.com/failsafe-go/failsafe-go"
+	"github.com/failsafe-go/failsafe-go/circuitbreaker"
+	"github.com/failsafe-go/failsafe-go/ratelimiter"
+	"github.com/failsafe-go/failsafe-go/retrypolicy"
 )
+
+// httpError represents an HTTP error response
+type httpError struct {
+	statusCode int
+	message    string
+}
+
+func (e *httpError) Error() string {
+	return e.message
+}
 
 // WebhookSender interface for sending webhook requests
 type WebhookSender interface {
@@ -21,23 +36,87 @@ type WebhookConfig struct {
 	Username string
 	Password string
 	Timeout  time.Duration
+
+	// Retry configuration
+	MaxRetries      int
+	RetryDelay      time.Duration
+	MaxRetryDelay   time.Duration
+	RetryMultiplier float64
+
+	// Rate limiting configuration
+	RateLimitPerSecond int
+	RateLimitBurst     int
 }
 
 // webhookSender implements WebhookSender interface
 type webhookSender struct {
-	config  WebhookConfig
-	client  *http.Client
-	logger  observability.Logger
-	metrics observability.MetricsCollector
+	config         WebhookConfig
+	client         *http.Client
+	logger         observability.Logger
+	metrics        observability.MetricsCollector
+	retryPolicy    retrypolicy.RetryPolicy[any]
+	rateLimiter    ratelimiter.RateLimiter[any]
+	circuitBreaker circuitbreaker.CircuitBreaker[any]
 }
 
 // NewWebhookSender creates a new webhook sender
 func NewWebhookSender(config WebhookConfig, logger observability.Logger, metrics observability.MetricsCollector) WebhookSender {
+	// Set default values if not configured
+	if config.MaxRetries == 0 {
+		config.MaxRetries = 3
+	}
+	if config.RetryDelay == 0 {
+		config.RetryDelay = 1 * time.Second
+	}
+	if config.MaxRetryDelay == 0 {
+		config.MaxRetryDelay = 30 * time.Second
+	}
+	if config.RetryMultiplier == 0 {
+		config.RetryMultiplier = 2.0
+	}
+	if config.RateLimitPerSecond == 0 {
+		config.RateLimitPerSecond = 10
+	}
+	if config.RateLimitBurst == 0 {
+		config.RateLimitBurst = 20
+	}
+
+	// Create retry policy
+	retryPolicy := retrypolicy.NewBuilder[any]().
+		WithMaxRetries(config.MaxRetries).
+		WithDelay(config.RetryDelay).
+		Build()
+
+	// Create rate limiter
+	rateLimit := config.RateLimitPerSecond
+	if rateLimit < 0 {
+		rateLimit = 0
+	}
+	// Ensure rate limit is within valid uint range
+	if rateLimit > int(^uint(0)>>1) {
+		rateLimit = int(^uint(0) >> 1)
+	}
+	// Safe conversion to uint with explicit bounds checking
+	var rateLimitUint uint
+	if rateLimit >= 0 {
+		rateLimitUint = uint(rateLimit)
+	}
+	rateLimiter := ratelimiter.NewSmooth[any](rateLimitUint, time.Second)
+
+	// Create circuit breaker
+	circuitBreaker := circuitbreaker.NewBuilder[any]().
+		WithFailureThreshold(5).
+		WithSuccessThreshold(3).
+		Build()
+
 	return &webhookSender{
-		config:  config,
-		client:  &http.Client{Timeout: config.Timeout},
-		logger:  logger,
-		metrics: metrics,
+		config:         config,
+		client:         &http.Client{Timeout: config.Timeout},
+		logger:         logger,
+		metrics:        metrics,
+		retryPolicy:    retryPolicy,
+		rateLimiter:    rateLimiter,
+		circuitBreaker: circuitBreaker,
 	}
 }
 
@@ -60,6 +139,7 @@ func (w *webhookSender) SendWebhook(ctx context.Context, payload interface{}) er
 		Str("url", w.config.URL).
 		Msg("Sending webhook request")
 
+	// Create the HTTP request
 	req, err := http.NewRequestWithContext(ctx, "POST", w.config.URL, bytes.NewBuffer(jsonData))
 	if err != nil {
 		w.logger.Error().
@@ -78,15 +158,44 @@ func (w *webhookSender) SendWebhook(ctx context.Context, payload interface{}) er
 		req.SetBasicAuth(w.config.Username, w.config.Password)
 	}
 
-	resp, err := w.client.Do(req)
+	// Execute with failsafe (retry policy, rate limiter, circuit breaker)
+	var resp *http.Response
+	executor := failsafe.With(w.retryPolicy, w.rateLimiter, w.circuitBreaker)
+
+	err = executor.Run(func() error {
+		// Make the HTTP request
+		httpResp, httpErr := w.client.Do(req)
+		if httpErr != nil {
+			return httpErr
+		}
+
+		// Check for HTTP error status codes
+		if httpResp.StatusCode >= 400 {
+			if closeErr := httpResp.Body.Close(); closeErr != nil {
+				w.logger.Warn().
+					Err(closeErr).
+					Msg("Failed to close response body after error")
+			}
+			errorMsg := fmt.Sprintf("webhook returned error status: %d", httpResp.StatusCode)
+			return &httpError{
+				statusCode: httpResp.StatusCode,
+				message:    errorMsg,
+			}
+		}
+
+		resp = httpResp
+		return nil
+	})
+
 	duration := time.Since(start)
 
+	// Handle execution errors
 	if err != nil {
 		w.logger.Error().
 			Err(err).
 			Str("url", w.config.URL).
 			Dur("duration", duration).
-			Msg("Webhook request failed")
+			Msg("Webhook request failed after retries")
 
 		// Determine error type for metrics
 		errorType := "network_error"
@@ -96,6 +205,12 @@ func (w *webhookSender) SendWebhook(ctx context.Context, payload interface{}) er
 		w.metrics.TrackWebhookError(errorType)
 		return fmt.Errorf("webhook request failed: %w", err)
 	}
+
+	// Handle HTTP error responses
+	if resp == nil {
+		return fmt.Errorf("webhook request failed: no response received")
+	}
+
 	defer func() {
 		if closeErr := resp.Body.Close(); closeErr != nil {
 			w.logger.Warn().
@@ -121,20 +236,6 @@ func (w *webhookSender) SendWebhook(ctx context.Context, payload interface{}) er
 		Int64("request_size", requestSize).
 		Int64("response_size", responseSize).
 		Msg("Webhook request completed")
-
-	if resp.StatusCode >= 400 {
-		errorType := "client_error"
-		if resp.StatusCode >= 500 {
-			errorType = "server_error"
-		}
-		w.metrics.TrackWebhookError(errorType)
-
-		w.logger.Warn().
-			Int("status_code", resp.StatusCode).
-			Str("url", w.config.URL).
-			Msg("Webhook request failed with non-success status")
-		return fmt.Errorf("webhook returned error status: %d", resp.StatusCode)
-	}
 
 	return nil
 }

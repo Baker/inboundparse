@@ -74,6 +74,16 @@ func NewApp(cfg *config.Config) (*App, error) {
 		Username: cfg.WebhookUser,
 		Password: cfg.WebhookPass,
 		Timeout:  30 * time.Second,
+
+		// Retry configuration
+		MaxRetries:      cfg.WebhookMaxRetries,
+		RetryDelay:      cfg.WebhookRetryDelay,
+		MaxRetryDelay:   cfg.WebhookMaxRetryDelay,
+		RetryMultiplier: cfg.WebhookRetryMultiplier,
+
+		// Rate limiting configuration
+		RateLimitPerSecond: cfg.WebhookRateLimitPerSecond,
+		RateLimitBurst:     cfg.WebhookRateLimitBurst,
 	}, logger, metrics)
 
 	// Initialize message processor

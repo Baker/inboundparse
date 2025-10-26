@@ -28,6 +28,16 @@ type Config struct {
 	WebhookUser string
 	WebhookPass string
 
+	// Webhook Retry Configuration
+	WebhookMaxRetries      int
+	WebhookRetryDelay      time.Duration
+	WebhookMaxRetryDelay   time.Duration
+	WebhookRetryMultiplier float64
+
+	// Webhook Rate Limiting Configuration
+	WebhookRateLimitPerSecond int
+	WebhookRateLimitBurst     int
+
 	// Authentication Configuration
 	EnableSPF   bool
 	EnableDKIM  bool
@@ -166,21 +176,29 @@ func New(options ...Option) *Config {
 func LoadFromFlags() (*Config, error) {
 	// Define flags
 	var (
-		listenAddr     = flag.String("listen", DefaultListenAddr, "SMTP server listen address")
-		listenAddrTLS  = flag.String("listen-tls", DefaultListenAddrTLS, "SMTP server listen address for TLS")
-		webhookURL     = flag.String("webhook", "", "Webhook URL to send email data to")
-		webhookUser    = flag.String("webhook-user", "", "Basic auth username for webhook")
-		webhookPass    = flag.String("webhook-pass", "", "Basic auth password for webhook")
-		serverName     = flag.String("name", DefaultServerName, "SMTP server name")
-		maxMessageSize = flag.Int64("max-size", DefaultMaxMessageSize, "Maximum message size in bytes")
-		readTimeout    = flag.Int("read-timeout", int(DefaultReadTimeout.Seconds()), "Read timeout in seconds")
-		writeTimeout   = flag.Int("write-timeout", int(DefaultWriteTimeout.Seconds()), "Write timeout in seconds")
-		enableSPF      = flag.Bool("enable-spf", true, "Enable SPF validation")
-		enableDKIM     = flag.Bool("enable-dkim", true, "Enable DKIM validation")
-		enableDMARC    = flag.Bool("enable-dmarc", true, "Enable DMARC validation")
-		certFile       = flag.String("cert-file", "", "TLS certificate file")
-		keyFile        = flag.String("key-file", "", "TLS key file")
-		verbose        = flag.Bool("verbose", false, "Enable verbose logging")
+		listenAddr    = flag.String("listen", DefaultListenAddr, "SMTP server listen address")
+		listenAddrTLS = flag.String("listen-tls", DefaultListenAddrTLS, "SMTP server listen address for TLS")
+		webhookURL    = flag.String("webhook", "", "Webhook URL to send email data to")
+		webhookUser   = flag.String("webhook-user", "", "Basic auth username for webhook")
+		webhookPass   = flag.String("webhook-pass", "", "Basic auth password for webhook")
+		// Webhook retry flags
+		webhookMaxRetries      = flag.Int("webhook-max-retries", 3, "Maximum number of webhook retry attempts")
+		webhookRetryDelay      = flag.Int("webhook-retry-delay", 1, "Initial webhook retry delay in seconds")
+		webhookMaxRetryDelay   = flag.Int("webhook-max-retry-delay", 30, "Maximum webhook retry delay in seconds")
+		webhookRetryMultiplier = flag.Float64("webhook-retry-multiplier", 2.0, "Webhook retry delay multiplier")
+		// Webhook rate limiting flags
+		webhookRateLimitPerSecond = flag.Int("webhook-rate-limit", 10, "Webhook requests per second rate limit")
+		webhookRateLimitBurst     = flag.Int("webhook-rate-burst", 20, "Webhook rate limit burst capacity")
+		serverName                = flag.String("name", DefaultServerName, "SMTP server name")
+		maxMessageSize            = flag.Int64("max-size", DefaultMaxMessageSize, "Maximum message size in bytes")
+		readTimeout               = flag.Int("read-timeout", int(DefaultReadTimeout.Seconds()), "Read timeout in seconds")
+		writeTimeout              = flag.Int("write-timeout", int(DefaultWriteTimeout.Seconds()), "Write timeout in seconds")
+		enableSPF                 = flag.Bool("enable-spf", true, "Enable SPF validation")
+		enableDKIM                = flag.Bool("enable-dkim", true, "Enable DKIM validation")
+		enableDMARC               = flag.Bool("enable-dmarc", true, "Enable DMARC validation")
+		certFile                  = flag.String("cert-file", "", "TLS certificate file")
+		keyFile                   = flag.String("key-file", "", "TLS key file")
+		verbose                   = flag.Bool("verbose", false, "Enable verbose logging")
 		// Sentry flags
 		enableSentry  = flag.Bool("enable-sentry", false, "Enable Sentry error tracking")
 		sentryDSN     = flag.String("sentry-dsn", "", "Sentry DSN for error tracking")
@@ -209,6 +227,12 @@ func LoadFromFlags() (*Config, error) {
 	overrideFromEnv("WEBHOOK_URL", webhookURL)
 	overrideFromEnv("WEBHOOK_USER", webhookUser)
 	overrideFromEnv("WEBHOOK_PASS", webhookPass)
+	overrideIntFromEnv("WEBHOOK_MAX_RETRIES", webhookMaxRetries)
+	overrideIntFromEnv("WEBHOOK_RETRY_DELAY", webhookRetryDelay)
+	overrideIntFromEnv("WEBHOOK_MAX_RETRY_DELAY", webhookMaxRetryDelay)
+	overrideFloat64FromEnv("WEBHOOK_RETRY_MULTIPLIER", webhookRetryMultiplier)
+	overrideIntFromEnv("WEBHOOK_RATE_LIMIT", webhookRateLimitPerSecond)
+	overrideIntFromEnv("WEBHOOK_RATE_BURST", webhookRateLimitBurst)
 	overrideFromEnv("SERVER_NAME", serverName)
 	overrideFromEnv("CERT_FILE", certFile)
 	overrideFromEnv("KEY_FILE", keyFile)
@@ -242,6 +266,14 @@ func LoadFromFlags() (*Config, error) {
 		WithAuth(*enableSPF, *enableDKIM, *enableDMARC),
 		WithVerbose(*verbose),
 	)
+
+	// Set webhook retry and rate limiting configuration
+	config.WebhookMaxRetries = *webhookMaxRetries
+	config.WebhookRetryDelay = time.Duration(*webhookRetryDelay) * time.Second
+	config.WebhookMaxRetryDelay = time.Duration(*webhookMaxRetryDelay) * time.Second
+	config.WebhookRetryMultiplier = *webhookRetryMultiplier
+	config.WebhookRateLimitPerSecond = *webhookRateLimitPerSecond
+	config.WebhookRateLimitBurst = *webhookRateLimitBurst
 
 	// Set additional fields
 	config.ServerName = *serverName
@@ -280,6 +312,30 @@ func overrideFromEnv(envKey string, target *string) {
 func overrideBoolFromEnv(envKey string, target *bool) {
 	if env := os.Getenv(envKey); env != "" {
 		*target = env == "true"
+	}
+	// If env var is empty or not set, keep the original value
+}
+
+// overrideIntFromEnv overrides an int flag from environment variable if present
+func overrideIntFromEnv(envKey string, target *int) {
+	if env := os.Getenv(envKey); env != "" {
+		if val, err := fmt.Sscanf(env, "%d", target); err == nil && val == 1 {
+			// Successfully parsed - no action needed as target is already updated
+			return
+		}
+		// If parsing failed, keep the original value
+	}
+	// If env var is empty or not set, keep the original value
+}
+
+// overrideFloat64FromEnv overrides a float64 flag from environment variable if present
+func overrideFloat64FromEnv(envKey string, target *float64) {
+	if env := os.Getenv(envKey); env != "" {
+		if val, err := fmt.Sscanf(env, "%f", target); err == nil && val == 1 {
+			// Successfully parsed - no action needed as target is already updated
+			return
+		}
+		// If parsing failed, keep the original value
 	}
 	// If env var is empty or not set, keep the original value
 }
