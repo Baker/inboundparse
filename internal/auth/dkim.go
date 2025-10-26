@@ -4,10 +4,11 @@ import (
 	"context"
 	"fmt"
 	"inboundparse/internal/domain"
+	"inboundparse/internal/observability"
 	"strings"
+	"time"
 
 	"github.com/emersion/go-msgauth/dkim"
-	"github.com/rs/zerolog/log"
 )
 
 // dkimChecker implements DKIMChecker interface
@@ -18,11 +19,28 @@ func NewDKIMChecker() DKIMChecker {
 	return &dkimChecker{}
 }
 
-// CheckDKIM performs DKIM authentication check
-func (d *dkimChecker) CheckDKIM(ctx context.Context, rawMessage string) (*domain.DKIMResult, error) {
+// CheckDKIM performs DKIM authentication check following RFC 6376
+func (d *dkimChecker) CheckDKIM(ctx context.Context, rawMessage string, logger observability.Logger, metrics observability.MetricsCollector) (*domain.DKIMResult, error) {
+	start := time.Now()
+	defer func() {
+		duration := time.Since(start)
+		metrics.TrackDKIMDuration(duration)
+	}()
 	verifications, err := dkim.Verify(strings.NewReader(rawMessage))
 	if err != nil {
-		log.Warn().
+		// Determine error type for metrics
+		errorType := "verification_error"
+		switch {
+		case strings.Contains(err.Error(), "timeout"):
+			errorType = "timeout_error"
+		case strings.Contains(err.Error(), "parse"):
+			errorType = "parse_error"
+		case strings.Contains(err.Error(), "DNS"):
+			errorType = "dns_error"
+		}
+		metrics.TrackAuthError("dkim", errorType)
+
+		logger.Warn().
 			Err(err).
 			Msg("DKIM verification error")
 		return &domain.DKIMResult{
@@ -33,26 +51,57 @@ func (d *dkimChecker) CheckDKIM(ctx context.Context, rawMessage string) (*domain
 	}
 
 	var signatures []string
+	details := make([]domain.DKIMSignatureDetail, 0) // Initialize as empty slice, not nil
 	hasValidSignature := false
 
+	// RFC 6376 Section 3.5: Parse each DKIM signature header
 	for _, verification := range verifications {
+		detail := domain.DKIMSignatureDetail{
+			Valid: verification.Err == nil,
+		}
+
 		if verification.Err != nil {
+			// Invalid signature
 			signatures = append(signatures, fmt.Sprintf("Invalid: %v", verification.Err))
+			detail.Error = verification.Err.Error()
 		} else {
+			// Valid signature
 			signatures = append(signatures, fmt.Sprintf("Valid: %s", verification.Domain))
+			detail.Domain = verification.Domain
 			hasValidSignature = true
 		}
+
+		// Extract available fields from go-msgauth Verification struct
+		detail.HeadersSigned = verification.HeaderKeys
+		if !verification.Time.IsZero() {
+			detail.Timestamp = verification.Time.Unix()
+		}
+		if !verification.Expiration.IsZero() {
+			detail.Expiration = verification.Expiration.Unix()
+		}
+
+		details = append(details, detail)
 	}
 
-	log.Debug().
+	logger.Debug().
 		Bool("valid", hasValidSignature).
 		Int("signature_count", len(verifications)).
 		Strs("signatures", signatures).
 		Msg("DKIM check completed")
 
+	// Track results by domain for each signature
+	for _, verification := range verifications {
+		if verification.Err == nil {
+			metrics.TrackDKIMResultByDomain(verification.Domain, "valid")
+		} else {
+			metrics.TrackDKIMResultByDomain(verification.Domain, "invalid")
+		}
+	}
+
 	return &domain.DKIMResult{
 		Valid:      hasValidSignature,
 		Signatures: signatures,
+		Details:    details,
 		Raw:        fmt.Sprintf("DKIM verification found %d signatures", len(verifications)),
 	}, nil
 }

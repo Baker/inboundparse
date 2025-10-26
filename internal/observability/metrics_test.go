@@ -89,6 +89,128 @@ func createTestMetricsCollector(registry *prometheus.Registry) MetricsCollector 
 			Help:    "Duration of webhook requests in seconds",
 			Buckets: prometheus.DefBuckets,
 		}),
+		// Webhook metrics
+		webhookRequestSize: factory.NewHistogram(prometheus.HistogramOpts{
+			Name:    "webhook_request_size_bytes",
+			Help:    "Size of webhook requests in bytes",
+			Buckets: prometheus.ExponentialBuckets(1024, 2, 15), // 1KB to 32MB
+		}),
+		webhookResponseSize: factory.NewHistogram(prometheus.HistogramOpts{
+			Name:    "webhook_response_size_bytes",
+			Help:    "Size of webhook responses in bytes",
+			Buckets: prometheus.ExponentialBuckets(1024, 2, 15), // 1KB to 32MB
+		}),
+		webhookRetries: factory.NewCounterVec(prometheus.CounterOpts{
+			Name: "webhook_retries_total",
+			Help: "Number of webhook retry attempts",
+		}, []string{"success"}),
+		webhookErrors: factory.NewCounterVec(prometheus.CounterOpts{
+			Name: "webhook_errors_total",
+			Help: "Number of webhook errors by type",
+		}, []string{"error_type"}),
+		// Authentication duration metrics
+		spfDuration: factory.NewHistogram(prometheus.HistogramOpts{
+			Name:    "spf_duration_seconds",
+			Help:    "Duration of SPF checks in seconds",
+			Buckets: prometheus.DefBuckets,
+		}),
+		dkimDuration: factory.NewHistogram(prometheus.HistogramOpts{
+			Name:    "dkim_duration_seconds",
+			Help:    "Duration of DKIM checks in seconds",
+			Buckets: prometheus.DefBuckets,
+		}),
+		dmarcDuration: factory.NewHistogram(prometheus.HistogramOpts{
+			Name:    "dmarc_duration_seconds",
+			Help:    "Duration of DMARC checks in seconds",
+			Buckets: prometheus.DefBuckets,
+		}),
+		// Domain-based authentication metrics
+		spfResultsByDomain: factory.NewCounterVec(prometheus.CounterOpts{
+			Name: "spf_results_by_domain_total",
+			Help: "SPF results by domain",
+		}, []string{"domain", "result"}),
+		dkimResultsByDomain: factory.NewCounterVec(prometheus.CounterOpts{
+			Name: "dkim_results_by_domain_total",
+			Help: "DKIM results by domain",
+		}, []string{"domain", "result"}),
+		dmarcResultsByDomain: factory.NewCounterVec(prometheus.CounterOpts{
+			Name: "dmarc_results_by_domain_total",
+			Help: "DMARC results by domain",
+		}, []string{"domain", "result"}),
+		// Authentication error metrics
+		authErrors: factory.NewCounterVec(prometheus.CounterOpts{
+			Name: "auth_errors_total",
+			Help: "Number of authentication errors by type",
+		}, []string{"check_type", "error_type"}),
+		// Message processing stage metrics
+		messageReadDuration: factory.NewHistogram(prometheus.HistogramOpts{
+			Name:    "message_read_duration_seconds",
+			Help:    "Duration of message read stage in seconds",
+			Buckets: prometheus.DefBuckets,
+		}),
+		messageParseDuration: factory.NewHistogram(prometheus.HistogramOpts{
+			Name:    "message_parse_duration_seconds",
+			Help:    "Duration of message parse stage in seconds",
+			Buckets: prometheus.DefBuckets,
+		}),
+		messageAuthDuration: factory.NewHistogram(prometheus.HistogramOpts{
+			Name:    "message_auth_duration_seconds",
+			Help:    "Duration of message auth stage in seconds",
+			Buckets: prometheus.DefBuckets,
+		}),
+		messageWebhookDuration: factory.NewHistogram(prometheus.HistogramOpts{
+			Name:    "message_webhook_duration_seconds",
+			Help:    "Duration of message webhook stage in seconds",
+			Buckets: prometheus.DefBuckets,
+		}),
+		messageTotalDuration: factory.NewHistogram(prometheus.HistogramOpts{
+			Name:    "message_total_processing_duration_seconds",
+			Help:    "Total duration of message processing in seconds",
+			Buckets: prometheus.DefBuckets,
+		}),
+		// Email characteristics metrics
+		emailAttachmentCount: factory.NewHistogram(prometheus.HistogramOpts{
+			Name:    "email_attachment_count",
+			Help:    "Number of attachments in emails",
+			Buckets: []float64{0, 1, 2, 3, 4, 5, 10, 15, 20, 25, 30, 50, 100},
+		}),
+		emailAttachmentSize: factory.NewHistogram(prometheus.HistogramOpts{
+			Name:    "email_attachment_size_bytes",
+			Help:    "Size of email attachments in bytes",
+			Buckets: prometheus.ExponentialBuckets(1024, 2, 15), // 1KB to 32MB
+		}),
+		emailBodyType: factory.NewCounterVec(prometheus.CounterOpts{
+			Name: "email_body_type_total",
+			Help: "Number of emails by body type (text, html, multipart)",
+		}, []string{"body_type"}),
+		emailHeaderCount: factory.NewHistogram(prometheus.HistogramOpts{
+			Name:    "email_header_count",
+			Help:    "Number of headers in emails",
+			Buckets: []float64{0, 5, 10, 15, 20, 25, 30, 40, 50, 75, 100, 150, 200},
+		}),
+		emailRecipientCount: factory.NewHistogram(prometheus.HistogramOpts{
+			Name:    "email_recipient_count",
+			Help:    "Number of recipients in emails",
+			Buckets: []float64{0, 1, 2, 3, 4, 5, 10, 15, 20, 25, 30, 50, 100},
+		}),
+		// Session lifecycle metrics
+		sessionDuration: factory.NewHistogram(prometheus.HistogramOpts{
+			Name:    "session_duration_seconds",
+			Help:    "Duration of SMTP sessions in seconds",
+			Buckets: prometheus.DefBuckets,
+		}),
+		sessionCommands: factory.NewCounterVec(prometheus.CounterOpts{
+			Name: "session_commands_total",
+			Help: "Number of SMTP commands executed per session",
+		}, []string{"command"}),
+		sessionErrors: factory.NewCounterVec(prometheus.CounterOpts{
+			Name: "session_errors_total",
+			Help: "Number of SMTP session errors by type",
+		}, []string{"error_type"}),
+		sessionMessageCount: factory.NewCounter(prometheus.CounterOpts{
+			Name: "session_messages_total",
+			Help: "Number of messages processed per session",
+		}),
 	}
 }
 
@@ -654,4 +776,389 @@ func TestMetricsServer_HealthEndpointNew(t *testing.T) {
 	// This test is disabled because it requires complex server setup
 	// The health endpoint code is covered by other tests
 	t.Skip("Skipping health endpoint test due to server setup complexity")
+}
+
+// Test new webhook metrics
+func TestMetricsCollector_TrackWebhookRequestSize(t *testing.T) {
+	registry := prometheus.NewRegistry()
+	collector := createTestMetricsCollector(registry)
+
+	collector.TrackWebhookRequestSize(1024, 2048)
+	collector.TrackWebhookRequestSize(0, 0)
+	collector.TrackWebhookRequestSize(999999999, 999999999)
+}
+
+func TestMetricsCollector_TrackWebhookRetry(t *testing.T) {
+	registry := prometheus.NewRegistry()
+	collector := createTestMetricsCollector(registry)
+
+	collector.TrackWebhookRetry(true)
+	collector.TrackWebhookRetry(false)
+}
+
+func TestMetricsCollector_TrackWebhookError(t *testing.T) {
+	registry := prometheus.NewRegistry()
+	collector := createTestMetricsCollector(registry)
+
+	collector.TrackWebhookError("network")
+	collector.TrackWebhookError("timeout")
+	collector.TrackWebhookError("4xx")
+	collector.TrackWebhookError("5xx")
+}
+
+// Test authentication duration metrics
+func TestMetricsCollector_TrackSPFDuration(t *testing.T) {
+	registry := prometheus.NewRegistry()
+	collector := createTestMetricsCollector(registry)
+
+	collector.TrackSPFDuration(100 * time.Millisecond)
+	collector.TrackSPFDuration(1 * time.Second)
+	collector.TrackSPFDuration(5 * time.Second)
+}
+
+func TestMetricsCollector_TrackDKIMDuration(t *testing.T) {
+	registry := prometheus.NewRegistry()
+	collector := createTestMetricsCollector(registry)
+
+	collector.TrackDKIMDuration(50 * time.Millisecond)
+	collector.TrackDKIMDuration(500 * time.Millisecond)
+	collector.TrackDKIMDuration(2 * time.Second)
+}
+
+func TestMetricsCollector_TrackDMARCDuration(t *testing.T) {
+	registry := prometheus.NewRegistry()
+	collector := createTestMetricsCollector(registry)
+
+	collector.TrackDMARCDuration(75 * time.Millisecond)
+	collector.TrackDMARCDuration(750 * time.Millisecond)
+	collector.TrackDMARCDuration(3 * time.Second)
+}
+
+// Test domain-based authentication metrics
+func TestMetricsCollector_TrackSPFResultByDomain(t *testing.T) {
+	registry := prometheus.NewRegistry()
+	collector := createTestMetricsCollector(registry)
+
+	collector.TrackSPFResultByDomain("example.com", "pass")
+	collector.TrackSPFResultByDomain("example.com", "fail")
+	collector.TrackSPFResultByDomain("test.org", "temperror")
+	collector.TrackSPFResultByDomain("", "none")
+}
+
+func TestMetricsCollector_TrackDKIMResultByDomain(t *testing.T) {
+	registry := prometheus.NewRegistry()
+	collector := createTestMetricsCollector(registry)
+
+	collector.TrackDKIMResultByDomain("example.com", "valid")
+	collector.TrackDKIMResultByDomain("example.com", "invalid")
+	collector.TrackDKIMResultByDomain("test.org", "valid")
+	collector.TrackDKIMResultByDomain("", "invalid")
+}
+
+func TestMetricsCollector_TrackDMARCResultByDomain(t *testing.T) {
+	registry := prometheus.NewRegistry()
+	collector := createTestMetricsCollector(registry)
+
+	collector.TrackDMARCResultByDomain("example.com", "pass")
+	collector.TrackDMARCResultByDomain("example.com", "fail")
+	collector.TrackDMARCResultByDomain("test.org", "none")
+	collector.TrackDMARCResultByDomain("", "pass")
+}
+
+// Test authentication error metrics
+func TestMetricsCollector_TrackAuthError(t *testing.T) {
+	registry := prometheus.NewRegistry()
+	collector := createTestMetricsCollector(registry)
+
+	collector.TrackAuthError("spf", "dns")
+	collector.TrackAuthError("spf", "timeout")
+	collector.TrackAuthError("dkim", "verification")
+	collector.TrackAuthError("dkim", "parse")
+	collector.TrackAuthError("dmarc", "dns")
+	collector.TrackAuthError("dmarc", "timeout")
+}
+
+// Test message processing stage metrics
+func TestMetricsCollector_TrackMessageReadDuration(t *testing.T) {
+	registry := prometheus.NewRegistry()
+	collector := createTestMetricsCollector(registry)
+
+	collector.TrackMessageReadDuration(10 * time.Millisecond)
+	collector.TrackMessageReadDuration(100 * time.Millisecond)
+	collector.TrackMessageReadDuration(1 * time.Second)
+}
+
+func TestMetricsCollector_TrackMessageParseDuration(t *testing.T) {
+	registry := prometheus.NewRegistry()
+	collector := createTestMetricsCollector(registry)
+
+	collector.TrackMessageParseDuration(5 * time.Millisecond)
+	collector.TrackMessageParseDuration(50 * time.Millisecond)
+	collector.TrackMessageParseDuration(500 * time.Millisecond)
+}
+
+func TestMetricsCollector_TrackMessageAuthDuration(t *testing.T) {
+	registry := prometheus.NewRegistry()
+	collector := createTestMetricsCollector(registry)
+
+	collector.TrackMessageAuthDuration(20 * time.Millisecond)
+	collector.TrackMessageAuthDuration(200 * time.Millisecond)
+	collector.TrackMessageAuthDuration(2 * time.Second)
+}
+
+func TestMetricsCollector_TrackMessageWebhookDuration(t *testing.T) {
+	registry := prometheus.NewRegistry()
+	collector := createTestMetricsCollector(registry)
+
+	collector.TrackMessageWebhookDuration(30 * time.Millisecond)
+	collector.TrackMessageWebhookDuration(300 * time.Millisecond)
+	collector.TrackMessageWebhookDuration(3 * time.Second)
+}
+
+func TestMetricsCollector_TrackMessageTotalProcessingDuration(t *testing.T) {
+	registry := prometheus.NewRegistry()
+	collector := createTestMetricsCollector(registry)
+
+	collector.TrackMessageTotalProcessingDuration(100 * time.Millisecond)
+	collector.TrackMessageTotalProcessingDuration(1 * time.Second)
+	collector.TrackMessageTotalProcessingDuration(10 * time.Second)
+}
+
+// Test email characteristics metrics
+func TestMetricsCollector_TrackEmailAttachmentCount(t *testing.T) {
+	registry := prometheus.NewRegistry()
+	collector := createTestMetricsCollector(registry)
+
+	collector.TrackEmailAttachmentCount(0)
+	collector.TrackEmailAttachmentCount(1)
+	collector.TrackEmailAttachmentCount(5)
+	collector.TrackEmailAttachmentCount(100)
+}
+
+func TestMetricsCollector_TrackEmailAttachmentSize(t *testing.T) {
+	registry := prometheus.NewRegistry()
+	collector := createTestMetricsCollector(registry)
+
+	collector.TrackEmailAttachmentSize(0)
+	collector.TrackEmailAttachmentSize(1024)
+	collector.TrackEmailAttachmentSize(1024 * 1024)
+	collector.TrackEmailAttachmentSize(1024 * 1024 * 100)
+}
+
+func TestMetricsCollector_TrackEmailBodyType(t *testing.T) {
+	registry := prometheus.NewRegistry()
+	collector := createTestMetricsCollector(registry)
+
+	collector.TrackEmailBodyType("text")
+	collector.TrackEmailBodyType("html")
+	collector.TrackEmailBodyType("multipart")
+	collector.TrackEmailBodyType("")
+}
+
+func TestMetricsCollector_TrackEmailHeaderCount(t *testing.T) {
+	registry := prometheus.NewRegistry()
+	collector := createTestMetricsCollector(registry)
+
+	collector.TrackEmailHeaderCount(0)
+	collector.TrackEmailHeaderCount(5)
+	collector.TrackEmailHeaderCount(20)
+	collector.TrackEmailHeaderCount(200)
+}
+
+func TestMetricsCollector_TrackEmailRecipientCount(t *testing.T) {
+	registry := prometheus.NewRegistry()
+	collector := createTestMetricsCollector(registry)
+
+	collector.TrackEmailRecipientCount(0)
+	collector.TrackEmailRecipientCount(1)
+	collector.TrackEmailRecipientCount(5)
+	collector.TrackEmailRecipientCount(100)
+}
+
+// Test session lifecycle metrics
+func TestMetricsCollector_TrackSessionDuration(t *testing.T) {
+	registry := prometheus.NewRegistry()
+	collector := createTestMetricsCollector(registry)
+
+	collector.TrackSessionDuration(1 * time.Second)
+	collector.TrackSessionDuration(30 * time.Second)
+	collector.TrackSessionDuration(5 * time.Minute)
+}
+
+func TestMetricsCollector_TrackSessionCommandCount(t *testing.T) {
+	registry := prometheus.NewRegistry()
+	collector := createTestMetricsCollector(registry)
+
+	collector.TrackSessionCommandCount("MAIL")
+	collector.TrackSessionCommandCount("RCPT")
+	collector.TrackSessionCommandCount("DATA")
+	collector.TrackSessionCommandCount("RSET")
+	collector.TrackSessionCommandCount("QUIT")
+}
+
+func TestMetricsCollector_TrackSessionErrorCount(t *testing.T) {
+	registry := prometheus.NewRegistry()
+	collector := createTestMetricsCollector(registry)
+
+	collector.TrackSessionErrorCount("syntax_error")
+	collector.TrackSessionErrorCount("too_many_recipients")
+	collector.TrackSessionErrorCount("message_processing")
+	collector.TrackSessionErrorCount("no_recipients")
+}
+
+func TestMetricsCollector_TrackSessionMessageCount(t *testing.T) {
+	registry := prometheus.NewRegistry()
+	collector := createTestMetricsCollector(registry)
+
+	collector.TrackSessionMessageCount()
+	collector.TrackSessionMessageCount()
+	collector.TrackSessionMessageCount()
+}
+
+// Test NoOpMetricsCollector for all new methods
+func TestNoOpMetricsCollector_NewMethods(t *testing.T) {
+	collector := &NoOpMetricsCollector{}
+
+	// Test all new webhook methods
+	collector.TrackWebhookRequestSize(1024, 2048)
+	collector.TrackWebhookRetry(true)
+	collector.TrackWebhookError("network")
+
+	// Test all new authentication methods
+	collector.TrackSPFDuration(100 * time.Millisecond)
+	collector.TrackDKIMDuration(50 * time.Millisecond)
+	collector.TrackDMARCDuration(75 * time.Millisecond)
+	collector.TrackSPFResultByDomain("example.com", "pass")
+	collector.TrackDKIMResultByDomain("example.com", "valid")
+	collector.TrackDMARCResultByDomain("example.com", "pass")
+	collector.TrackAuthError("spf", "dns")
+
+	// Test all new processing stage methods
+	collector.TrackMessageReadDuration(10 * time.Millisecond)
+	collector.TrackMessageParseDuration(5 * time.Millisecond)
+	collector.TrackMessageAuthDuration(20 * time.Millisecond)
+	collector.TrackMessageWebhookDuration(30 * time.Millisecond)
+	collector.TrackMessageTotalProcessingDuration(100 * time.Millisecond)
+
+	// Test all new email characteristics methods
+	collector.TrackEmailAttachmentCount(5)
+	collector.TrackEmailAttachmentSize(1024)
+	collector.TrackEmailBodyType("html")
+	collector.TrackEmailHeaderCount(20)
+	collector.TrackEmailRecipientCount(3)
+
+	// Test all new session lifecycle methods
+	collector.TrackSessionDuration(30 * time.Second)
+	collector.TrackSessionCommandCount("MAIL")
+	collector.TrackSessionErrorCount("syntax_error")
+	collector.TrackSessionMessageCount()
+}
+
+// Test edge cases for new metrics
+func TestMetricsCollector_NewMetricsEdgeCases(t *testing.T) {
+	registry := prometheus.NewRegistry()
+	collector := createTestMetricsCollector(registry)
+
+	// Test with zero and negative values
+	collector.TrackWebhookRequestSize(0, 0)
+	collector.TrackWebhookRequestSize(-1, -1)
+	collector.TrackEmailAttachmentCount(0)
+	collector.TrackEmailAttachmentCount(-1)
+	collector.TrackEmailAttachmentSize(0)
+	collector.TrackEmailAttachmentSize(-1)
+	collector.TrackEmailHeaderCount(0)
+	collector.TrackEmailHeaderCount(-1)
+	collector.TrackEmailRecipientCount(0)
+	collector.TrackEmailRecipientCount(-1)
+
+	// Test with very large values
+	collector.TrackWebhookRequestSize(999999999, 999999999)
+	collector.TrackEmailAttachmentSize(999999999)
+	collector.TrackEmailHeaderCount(999)
+	collector.TrackEmailRecipientCount(999)
+
+	// Test with empty strings
+	collector.TrackWebhookError("")
+	collector.TrackEmailBodyType("")
+	collector.TrackSessionCommandCount("")
+	collector.TrackSessionErrorCount("")
+	collector.TrackSPFResultByDomain("", "")
+	collector.TrackDKIMResultByDomain("", "")
+	collector.TrackDMARCResultByDomain("", "")
+	collector.TrackAuthError("", "")
+
+	// Test with very long strings
+	longString := string(make([]byte, 1000))
+	collector.TrackWebhookError(longString)
+	collector.TrackEmailBodyType(longString)
+	collector.TrackSessionCommandCount(longString)
+	collector.TrackSessionErrorCount(longString)
+	collector.TrackSPFResultByDomain(longString, longString)
+	collector.TrackDKIMResultByDomain(longString, longString)
+	collector.TrackDMARCResultByDomain(longString, longString)
+	collector.TrackAuthError(longString, longString)
+
+	// Test with very long durations
+	collector.TrackSPFDuration(24 * time.Hour)
+	collector.TrackDKIMDuration(24 * time.Hour)
+	collector.TrackDMARCDuration(24 * time.Hour)
+	collector.TrackMessageReadDuration(24 * time.Hour)
+	collector.TrackMessageParseDuration(24 * time.Hour)
+	collector.TrackMessageAuthDuration(24 * time.Hour)
+	collector.TrackMessageWebhookDuration(24 * time.Hour)
+	collector.TrackMessageTotalProcessingDuration(24 * time.Hour)
+	collector.TrackSessionDuration(24 * time.Hour)
+}
+
+// Test concurrent access to new metrics
+func TestMetricsCollector_NewMetricsConcurrentAccess(t *testing.T) {
+	registry := prometheus.NewRegistry()
+	collector := createTestMetricsCollector(registry)
+
+	done := make(chan bool, 10)
+
+	for i := 0; i < 10; i++ {
+		go func() {
+			// Test webhook metrics
+			collector.TrackWebhookRequestSize(1024, 2048)
+			collector.TrackWebhookRetry(true)
+			collector.TrackWebhookError("network")
+
+			// Test authentication metrics
+			collector.TrackSPFDuration(100 * time.Millisecond)
+			collector.TrackDKIMDuration(50 * time.Millisecond)
+			collector.TrackDMARCDuration(75 * time.Millisecond)
+			collector.TrackSPFResultByDomain("example.com", "pass")
+			collector.TrackDKIMResultByDomain("example.com", "valid")
+			collector.TrackDMARCResultByDomain("example.com", "pass")
+			collector.TrackAuthError("spf", "dns")
+
+			// Test processing stage metrics
+			collector.TrackMessageReadDuration(10 * time.Millisecond)
+			collector.TrackMessageParseDuration(5 * time.Millisecond)
+			collector.TrackMessageAuthDuration(20 * time.Millisecond)
+			collector.TrackMessageWebhookDuration(30 * time.Millisecond)
+			collector.TrackMessageTotalProcessingDuration(100 * time.Millisecond)
+
+			// Test email characteristics metrics
+			collector.TrackEmailAttachmentCount(5)
+			collector.TrackEmailAttachmentSize(1024)
+			collector.TrackEmailBodyType("html")
+			collector.TrackEmailHeaderCount(20)
+			collector.TrackEmailRecipientCount(3)
+
+			// Test session lifecycle metrics
+			collector.TrackSessionDuration(30 * time.Second)
+			collector.TrackSessionCommandCount("MAIL")
+			collector.TrackSessionErrorCount("syntax_error")
+			collector.TrackSessionMessageCount()
+
+			done <- true
+		}()
+	}
+
+	// Wait for all goroutines to complete
+	for i := 0; i < 10; i++ {
+		<-done
+	}
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"inboundparse/internal/config"
 	"inboundparse/internal/domain"
+	"inboundparse/internal/observability"
 	"io"
 	"net"
 	"strings"
@@ -43,15 +44,15 @@ func (m *mockSentryClient) RecoverWithSentry() {}
 
 type mockAuthChecker struct{}
 
-func (m *mockAuthChecker) CheckSPF(ctx context.Context, remoteIP net.IP, domainName, from string) (*domain.SPFResult, error) {
+func (m *mockAuthChecker) CheckSPF(ctx context.Context, remoteIP net.IP, domainName, from string, logger observability.Logger) (*domain.SPFResult, error) {
 	return nil, nil
 }
 
-func (m *mockAuthChecker) CheckDKIM(ctx context.Context, rawMessage string) (*domain.DKIMResult, error) {
+func (m *mockAuthChecker) CheckDKIM(ctx context.Context, rawMessage string, logger observability.Logger) (*domain.DKIMResult, error) {
 	return nil, nil
 }
 
-func (m *mockAuthChecker) CheckDMARC(ctx context.Context, rawMessage string, headers interface{}, spfResult *domain.SPFResult, dkimResult *domain.DKIMResult) (*domain.DMARCResult, error) {
+func (m *mockAuthChecker) CheckDMARC(ctx context.Context, rawMessage string, headers interface{}, spfResult *domain.SPFResult, dkimResult *domain.DKIMResult, logger observability.Logger) (*domain.DMARCResult, error) {
 	return nil, nil
 }
 

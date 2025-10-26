@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 	"inboundparse/internal/domain"
+	"inboundparse/internal/observability"
 	"net"
 	"strings"
+	"time"
 
 	"github.com/rs/zerolog/log"
 	"github.com/zaccone/spf"
@@ -19,50 +21,86 @@ func NewSPFChecker() SPFChecker {
 	return &spfChecker{}
 }
 
-// CheckSPF performs SPF authentication check
-func (s *spfChecker) CheckSPF(ctx context.Context, remoteIP net.IP, domainName, from string) (*domain.SPFResult, error) {
+// CheckSPF performs SPF authentication check following RFC 7208
+func (s *spfChecker) CheckSPF(ctx context.Context, remoteIP net.IP, domainName, from string, logger observability.Logger, metrics observability.MetricsCollector) (*domain.SPFResult, error) {
+	start := time.Now()
+	defer func() {
+		duration := time.Since(start)
+		metrics.TrackSPFDuration(duration)
+	}()
 	if remoteIP == nil {
-		log.Warn().Msg("SPF check: Failed to get remote IP")
+		logger.Warn().Msg("SPF check: Failed to get remote IP")
 		return &domain.SPFResult{
-			Result: "temperror",
-			Raw:    "Failed to get remote IP",
+			Result:    "temperror",
+			Raw:       "Failed to get remote IP",
+			Problem:   "No remote IP address available for SPF evaluation",
+			Sender:    from,
+			IpAddress: remoteIP.String(),
 		}, nil
 	}
 
 	if domainName == "" {
-		log.Debug().
+		logger.Debug().
 			Str("from", from).
 			Msg("SPF check: No domain found in sender address")
 		return &domain.SPFResult{
-			Result: "none",
-			Raw:    "No domain found in sender address",
+			Result:    "none",
+			Raw:       "No domain found in sender address",
+			Problem:   "Unable to extract domain from MAIL FROM identity",
+			Sender:    from,
+			IpAddress: remoteIP.String(),
 		}, nil
 	}
 
+	// RFC 7208 Section 2.4: Check MAIL FROM identity
 	result, mechanism, err := spf.CheckHost(remoteIP, domainName, from)
 	if err != nil {
-		log.Warn().
+		// Determine error type for metrics
+		errorType := "dns_error"
+		if strings.Contains(err.Error(), "timeout") {
+			errorType = "timeout_error"
+		} else if strings.Contains(err.Error(), "parse") {
+			errorType = "parse_error"
+		}
+		metrics.TrackAuthError("spf", errorType)
+
+		logger.Warn().
 			Err(err).
 			Str("domain", domainName).
 			Str("remote_ip", remoteIP.String()).
+			Str("identity", from).
 			Msg("SPF check error")
 		return &domain.SPFResult{
-			Result: "temperror",
-			Raw:    fmt.Sprintf("SPF check error: %v", err),
+			Result:    "temperror",
+			Raw:       fmt.Sprintf("SPF check error: %v", err),
+			Problem:   fmt.Sprintf("DNS lookup or processing error: %v", err),
+			Sender:    from,
+			IpAddress: remoteIP.String(),
 		}, nil
 	}
 
-	log.Debug().
+	// Extract explanation if available (RFC 7208 Section 6.2)
+	explanation := s.extractSPFExplanation(domainName, result)
+
+	logger.Debug().
 		Str("result", result.String()).
 		Str("domain", domainName).
 		Str("remote_ip", remoteIP.String()).
 		Str("mechanism", mechanism).
+		Str("identity", from).
+		Str("explanation", explanation).
 		Msg("SPF check completed")
 
+	// Track result by domain
+	metrics.TrackSPFResultByDomain(domainName, result.String())
+
 	return &domain.SPFResult{
-		Result:    result.String(),
-		Raw:       fmt.Sprintf("SPF result: %s for domain %s from IP %s", result.String(), domainName, remoteIP.String()),
-		Mechanism: mechanism,
+		Result:      result.String(),
+		Raw:         fmt.Sprintf("SPF result: %s for domain %s from IP %s", result.String(), domainName, remoteIP.String()),
+		Mechanism:   mechanism,
+		Explanation: explanation,
+		Sender:      from,
+		IpAddress:   remoteIP.String(),
 	}, nil
 }
 
@@ -90,4 +128,19 @@ func ExtractDomainFromEmail(email string) string {
 	domain = strings.TrimSpace(domain)
 
 	return domain
+}
+
+// extractSPFExplanation attempts to extract explanation from SPF record (RFC 7208 Section 6.2)
+func (s *spfChecker) extractSPFExplanation(domain string, result spf.Result) string {
+	// For now, return empty string as the spf library doesn't expose explanation
+	// In a full implementation, this would query the SPF record and extract the exp= tag
+	// when the result is fail, softfail, or neutral
+	resultStr := result.String()
+	if resultStr == "fail" || resultStr == "softfail" || resultStr == "neutral" {
+		log.Debug().
+			Str("domain", domain).
+			Str("result", resultStr).
+			Msg("SPF explanation could be extracted from exp= tag in SPF record")
+	}
+	return ""
 }

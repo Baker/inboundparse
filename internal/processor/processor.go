@@ -54,13 +54,19 @@ func NewMessageProcessor(
 func (mp *MessageProcessor) ProcessMessage(ctx context.Context, r io.Reader, from string, to []string, sessionID string, remoteIP net.IP) error {
 	start := time.Now()
 
+	// Create session-aware logger with session_id context
+	sessionLogger := observability.NewSessionLogger(mp.logger, sessionID, "")
+
 	// Read the entire message
+	readStart := time.Now()
 	var buf bytes.Buffer
 	size, err := io.Copy(&buf, r)
+	readDuration := time.Since(readStart)
+	mp.metrics.TrackMessageReadDuration(readDuration)
+
 	if err != nil {
-		mp.logger.Error().
+		sessionLogger.Error().
 			Err(err).
-			Str("session_id", sessionID).
 			Msg("Failed to read message")
 		mp.sentry.CaptureError(err, map[string]interface{}{
 			"session_id": sessionID,
@@ -75,11 +81,14 @@ func (mp *MessageProcessor) ProcessMessage(ctx context.Context, r io.Reader, fro
 	rawMessage := buf.String()
 
 	// Parse the email
+	parseStart := time.Now()
 	email, err := letters.ParseEmail(bytes.NewReader(buf.Bytes()))
+	parseDuration := time.Since(parseStart)
+	mp.metrics.TrackMessageParseDuration(parseDuration)
+
 	if err != nil {
-		mp.logger.Error().
+		sessionLogger.Error().
 			Err(err).
-			Str("session_id", sessionID).
 			Int64("size", size).
 			Msg("Failed to parse message")
 		mp.sentry.CaptureError(err, map[string]interface{}{
@@ -93,14 +102,16 @@ func (mp *MessageProcessor) ProcessMessage(ctx context.Context, r io.Reader, fro
 		return fmt.Errorf("failed to parse message: %w", err)
 	}
 
-	mp.logger.Info().
-		Str("session_id", sessionID).
+	sessionLogger.Info().
 		Str("from", from).
 		Strs("to", to).
 		Str("subject", email.Headers.Subject).
 		Str("message_id", string(email.Headers.MessageID)).
 		Int64("size", size).
 		Msg("Message parsed successfully")
+
+	// Track email characteristics
+	mp.trackEmailCharacteristics(&email)
 
 	// Create webhook payload
 	payload := &domain.WebhookPayload{
@@ -119,11 +130,14 @@ func (mp *MessageProcessor) ProcessMessage(ctx context.Context, r io.Reader, fro
 
 	// Perform authentication checks
 	if mp.config.EnableSPF || mp.config.EnableDKIM || mp.config.EnableDMARC {
-		authResults, err := mp.performAuthenticationChecks(ctx, rawMessage, email.Headers, from, remoteIP)
+		authStart := time.Now()
+		authResults, err := mp.performAuthenticationChecks(ctx, rawMessage, email.Headers, from, remoteIP, sessionLogger)
+		authDuration := time.Since(authStart)
+		mp.metrics.TrackMessageAuthDuration(authDuration)
+
 		if err != nil {
-			mp.logger.Warn().
+			sessionLogger.Warn().
 				Err(err).
-				Str("session_id", sessionID).
 				Msg("Authentication checks failed")
 			// Continue processing even if auth checks fail
 		} else {
@@ -132,13 +146,17 @@ func (mp *MessageProcessor) ProcessMessage(ctx context.Context, r io.Reader, fro
 	}
 
 	// Send to webhook
+	webhookStart := time.Now()
 	err = mp.webhookSender.SendWebhook(ctx, payload)
+	webhookDuration := time.Since(webhookStart)
+	mp.metrics.TrackMessageWebhookDuration(webhookDuration)
 
 	duration := time.Since(start)
+	mp.metrics.TrackMessageTotalProcessingDuration(duration)
+
 	if err != nil {
-		mp.logger.Error().
+		sessionLogger.Error().
 			Err(err).
-			Str("session_id", sessionID).
 			Str("message_id", string(email.Headers.MessageID)).
 			Dur("duration", duration).
 			Msg("Failed to process message")
@@ -146,8 +164,7 @@ func (mp *MessageProcessor) ProcessMessage(ctx context.Context, r io.Reader, fro
 		return err
 	}
 
-	mp.logger.Info().
-		Str("session_id", sessionID).
+	sessionLogger.Info().
 		Str("message_id", string(email.Headers.MessageID)).
 		Dur("duration", duration).
 		Msg("Message processed successfully")
@@ -157,10 +174,10 @@ func (mp *MessageProcessor) ProcessMessage(ctx context.Context, r io.Reader, fro
 }
 
 // performAuthenticationChecks runs all enabled authentication checks
-func (mp *MessageProcessor) performAuthenticationChecks(ctx context.Context, rawMessage string, headers letters.Headers, from string, remoteIP net.IP) (domain.AuthenticationResults, error) {
+func (mp *MessageProcessor) performAuthenticationChecks(ctx context.Context, rawMessage string, headers letters.Headers, from string, remoteIP net.IP, sessionLogger observability.Logger) (domain.AuthenticationResults, error) {
 	results := domain.AuthenticationResults{}
 
-	mp.logger.Debug().
+	sessionLogger.Debug().
 		Bool("spf_enabled", mp.config.EnableSPF).
 		Bool("dkim_enabled", mp.config.EnableDKIM).
 		Bool("dmarc_enabled", mp.config.EnableDMARC).
@@ -171,9 +188,9 @@ func (mp *MessageProcessor) performAuthenticationChecks(ctx context.Context, raw
 
 	// SPF Check
 	if mp.config.EnableSPF {
-		spfResult, err := mp.authChecker.CheckSPF(ctx, remoteIP, domain, from)
+		spfResult, err := mp.authChecker.CheckSPF(ctx, remoteIP, domain, from, sessionLogger, mp.metrics)
 		if err != nil {
-			mp.logger.Warn().
+			sessionLogger.Warn().
 				Err(err).
 				Msg("SPF check failed")
 			mp.sentry.CaptureError(err, map[string]interface{}{
@@ -189,9 +206,9 @@ func (mp *MessageProcessor) performAuthenticationChecks(ctx context.Context, raw
 
 	// DKIM Check
 	if mp.config.EnableDKIM {
-		dkimResult, err := mp.authChecker.CheckDKIM(ctx, rawMessage)
+		dkimResult, err := mp.authChecker.CheckDKIM(ctx, rawMessage, sessionLogger, mp.metrics)
 		if err != nil {
-			mp.logger.Warn().
+			sessionLogger.Warn().
 				Err(err).
 				Msg("DKIM check failed")
 			mp.sentry.CaptureError(err, map[string]interface{}{
@@ -206,9 +223,9 @@ func (mp *MessageProcessor) performAuthenticationChecks(ctx context.Context, raw
 
 	// DMARC Check - pass previously computed results to avoid redundant checks
 	if mp.config.EnableDMARC {
-		dmarcResult, err := mp.authChecker.CheckDMARC(ctx, rawMessage, headers, results.SPF, results.DKIM)
+		dmarcResult, err := mp.authChecker.CheckDMARC(ctx, rawMessage, headers, results.SPF, results.DKIM, sessionLogger, mp.metrics)
 		if err != nil {
-			mp.logger.Warn().
+			sessionLogger.Warn().
 				Err(err).
 				Msg("DMARC check failed")
 			mp.sentry.CaptureError(err, map[string]interface{}{
@@ -221,11 +238,44 @@ func (mp *MessageProcessor) performAuthenticationChecks(ctx context.Context, raw
 		}
 	}
 
-	mp.logger.Info().
+	sessionLogger.Info().
 		Interface("spf", results.SPF).
 		Interface("dkim", results.DKIM).
 		Interface("dmarc", results.DMARC).
 		Msg("Authentication checks completed")
 
 	return results, nil
+}
+
+// trackEmailCharacteristics tracks various characteristics of the parsed email
+func (mp *MessageProcessor) trackEmailCharacteristics(email *letters.Email) {
+	// Track attachment count and size
+	attachmentCount := len(email.AttachedFiles)
+	mp.metrics.TrackEmailAttachmentCount(attachmentCount)
+
+	var totalAttachmentSize int64
+	for _, attachment := range email.AttachedFiles {
+		totalAttachmentSize += int64(len(attachment.Data))
+	}
+	if totalAttachmentSize > 0 {
+		mp.metrics.TrackEmailAttachmentSize(totalAttachmentSize)
+	}
+
+	// Track body type
+	bodyType := "text"
+	if email.HTML != "" {
+		bodyType = "html"
+	}
+	if len(email.AttachedFiles) > 0 {
+		bodyType = "multipart"
+	}
+	mp.metrics.TrackEmailBodyType(bodyType)
+
+	// Track header count
+	headerCount := len(email.Headers.ExtraHeaders)
+	mp.metrics.TrackEmailHeaderCount(headerCount)
+
+	// Track recipient count (To + CC + BCC)
+	recipientCount := len(email.Headers.To) + len(email.Headers.Cc) + len(email.Headers.Bcc)
+	mp.metrics.TrackEmailRecipientCount(recipientCount)
 }

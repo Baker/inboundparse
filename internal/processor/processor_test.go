@@ -25,15 +25,15 @@ type mockAuthChecker struct {
 	dmarcErr    error
 }
 
-func (m *mockAuthChecker) CheckSPF(ctx context.Context, remoteIP net.IP, domainName, from string) (*domain.SPFResult, error) {
+func (m *mockAuthChecker) CheckSPF(ctx context.Context, remoteIP net.IP, domainName, from string, logger observability.Logger, metrics observability.MetricsCollector) (*domain.SPFResult, error) {
 	return m.spfResult, m.spfErr
 }
 
-func (m *mockAuthChecker) CheckDKIM(ctx context.Context, rawMessage string) (*domain.DKIMResult, error) {
+func (m *mockAuthChecker) CheckDKIM(ctx context.Context, rawMessage string, logger observability.Logger, metrics observability.MetricsCollector) (*domain.DKIMResult, error) {
 	return m.dkimResult, m.dkimErr
 }
 
-func (m *mockAuthChecker) CheckDMARC(ctx context.Context, rawMessage string, headers letters.Headers, spfResult *domain.SPFResult, dkimResult *domain.DKIMResult) (*domain.DMARCResult, error) {
+func (m *mockAuthChecker) CheckDMARC(ctx context.Context, rawMessage string, headers letters.Headers, spfResult *domain.SPFResult, dkimResult *domain.DKIMResult, logger observability.Logger, metrics observability.MetricsCollector) (*domain.DMARCResult, error) {
 	return m.dmarcResult, m.dmarcErr
 }
 
@@ -54,6 +54,30 @@ func (m *mockMetricsCollector) TrackSPFResult(result string)                    
 func (m *mockMetricsCollector) TrackDKIMResult(valid bool)                                 {}
 func (m *mockMetricsCollector) TrackDMARCResult(result, policy string)                     {}
 func (m *mockMetricsCollector) TrackWebhookRequest(statusCode int, duration time.Duration) {}
+func (m *mockMetricsCollector) TrackWebhookRequestSize(requestSize, responseSize int64)    {}
+func (m *mockMetricsCollector) TrackWebhookRetry(success bool)                             {}
+func (m *mockMetricsCollector) TrackWebhookError(errorType string)                         {}
+func (m *mockMetricsCollector) TrackSPFDuration(duration time.Duration)                    {}
+func (m *mockMetricsCollector) TrackDKIMDuration(duration time.Duration)                   {}
+func (m *mockMetricsCollector) TrackDMARCDuration(duration time.Duration)                  {}
+func (m *mockMetricsCollector) TrackSPFResultByDomain(domain, result string)               {}
+func (m *mockMetricsCollector) TrackDKIMResultByDomain(domain, result string)              {}
+func (m *mockMetricsCollector) TrackDMARCResultByDomain(domain, result string)             {}
+func (m *mockMetricsCollector) TrackAuthError(checkType, errorType string)                 {}
+func (m *mockMetricsCollector) TrackMessageReadDuration(duration time.Duration)            {}
+func (m *mockMetricsCollector) TrackMessageParseDuration(duration time.Duration)           {}
+func (m *mockMetricsCollector) TrackMessageAuthDuration(duration time.Duration)            {}
+func (m *mockMetricsCollector) TrackMessageWebhookDuration(duration time.Duration)         {}
+func (m *mockMetricsCollector) TrackMessageTotalProcessingDuration(duration time.Duration) {}
+func (m *mockMetricsCollector) TrackEmailAttachmentCount(count int)                        {}
+func (m *mockMetricsCollector) TrackEmailAttachmentSize(size int64)                        {}
+func (m *mockMetricsCollector) TrackEmailBodyType(bodyType string)                         {}
+func (m *mockMetricsCollector) TrackEmailHeaderCount(count int)                            {}
+func (m *mockMetricsCollector) TrackEmailRecipientCount(count int)                         {}
+func (m *mockMetricsCollector) TrackSessionDuration(duration time.Duration)                {}
+func (m *mockMetricsCollector) TrackSessionCommandCount(command string)                    {}
+func (m *mockMetricsCollector) TrackSessionErrorCount(errorType string)                    {}
+func (m *mockMetricsCollector) TrackSessionMessageCount()                                  {}
 
 type mockSentryClient struct{}
 

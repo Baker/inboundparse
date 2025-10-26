@@ -7,6 +7,7 @@ import (
 	"inboundparse/internal/processor"
 	"io"
 	"net"
+	"time"
 
 	"github.com/emersion/go-smtp"
 	"github.com/google/uuid"
@@ -51,19 +52,22 @@ func (b *Backend) NewSession(c *smtp.Conn) (smtp.Session, error) {
 	// Track connection metrics
 	cleanup := b.metrics.TrackConnection()
 
-	b.logger.Debug().
-		Str("session_id", sessionID).
-		Str("remote_addr", remote).
+	// Create session-specific logger with context
+	sessionLogger := observability.NewSessionLogger(b.logger, sessionID, remote)
+
+	sessionLogger.Debug().
 		Msg("New SMTP session started")
 
 	return &Session{
 		config:           b.config,
 		messageProcessor: b.messageProcessor,
 		metrics:          b.metrics,
-		logger:           b.logger,
+		logger:           sessionLogger,
 		conn:             c,
 		sessionID:        sessionID,
 		cleanup:          cleanup,
+		sessionStart:     time.Now(),
+		messageCount:     0,
 	}, nil
 }
 
@@ -78,6 +82,8 @@ type Session struct {
 	to               []string
 	sessionID        string
 	cleanup          func() // cleanup function for connection tracking
+	sessionStart     time.Time
+	messageCount     int
 }
 
 // AuthPlain handles PLAIN authentication (we'll accept any or none)
@@ -93,9 +99,12 @@ func (s *Session) AuthPlain(username, password string) error {
 // Mail is called when the MAIL FROM command is received
 func (s *Session) Mail(from string, opts *smtp.MailOptions) error {
 	s.logger.Debug().
-		Str("session_id", s.sessionID).
 		Str("from", from).
 		Msg("MAIL FROM received")
+
+	// Track MAIL command
+	s.metrics.TrackSessionCommandCount("MAIL")
+
 	s.from = from
 	return nil
 }
@@ -103,12 +112,15 @@ func (s *Session) Mail(from string, opts *smtp.MailOptions) error {
 // Rcpt is called when a RCPT TO command is received
 func (s *Session) Rcpt(to string, opts *smtp.RcptOptions) error {
 	s.logger.Debug().
-		Str("session_id", s.sessionID).
 		Str("to", to).
 		Msg("RCPT TO received")
 
+	// Track RCPT command
+	s.metrics.TrackSessionCommandCount("RCPT")
+
 	// Check max recipients limit
 	if s.config.MaxRecipients > 0 && len(s.to) >= s.config.MaxRecipients {
+		s.metrics.TrackSessionErrorCount("too_many_recipients")
 		return fmt.Errorf("too many recipients")
 	}
 
@@ -119,10 +131,12 @@ func (s *Session) Rcpt(to string, opts *smtp.RcptOptions) error {
 // Data is called when the DATA command is received
 func (s *Session) Data(r io.Reader) error {
 	s.logger.Info().
-		Str("session_id", s.sessionID).
 		Str("from", s.from).
 		Strs("to", s.to).
 		Msg("Receiving message data")
+
+	// Track DATA command
+	s.metrics.TrackSessionCommandCount("DATA")
 
 	// Track active session
 	sessionCleanup := s.metrics.TrackSession()
@@ -130,6 +144,7 @@ func (s *Session) Data(r io.Reader) error {
 
 	// Check if there are recipients
 	if len(s.to) == 0 {
+		s.metrics.TrackSessionErrorCount("no_recipients")
 		return fmt.Errorf("no recipients")
 	}
 
@@ -142,16 +157,30 @@ func (s *Session) Data(r io.Reader) error {
 		}
 	}
 
-	// Process the email message
+	// Process the email message with session-aware logger
 	ctx := context.Background() // TODO: Add proper context with timeout
-	return s.messageProcessor.ProcessMessage(ctx, r, s.from, s.to, s.sessionID, remoteIP)
+	err := s.messageProcessor.ProcessMessage(ctx, r, s.from, s.to, s.sessionID, remoteIP)
+
+	// Track message count regardless of success/failure
+	s.messageCount++
+	s.metrics.TrackSessionMessageCount()
+
+	// Track processing errors
+	if err != nil {
+		s.metrics.TrackSessionErrorCount("message_processing")
+	}
+
+	return err
 }
 
 // Reset is called when the RSET command is received
 func (s *Session) Reset() {
 	s.logger.Debug().
-		Str("session_id", s.sessionID).
 		Msg("Session reset")
+
+	// Track RSET command
+	s.metrics.TrackSessionCommandCount("RSET")
+
 	s.from = ""
 	s.to = nil
 }
@@ -159,8 +188,17 @@ func (s *Session) Reset() {
 // Logout is called when the session is closed
 func (s *Session) Logout() error {
 	s.logger.Debug().
-		Str("session_id", s.sessionID).
 		Msg("Session logout")
+
+	// Track session duration
+	sessionDuration := time.Since(s.sessionStart)
+	s.metrics.TrackSessionDuration(sessionDuration)
+
+	// Log session summary
+	s.logger.Info().
+		Dur("session_duration", sessionDuration).
+		Int("message_count", s.messageCount).
+		Msg("Session ended")
 
 	// Clean up connection tracking
 	if s.cleanup != nil {
