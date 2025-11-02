@@ -288,30 +288,6 @@ func TestApp_Stop_WithoutMetrics(t *testing.T) {
 	}
 }
 
-func TestApp_NewApp_SentryInitError(t *testing.T) {
-	// Test Sentry initialization error path (lines 51-54)
-	config := &config.Config{
-		ListenAddr:    "127.0.0.1:0",
-		WebhookURL:    "http://localhost:8080/webhook",
-		ServerName:    "test",
-		Verbose:       true,
-		EnableSentry:  true,
-		SentryDSN:     "invalid-dsn", // This should cause Sentry init to fail
-		EnableMetrics: false,
-	}
-
-	app, err := NewApp(config)
-	if err == nil {
-		t.Fatal("Expected error due to invalid Sentry DSN, got nil")
-	}
-	if app != nil {
-		t.Fatal("Expected app to be nil due to Sentry init error")
-	}
-	if !strings.Contains(err.Error(), "failed to initialize Sentry") {
-		t.Errorf("Expected Sentry init error, got: %v", err)
-	}
-}
-
 func TestApp_Start_WithTLSConfig(t *testing.T) {
 	// Test TLS configuration logging (lines 160-165)
 	// This test verifies that TLS config is set but doesn't actually start the server

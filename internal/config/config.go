@@ -69,6 +69,14 @@ const (
 	DefaultWriteTimeout   = 30 * time.Second
 	DefaultMetricsAddr    = "0.0.0.0:9090"
 	DefaultSentryEnv      = "production"
+
+	// Webhook defaults
+	DefaultWebhookMaxRetries         = 3
+	DefaultWebhookRetryDelay         = 1 * time.Second
+	DefaultWebhookMaxRetryDelay      = 30 * time.Second
+	DefaultWebhookRetryMultiplier    = 2.0
+	DefaultWebhookRateLimitPerSecond = 10
+	DefaultWebhookRateLimitBurst     = 20
 )
 
 // Option is a functional option for configuring the application
@@ -162,6 +170,13 @@ func New(options ...Option) *Config {
 		EnableSPF:      true,
 		EnableDKIM:     true,
 		EnableDMARC:    true,
+		// Webhook defaults
+		WebhookMaxRetries:         DefaultWebhookMaxRetries,
+		WebhookRetryDelay:         DefaultWebhookRetryDelay,
+		WebhookMaxRetryDelay:      DefaultWebhookMaxRetryDelay,
+		WebhookRetryMultiplier:    DefaultWebhookRetryMultiplier,
+		WebhookRateLimitPerSecond: DefaultWebhookRateLimitPerSecond,
+		WebhookRateLimitBurst:     DefaultWebhookRateLimitBurst,
 	}
 
 	for _, option := range options {
@@ -181,13 +196,13 @@ func LoadFromFlags() (*Config, error) {
 		webhookUser   = flag.String("webhook-user", "", "Basic auth username for webhook")
 		webhookPass   = flag.String("webhook-pass", "", "Basic auth password for webhook")
 		// Webhook retry flags
-		webhookMaxRetries      = flag.Int("webhook-max-retries", 3, "Maximum number of webhook retry attempts")
-		webhookRetryDelay      = flag.Int("webhook-retry-delay", 1, "Initial webhook retry delay in seconds")
-		webhookMaxRetryDelay   = flag.Int("webhook-max-retry-delay", 30, "Maximum webhook retry delay in seconds")
-		webhookRetryMultiplier = flag.Float64("webhook-retry-multiplier", 2.0, "Webhook retry delay multiplier")
+		webhookMaxRetries      = flag.Int("webhook-max-retries", DefaultWebhookMaxRetries, "Maximum number of webhook retry attempts")
+		webhookRetryDelay      = flag.Int("webhook-retry-delay", int(DefaultWebhookRetryDelay.Seconds()), "Initial webhook retry delay in seconds")
+		webhookMaxRetryDelay   = flag.Int("webhook-max-retry-delay", int(DefaultWebhookMaxRetryDelay.Seconds()), "Maximum webhook retry delay in seconds")
+		webhookRetryMultiplier = flag.Float64("webhook-retry-multiplier", DefaultWebhookRetryMultiplier, "Webhook retry delay multiplier")
 		// Webhook rate limiting flags
-		webhookRateLimitPerSecond = flag.Int("webhook-rate-limit", 10, "Webhook requests per second rate limit")
-		webhookRateLimitBurst     = flag.Int("webhook-rate-burst", 20, "Webhook rate limit burst capacity")
+		webhookRateLimitPerSecond = flag.Int("webhook-rate-limit", DefaultWebhookRateLimitPerSecond, "Webhook requests per second rate limit")
+		webhookRateLimitBurst     = flag.Int("webhook-rate-burst", DefaultWebhookRateLimitBurst, "Webhook rate limit burst capacity")
 		serverName                = flag.String("name", DefaultServerName, "SMTP server name")
 		maxMessageSize            = flag.Int64("max-size", DefaultMaxMessageSize, "Maximum message size in bytes")
 		readTimeout               = flag.Int("read-timeout", int(DefaultReadTimeout.Seconds()), "Read timeout in seconds")

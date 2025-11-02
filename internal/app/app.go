@@ -163,6 +163,7 @@ func (a *App) Start() error {
 	// Log startup information
 	logFields := a.logger.Info().
 		Str("smtp_address", a.config.ListenAddr).
+		Str("webhook_url", a.config.WebhookURL).
 		Str("smtp_tls_address", a.config.ListenAddrTLS).
 		Bool("spf_enabled", a.config.EnableSPF).
 		Bool("dkim_enabled", a.config.EnableDKIM).
@@ -170,12 +171,6 @@ func (a *App) Start() error {
 		Bool("metrics_enabled", a.config.EnableMetrics).
 		Bool("sentry_enabled", a.config.EnableSentry).
 		Bool("verbose", a.config.Verbose)
-
-	if a.config.WebhookURL != "" {
-		logFields = logFields.Str("webhook_url", a.config.WebhookURL)
-	} else {
-		logFields = logFields.Str("webhook_mode", "sink")
-	}
 
 	logFields.Msg("Starting InboundParse SMTP server")
 

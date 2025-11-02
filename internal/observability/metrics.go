@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -130,211 +131,234 @@ type metricsCollector struct {
 	sessionMessageCount prometheus.Counter
 }
 
-// NewMetricsCollector creates a new metrics collector
+var (
+	defaultMetricsOnce sync.Once
+	defaultMetrics     MetricsCollector
+)
+
+// NewMetricsCollector creates a new metrics collector using the default Prometheus registry.
+// This function uses sync.Once to ensure metrics are only registered once globally.
+// For tests or when you need isolated metrics, use NewMetricsCollectorWithRegistry instead.
 func NewMetricsCollector() MetricsCollector {
+	defaultMetricsOnce.Do(func() {
+		defaultMetrics = newMetricsCollectorWithFactory(promauto.Factory{})
+	})
+	return defaultMetrics
+}
+
+// NewMetricsCollectorWithRegistry creates a new metrics collector using a custom Prometheus registry.
+// This is useful for testing to avoid duplicate registration errors.
+func NewMetricsCollectorWithRegistry(registry *prometheus.Registry) MetricsCollector {
+	factory := promauto.With(registry)
+	return newMetricsCollectorWithFactory(factory)
+}
+
+// newMetricsCollectorWithFactory creates a metrics collector using the provided factory.
+// This is an internal helper function used by both NewMetricsCollector and NewMetricsCollectorWithRegistry.
+func newMetricsCollectorWithFactory(factory promauto.Factory) MetricsCollector {
 	return &metricsCollector{
 		// Connection metrics
-		smtpConnectionsTotal: promauto.NewCounter(prometheus.CounterOpts{
+		smtpConnectionsTotal: factory.NewCounter(prometheus.CounterOpts{
 			Name: "smtp_connections_total",
 			Help: "Total number of SMTP connections",
 		}),
-		smtpConnectionsActive: promauto.NewGauge(prometheus.GaugeOpts{
+		smtpConnectionsActive: factory.NewGauge(prometheus.GaugeOpts{
 			Name: "smtp_connections_active",
 			Help: "Number of active SMTP connections",
 		}),
-		smtpActiveSessions: promauto.NewGauge(prometheus.GaugeOpts{
+		smtpActiveSessions: factory.NewGauge(prometheus.GaugeOpts{
 			Name: "smtp_active_sessions",
 			Help: "Number of active SMTP sessions",
 		}),
-		smtpConnectionDuration: promauto.NewHistogram(prometheus.HistogramOpts{
+		smtpConnectionDuration: factory.NewHistogram(prometheus.HistogramOpts{
 			Name:    "smtp_connection_duration_seconds",
 			Help:    "Duration of SMTP connections in seconds",
 			Buckets: prometheus.DefBuckets,
 		}),
 
 		// Message metrics
-		smtpMessagesTotal: promauto.NewCounter(prometheus.CounterOpts{
+		smtpMessagesTotal: factory.NewCounter(prometheus.CounterOpts{
 			Name: "smtp_messages_total",
 			Help: "Total number of SMTP messages received",
 		}),
-		smtpMessagesProcessed: promauto.NewCounterVec(prometheus.CounterOpts{
+		smtpMessagesProcessed: factory.NewCounterVec(prometheus.CounterOpts{
 			Name: "smtp_messages_processed_total",
 			Help: "Total number of SMTP messages processed by status",
 		}, []string{"status"}),
-		smtpMessagesFailed: promauto.NewCounter(prometheus.CounterOpts{
+		smtpMessagesFailed: factory.NewCounter(prometheus.CounterOpts{
 			Name: "smtp_messages_failed_total",
 			Help: "Total number of failed SMTP messages",
 		}),
-		smtpMessageSize: promauto.NewHistogram(prometheus.HistogramOpts{
+		smtpMessageSize: factory.NewHistogram(prometheus.HistogramOpts{
 			Name:    "smtp_message_size_bytes",
 			Help:    "Size of SMTP messages in bytes",
 			Buckets: []float64{1024, 10240, 102400, 1048576, 10485760, 104857600},
 		}),
 
 		// Authentication metrics
-		spfResults: promauto.NewCounterVec(prometheus.CounterOpts{
+		spfResults: factory.NewCounterVec(prometheus.CounterOpts{
 			Name: "spf_results_total",
 			Help: "Total SPF validation results",
 		}, []string{"result"}),
-		dkimResults: promauto.NewCounterVec(prometheus.CounterOpts{
+		dkimResults: factory.NewCounterVec(prometheus.CounterOpts{
 			Name: "dkim_results_total",
 			Help: "Total DKIM validation results",
 		}, []string{"result"}),
-		dmarcResults: promauto.NewCounterVec(prometheus.CounterOpts{
+		dmarcResults: factory.NewCounterVec(prometheus.CounterOpts{
 			Name: "dmarc_results_total",
 			Help: "Total DMARC validation results",
 		}, []string{"result"}),
-		dmarcPolicies: promauto.NewCounterVec(prometheus.CounterOpts{
+		dmarcPolicies: factory.NewCounterVec(prometheus.CounterOpts{
 			Name: "dmarc_policies_total",
 			Help: "Total DMARC policies observed",
 		}, []string{"policy"}),
-		authChecksSPF: promauto.NewCounter(prometheus.CounterOpts{
+		authChecksSPF: factory.NewCounter(prometheus.CounterOpts{
 			Name: "auth_checks_spf_total",
 			Help: "Total SPF authentication checks performed",
 		}),
-		authChecksDKIM: promauto.NewCounter(prometheus.CounterOpts{
+		authChecksDKIM: factory.NewCounter(prometheus.CounterOpts{
 			Name: "auth_checks_dkim_total",
 			Help: "Total DKIM authentication checks performed",
 		}),
-		authChecksDMARC: promauto.NewCounter(prometheus.CounterOpts{
+		authChecksDMARC: factory.NewCounter(prometheus.CounterOpts{
 			Name: "auth_checks_dmarc_total",
 			Help: "Total DMARC authentication checks performed",
 		}),
 
 		// Webhook metrics
-		webhookRequests: promauto.NewCounterVec(prometheus.CounterOpts{
+		webhookRequests: factory.NewCounterVec(prometheus.CounterOpts{
 			Name: "webhook_requests_total",
 			Help: "Total webhook requests by status code",
 		}, []string{"status_code"}),
-		webhookDuration: promauto.NewHistogram(prometheus.HistogramOpts{
+		webhookDuration: factory.NewHistogram(prometheus.HistogramOpts{
 			Name:    "webhook_duration_seconds",
 			Help:    "Duration of webhook requests in seconds",
 			Buckets: prometheus.DefBuckets,
 		}),
-		webhookRequestSize: promauto.NewHistogram(prometheus.HistogramOpts{
+		webhookRequestSize: factory.NewHistogram(prometheus.HistogramOpts{
 			Name:    "webhook_request_size_bytes",
 			Help:    "Size of webhook request payloads in bytes",
 			Buckets: []float64{1024, 10240, 102400, 1048576, 10485760, 104857600},
 		}),
-		webhookResponseSize: promauto.NewHistogram(prometheus.HistogramOpts{
+		webhookResponseSize: factory.NewHistogram(prometheus.HistogramOpts{
 			Name:    "webhook_response_size_bytes",
 			Help:    "Size of webhook response payloads in bytes",
 			Buckets: []float64{1024, 10240, 102400, 1048576, 10485760, 104857600},
 		}),
-		webhookRetries: promauto.NewCounterVec(prometheus.CounterOpts{
+		webhookRetries: factory.NewCounterVec(prometheus.CounterOpts{
 			Name: "webhook_retry_attempts_total",
 			Help: "Total webhook retry attempts",
 		}, []string{"success"}),
-		webhookErrors: promauto.NewCounterVec(prometheus.CounterOpts{
+		webhookErrors: factory.NewCounterVec(prometheus.CounterOpts{
 			Name: "webhook_errors_total",
 			Help: "Total webhook errors by type",
 		}, []string{"error_type"}),
 
 		// Authentication duration metrics
-		spfDuration: promauto.NewHistogram(prometheus.HistogramOpts{
+		spfDuration: factory.NewHistogram(prometheus.HistogramOpts{
 			Name:    "spf_check_duration_seconds",
 			Help:    "Duration of SPF authentication checks in seconds",
 			Buckets: prometheus.DefBuckets,
 		}),
-		dkimDuration: promauto.NewHistogram(prometheus.HistogramOpts{
+		dkimDuration: factory.NewHistogram(prometheus.HistogramOpts{
 			Name:    "dkim_check_duration_seconds",
 			Help:    "Duration of DKIM authentication checks in seconds",
 			Buckets: prometheus.DefBuckets,
 		}),
-		dmarcDuration: promauto.NewHistogram(prometheus.HistogramOpts{
+		dmarcDuration: factory.NewHistogram(prometheus.HistogramOpts{
 			Name:    "dmarc_check_duration_seconds",
 			Help:    "Duration of DMARC authentication checks in seconds",
 			Buckets: prometheus.DefBuckets,
 		}),
 
 		// Domain-based authentication metrics
-		spfResultsByDomain: promauto.NewCounterVec(prometheus.CounterOpts{
+		spfResultsByDomain: factory.NewCounterVec(prometheus.CounterOpts{
 			Name: "spf_results_by_domain_total",
 			Help: "SPF authentication results by domain",
 		}, []string{"domain", "result"}),
-		dkimResultsByDomain: promauto.NewCounterVec(prometheus.CounterOpts{
+		dkimResultsByDomain: factory.NewCounterVec(prometheus.CounterOpts{
 			Name: "dkim_results_by_domain_total",
 			Help: "DKIM authentication results by domain",
 		}, []string{"domain", "result"}),
-		dmarcResultsByDomain: promauto.NewCounterVec(prometheus.CounterOpts{
+		dmarcResultsByDomain: factory.NewCounterVec(prometheus.CounterOpts{
 			Name: "dmarc_results_by_domain_total",
 			Help: "DMARC authentication results by domain",
 		}, []string{"domain", "result"}),
 
 		// Authentication error metrics
-		authErrors: promauto.NewCounterVec(prometheus.CounterOpts{
+		authErrors: factory.NewCounterVec(prometheus.CounterOpts{
 			Name: "auth_errors_total",
 			Help: "Authentication errors by check type and error type",
 		}, []string{"check_type", "error_type"}),
 
 		// Message processing stage metrics
-		messageReadDuration: promauto.NewHistogram(prometheus.HistogramOpts{
+		messageReadDuration: factory.NewHistogram(prometheus.HistogramOpts{
 			Name:    "message_read_duration_seconds",
 			Help:    "Duration of message reading stage in seconds",
 			Buckets: prometheus.DefBuckets,
 		}),
-		messageParseDuration: promauto.NewHistogram(prometheus.HistogramOpts{
+		messageParseDuration: factory.NewHistogram(prometheus.HistogramOpts{
 			Name:    "message_parse_duration_seconds",
 			Help:    "Duration of message parsing stage in seconds",
 			Buckets: prometheus.DefBuckets,
 		}),
-		messageAuthDuration: promauto.NewHistogram(prometheus.HistogramOpts{
+		messageAuthDuration: factory.NewHistogram(prometheus.HistogramOpts{
 			Name:    "message_auth_duration_seconds",
 			Help:    "Duration of message authentication stage in seconds",
 			Buckets: prometheus.DefBuckets,
 		}),
-		messageWebhookDuration: promauto.NewHistogram(prometheus.HistogramOpts{
+		messageWebhookDuration: factory.NewHistogram(prometheus.HistogramOpts{
 			Name:    "message_webhook_duration_seconds",
 			Help:    "Duration of message webhook stage in seconds",
 			Buckets: prometheus.DefBuckets,
 		}),
-		messageTotalDuration: promauto.NewHistogram(prometheus.HistogramOpts{
+		messageTotalDuration: factory.NewHistogram(prometheus.HistogramOpts{
 			Name:    "message_total_processing_duration_seconds",
 			Help:    "Total duration of message processing in seconds",
 			Buckets: prometheus.DefBuckets,
 		}),
 
 		// Email characteristics metrics
-		emailAttachmentCount: promauto.NewHistogram(prometheus.HistogramOpts{
+		emailAttachmentCount: factory.NewHistogram(prometheus.HistogramOpts{
 			Name:    "email_attachment_count",
 			Help:    "Number of attachments in emails",
 			Buckets: []float64{0, 1, 2, 3, 4, 5, 10, 15, 20, 25, 30, 50, 100},
 		}),
-		emailAttachmentSize: promauto.NewHistogram(prometheus.HistogramOpts{
+		emailAttachmentSize: factory.NewHistogram(prometheus.HistogramOpts{
 			Name:    "email_attachment_size_bytes",
 			Help:    "Size of email attachments in bytes",
 			Buckets: prometheus.ExponentialBuckets(1024, 2, 15), // 1KB to 32MB
 		}),
-		emailBodyType: promauto.NewCounterVec(prometheus.CounterOpts{
+		emailBodyType: factory.NewCounterVec(prometheus.CounterOpts{
 			Name: "email_body_type_total",
 			Help: "Number of emails by body type (text, html, multipart)",
 		}, []string{"body_type"}),
-		emailHeaderCount: promauto.NewHistogram(prometheus.HistogramOpts{
+		emailHeaderCount: factory.NewHistogram(prometheus.HistogramOpts{
 			Name:    "email_header_count",
 			Help:    "Number of headers in emails",
 			Buckets: []float64{0, 5, 10, 15, 20, 25, 30, 40, 50, 75, 100, 150, 200},
 		}),
-		emailRecipientCount: promauto.NewHistogram(prometheus.HistogramOpts{
+		emailRecipientCount: factory.NewHistogram(prometheus.HistogramOpts{
 			Name:    "email_recipient_count",
 			Help:    "Number of recipients in emails",
 			Buckets: []float64{0, 1, 2, 3, 4, 5, 10, 15, 20, 25, 30, 50, 100},
 		}),
 
 		// Session lifecycle metrics
-		sessionDuration: promauto.NewHistogram(prometheus.HistogramOpts{
+		sessionDuration: factory.NewHistogram(prometheus.HistogramOpts{
 			Name:    "session_duration_seconds",
 			Help:    "Duration of SMTP sessions in seconds",
 			Buckets: prometheus.DefBuckets,
 		}),
-		sessionCommands: promauto.NewCounterVec(prometheus.CounterOpts{
+		sessionCommands: factory.NewCounterVec(prometheus.CounterOpts{
 			Name: "session_commands_total",
 			Help: "Number of SMTP commands executed per session",
 		}, []string{"command"}),
-		sessionErrors: promauto.NewCounterVec(prometheus.CounterOpts{
+		sessionErrors: factory.NewCounterVec(prometheus.CounterOpts{
 			Name: "session_errors_total",
 			Help: "Number of SMTP session errors by type",
 		}, []string{"error_type"}),
-		sessionMessageCount: promauto.NewCounter(prometheus.CounterOpts{
+		sessionMessageCount: factory.NewCounter(prometheus.CounterOpts{
 			Name: "session_messages_total",
 			Help: "Number of messages processed per session",
 		}),
