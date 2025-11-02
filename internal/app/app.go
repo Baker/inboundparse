@@ -43,14 +43,15 @@ func NewApp(cfg *config.Config) (*App, error) {
 
 	// Initialize Sentry
 	sentry := observability.NewSentryClient()
-	if err := sentry.Init(observability.SentryConfig{
-		EnableSentry:  cfg.EnableSentry,
-		SentryDSN:     cfg.SentryDSN,
-		SentryEnv:     cfg.SentryEnv,
-		SentryRelease: cfg.SentryRelease,
-	}); err != nil {
-		logger.Error().Err(err).Msg("Failed to initialize Sentry")
-		return nil, fmt.Errorf("failed to initialize Sentry: %w", err)
+	if cfg.EnableSentry && cfg.SentryDSN != "" {
+		if err := sentry.Init(observability.SentryConfig{
+			EnableSentry:  cfg.EnableSentry,
+			SentryDSN:     cfg.SentryDSN,
+			SentryEnv:     cfg.SentryEnv,
+			SentryRelease: cfg.SentryRelease,
+		}); err != nil {
+			logger.Warn().Err(err).Msg("Failed to initialize Sentry, continuing without error tracking")
+		}
 	}
 
 	// Initialize metrics
@@ -69,22 +70,27 @@ func NewApp(cfg *config.Config) (*App, error) {
 	})
 
 	// Initialize webhook sender
-	webhookSender := processor.NewWebhookSender(processor.WebhookConfig{
-		URL:      cfg.WebhookURL,
-		Username: cfg.WebhookUser,
-		Password: cfg.WebhookPass,
-		Timeout:  30 * time.Second,
+	var webhookSender processor.WebhookSender
+	if cfg.WebhookURL == "" {
+		webhookSender = processor.NewNoOpWebhookSender(logger, cfg.Verbose)
+	} else {
+		webhookSender = processor.NewWebhookSender(processor.WebhookConfig{
+			URL:      cfg.WebhookURL,
+			Username: cfg.WebhookUser,
+			Password: cfg.WebhookPass,
+			Timeout:  30 * time.Second,
 
-		// Retry configuration
-		MaxRetries:      cfg.WebhookMaxRetries,
-		RetryDelay:      cfg.WebhookRetryDelay,
-		MaxRetryDelay:   cfg.WebhookMaxRetryDelay,
-		RetryMultiplier: cfg.WebhookRetryMultiplier,
+			// Retry configuration
+			MaxRetries:      cfg.WebhookMaxRetries,
+			RetryDelay:      cfg.WebhookRetryDelay,
+			MaxRetryDelay:   cfg.WebhookMaxRetryDelay,
+			RetryMultiplier: cfg.WebhookRetryMultiplier,
 
-		// Rate limiting configuration
-		RateLimitPerSecond: cfg.WebhookRateLimitPerSecond,
-		RateLimitBurst:     cfg.WebhookRateLimitBurst,
-	}, logger, metrics)
+			// Rate limiting configuration
+			RateLimitPerSecond: cfg.WebhookRateLimitPerSecond,
+			RateLimitBurst:     cfg.WebhookRateLimitBurst,
+		}, logger, metrics)
+	}
 
 	// Initialize message processor
 	messageProcessor := processor.NewMessageProcessor(
@@ -155,17 +161,23 @@ func (a *App) Start() error {
 	}
 
 	// Log startup information
-	a.logger.Info().
+	logFields := a.logger.Info().
 		Str("smtp_address", a.config.ListenAddr).
 		Str("smtp_tls_address", a.config.ListenAddrTLS).
-		Str("webhook_url", a.config.WebhookURL).
 		Bool("spf_enabled", a.config.EnableSPF).
 		Bool("dkim_enabled", a.config.EnableDKIM).
 		Bool("dmarc_enabled", a.config.EnableDMARC).
 		Bool("metrics_enabled", a.config.EnableMetrics).
 		Bool("sentry_enabled", a.config.EnableSentry).
-		Bool("verbose", a.config.Verbose).
-		Msg("Starting InboundParse SMTP server")
+		Bool("verbose", a.config.Verbose)
+
+	if a.config.WebhookURL != "" {
+		logFields = logFields.Str("webhook_url", a.config.WebhookURL)
+	} else {
+		logFields = logFields.Str("webhook_mode", "sink")
+	}
+
+	logFields.Msg("Starting InboundParse SMTP server")
 
 	if a.config.CertFile != "" && a.config.KeyFile != "" {
 		a.logger.Info().

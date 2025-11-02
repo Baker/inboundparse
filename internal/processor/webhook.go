@@ -239,3 +239,35 @@ func (w *webhookSender) SendWebhook(ctx context.Context, payload interface{}) er
 
 	return nil
 }
+
+// NoOpWebhookSender is a no-op implementation of WebhookSender
+// that logs payloads when verbose logging is enabled
+type NoOpWebhookSender struct {
+	logger  observability.Logger
+	verbose bool
+}
+
+// NewNoOpWebhookSender creates a new no-op webhook sender
+func NewNoOpWebhookSender(logger observability.Logger, verbose bool) WebhookSender {
+	return &NoOpWebhookSender{
+		logger:  logger,
+		verbose: verbose,
+	}
+}
+
+// SendWebhook logs the payload if verbose logging is enabled, otherwise silently accepts
+func (n *NoOpWebhookSender) SendWebhook(ctx context.Context, payload interface{}) error {
+	if n.verbose {
+		jsonData, err := json.Marshal(payload)
+		if err != nil {
+			n.logger.Warn().
+				Err(err).
+				Msg("Failed to marshal webhook payload for logging")
+			return nil // Don't fail processing if logging fails
+		}
+		n.logger.Info().
+			RawJSON("payload", jsonData).
+			Msg("Webhook payload (no webhook URL configured)")
+	}
+	return nil
+}

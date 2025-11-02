@@ -3,10 +3,9 @@ package config
 import (
 	"flag"
 	"fmt"
-	"os"
+	"inboundparse/internal/utils"
+	"strconv"
 	"time"
-
-	"github.com/joho/godotenv"
 )
 
 // Config holds all configuration for the application
@@ -213,139 +212,95 @@ func LoadFromFlags() (*Config, error) {
 	)
 
 	// Load .env file if present
-	if err := godotenv.Load(); err != nil {
-		// Ignore error if .env file doesn't exist - this is expected behavior
-		_ = err
-	}
+	utils.LoadEnv()
 
 	// Parse flags
 	flag.Parse()
 
-	// Override with environment variables
-	overrideFromEnv("LISTEN_ADDR", listenAddr)
-	overrideFromEnv("LISTEN_ADDR_TLS", listenAddrTLS)
-	overrideFromEnv("WEBHOOK_URL", webhookURL)
-	overrideFromEnv("WEBHOOK_USER", webhookUser)
-	overrideFromEnv("WEBHOOK_PASS", webhookPass)
-	overrideIntFromEnv("WEBHOOK_MAX_RETRIES", webhookMaxRetries)
-	overrideIntFromEnv("WEBHOOK_RETRY_DELAY", webhookRetryDelay)
-	overrideIntFromEnv("WEBHOOK_MAX_RETRY_DELAY", webhookMaxRetryDelay)
-	overrideFloat64FromEnv("WEBHOOK_RETRY_MULTIPLIER", webhookRetryMultiplier)
-	overrideIntFromEnv("WEBHOOK_RATE_LIMIT", webhookRateLimitPerSecond)
-	overrideIntFromEnv("WEBHOOK_RATE_BURST", webhookRateLimitBurst)
-	overrideFromEnv("SERVER_NAME", serverName)
-	overrideFromEnv("CERT_FILE", certFile)
-	overrideFromEnv("KEY_FILE", keyFile)
-	overrideFromEnv("SENTRY_DSN", sentryDSN)
-	overrideFromEnv("SENTRY_ENV", sentryEnv)
-	overrideFromEnv("SENTRY_RELEASE", sentryRelease)
-	overrideFromEnv("METRICS_ADDR", metricsAddr)
-	overrideFromEnv("METRICS_API_KEY", metricsAPIKey)
-	overrideFromEnv("METRICS_USERNAME", metricsUsername)
-	overrideFromEnv("METRICS_PASSWORD", metricsPassword)
-
-	overrideBoolFromEnv("VERBOSE", verbose)
-	overrideBoolFromEnv("ENABLE_SPF", enableSPF)
-	overrideBoolFromEnv("ENABLE_DKIM", enableDKIM)
-	overrideBoolFromEnv("ENABLE_DMARC", enableDMARC)
-	overrideBoolFromEnv("ENABLE_SENTRY", enableSentry)
-	overrideBoolFromEnv("ENABLE_METRICS", enableMetrics)
-
-	// Validate required fields
-	if *webhookURL == "" {
-		return nil, fmt.Errorf("webhook URL is required. Use -webhook flag or WEBHOOK_URL environment variable")
+	// Get values from flags or environment variables (env takes precedence)
+	listenAddrVal := utils.GetEnv("LISTEN_ADDR", *listenAddr)
+	listenAddrTLSVal := utils.GetEnv("LISTEN_ADDR_TLS", *listenAddrTLS)
+	webhookURLVal := utils.GetEnv("WEBHOOK_URL", *webhookURL)
+	webhookUserVal := utils.GetEnv("WEBHOOK_USER", *webhookUser)
+	webhookPassVal := utils.GetEnv("WEBHOOK_PASS", *webhookPass)
+	webhookMaxRetriesVal := utils.GetEnvInt("WEBHOOK_MAX_RETRIES", *webhookMaxRetries)
+	webhookRetryDelayVal := utils.GetEnvInt("WEBHOOK_RETRY_DELAY", *webhookRetryDelay)
+	webhookMaxRetryDelayVal := utils.GetEnvInt("WEBHOOK_MAX_RETRY_DELAY", *webhookMaxRetryDelay)
+	webhookRetryMultiplierVal := utils.GetEnvFloat("WEBHOOK_RETRY_MULTIPLIER", *webhookRetryMultiplier)
+	webhookRateLimitVal := utils.GetEnvInt("WEBHOOK_RATE_LIMIT", *webhookRateLimitPerSecond)
+	webhookRateBurstVal := utils.GetEnvInt("WEBHOOK_RATE_BURST", *webhookRateLimitBurst)
+	serverNameVal := utils.GetEnv("SERVER_NAME", *serverName)
+	maxMessageSizeVal := *maxMessageSize
+	if envVal := utils.GetEnv("MAX_SIZE", ""); envVal != "" {
+		if parsed, err := strconv.ParseInt(envVal, 10, 64); err == nil {
+			maxMessageSizeVal = parsed
+		}
 	}
+	readTimeoutVal := utils.GetEnvInt("READ_TIMEOUT", *readTimeout)
+	writeTimeoutVal := utils.GetEnvInt("WRITE_TIMEOUT", *writeTimeout)
+	certFileVal := utils.GetEnv("CERT_FILE", *certFile)
+	keyFileVal := utils.GetEnv("KEY_FILE", *keyFile)
+	verboseVal := utils.GetEnvBool("VERBOSE", *verbose)
+	enableSPFVal := utils.GetEnvBool("ENABLE_SPF", *enableSPF)
+	enableDKIMVal := utils.GetEnvBool("ENABLE_DKIM", *enableDKIM)
+	enableDMARCVal := utils.GetEnvBool("ENABLE_DMARC", *enableDMARC)
+	enableSentryVal := utils.GetEnvBool("ENABLE_SENTRY", *enableSentry)
+	sentryDSNVal := utils.GetEnv("SENTRY_DSN", *sentryDSN)
+	sentryEnvVal := utils.GetEnv("SENTRY_ENV", *sentryEnv)
+	sentryReleaseVal := utils.GetEnv("SENTRY_RELEASE", *sentryRelease)
+	enableMetricsVal := utils.GetEnvBool("ENABLE_METRICS", *enableMetrics)
+	metricsAddrVal := utils.GetEnv("METRICS_ADDR", *metricsAddr)
+	metricsAPIKeyVal := utils.GetEnv("METRICS_API_KEY", *metricsAPIKey)
+	metricsUsernameVal := utils.GetEnv("METRICS_USERNAME", *metricsUsername)
+	metricsPasswordVal := utils.GetEnv("METRICS_PASSWORD", *metricsPassword)
 
 	// Build config
 	config := New(
-		WithListenAddr(*listenAddr),
-		WithListenAddrTLS(*listenAddrTLS),
-		WithWebhookURL(*webhookURL),
-		WithWebhookAuth(*webhookUser, *webhookPass),
-		WithTLS(*certFile, *keyFile),
-		WithAuth(*enableSPF, *enableDKIM, *enableDMARC),
-		WithVerbose(*verbose),
+		WithListenAddr(listenAddrVal),
+		WithListenAddrTLS(listenAddrTLSVal),
+		WithWebhookURL(webhookURLVal),
+		WithWebhookAuth(webhookUserVal, webhookPassVal),
+		WithTLS(certFileVal, keyFileVal),
+		WithAuth(enableSPFVal, enableDKIMVal, enableDMARCVal),
+		WithVerbose(verboseVal),
 	)
 
 	// Set webhook retry and rate limiting configuration
-	config.WebhookMaxRetries = *webhookMaxRetries
-	config.WebhookRetryDelay = time.Duration(*webhookRetryDelay) * time.Second
-	config.WebhookMaxRetryDelay = time.Duration(*webhookMaxRetryDelay) * time.Second
-	config.WebhookRetryMultiplier = *webhookRetryMultiplier
-	config.WebhookRateLimitPerSecond = *webhookRateLimitPerSecond
-	config.WebhookRateLimitBurst = *webhookRateLimitBurst
+	config.WebhookMaxRetries = webhookMaxRetriesVal
+	config.WebhookRetryDelay = time.Duration(webhookRetryDelayVal) * time.Second
+	config.WebhookMaxRetryDelay = time.Duration(webhookMaxRetryDelayVal) * time.Second
+	config.WebhookRetryMultiplier = webhookRetryMultiplierVal
+	config.WebhookRateLimitPerSecond = webhookRateLimitVal
+	config.WebhookRateLimitBurst = webhookRateBurstVal
 
 	// Set additional fields
-	config.ServerName = *serverName
-	config.MaxMessageSize = *maxMessageSize
-	config.ReadTimeout = time.Duration(*readTimeout) * time.Second
-	config.WriteTimeout = time.Duration(*writeTimeout) * time.Second
+	config.ServerName = serverNameVal
+	config.MaxMessageSize = maxMessageSizeVal
+	config.ReadTimeout = time.Duration(readTimeoutVal) * time.Second
+	config.WriteTimeout = time.Duration(writeTimeoutVal) * time.Second
 
 	// Sentry configuration
-	if *enableSentry {
+	if enableSentryVal {
 		config.EnableSentry = true
-		config.SentryDSN = *sentryDSN
-		config.SentryEnv = *sentryEnv
-		config.SentryRelease = *sentryRelease
+		config.SentryDSN = sentryDSNVal
+		config.SentryEnv = sentryEnvVal
+		config.SentryRelease = sentryReleaseVal
 	}
 
 	// Metrics configuration
-	if *enableMetrics {
+	if enableMetricsVal {
 		config.EnableMetrics = true
-		config.MetricsAddr = *metricsAddr
-		config.MetricsAPIKey = *metricsAPIKey
-		config.MetricsUsername = *metricsUsername
-		config.MetricsPassword = *metricsPassword
+		config.MetricsAddr = metricsAddrVal
+		config.MetricsAPIKey = metricsAPIKeyVal
+		config.MetricsUsername = metricsUsernameVal
+		config.MetricsPassword = metricsPasswordVal
 	}
 
 	return config, nil
 }
 
-// overrideFromEnv overrides a string flag from environment variable if present
-func overrideFromEnv(envKey string, target *string) {
-	if env := os.Getenv(envKey); env != "" {
-		*target = env
-	}
-}
-
-// overrideBoolFromEnv overrides a bool flag from environment variable if present
-func overrideBoolFromEnv(envKey string, target *bool) {
-	if env := os.Getenv(envKey); env != "" {
-		*target = env == "true"
-	}
-	// If env var is empty or not set, keep the original value
-}
-
-// overrideIntFromEnv overrides an int flag from environment variable if present
-func overrideIntFromEnv(envKey string, target *int) {
-	if env := os.Getenv(envKey); env != "" {
-		if val, err := fmt.Sscanf(env, "%d", target); err == nil && val == 1 {
-			// Successfully parsed - no action needed as target is already updated
-			return
-		}
-		// If parsing failed, keep the original value
-	}
-	// If env var is empty or not set, keep the original value
-}
-
-// overrideFloat64FromEnv overrides a float64 flag from environment variable if present
-func overrideFloat64FromEnv(envKey string, target *float64) {
-	if env := os.Getenv(envKey); env != "" {
-		if val, err := fmt.Sscanf(env, "%f", target); err == nil && val == 1 {
-			// Successfully parsed - no action needed as target is already updated
-			return
-		}
-		// If parsing failed, keep the original value
-	}
-	// If env var is empty or not set, keep the original value
-}
-
 // Validate checks if the configuration is valid
 func (c *Config) Validate() error {
-	if c.WebhookURL == "" {
-		return fmt.Errorf("webhook URL is required")
-	}
-
 	if c.CertFile != "" && c.KeyFile == "" {
 		return fmt.Errorf("TLS key file is required when certificate file is provided")
 	}
