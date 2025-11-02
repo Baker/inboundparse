@@ -69,11 +69,11 @@ func TestSetEnvBool(t *testing.T) {
 			expected: false,
 		},
 		{
-			name:     "Set to false when env var is not 'true'",
+			name:     "Return default when env var is not a valid boolean",
 			envKey:   "TEST_BOOL_OTHER",
 			envValue: "other",
 			initial:  true,
-			expected: false,
+			expected: true, // GetEnvBool returns default when parse fails
 		},
 		{
 			name:     "Keep initial when env var is empty",

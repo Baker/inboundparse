@@ -2,14 +2,17 @@ package app
 
 import (
 	"context"
+	"errors"
 	"inboundparse/internal/config"
 	"inboundparse/internal/domain"
 	"inboundparse/internal/observability"
 	"io"
 	"net"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
+	"unsafe"
 )
 
 // Mock implementations for testing
@@ -87,10 +90,12 @@ func (m *mockSMTPServer) Stop() error {
 	return m.stopErr
 }
 
-type mockMetricsServer struct{}
+type mockMetricsServer struct {
+	startErr error
+}
 
 func (m *mockMetricsServer) Start() error {
-	return nil
+	return m.startErr
 }
 
 func (m *mockMetricsServer) Stop(ctx context.Context) error {
@@ -152,11 +157,14 @@ func TestApp_Start_ValidConfig(t *testing.T) {
 }
 
 func TestApp_Start_InvalidConfig(t *testing.T) {
+	// Test with invalid TLS config (cert without key) which should fail validation
 	config := &config.Config{
 		ListenAddr: "127.0.0.1:0",
-		WebhookURL: "", // Invalid - missing webhook URL
+		WebhookURL: "http://localhost:8080/webhook",
 		ServerName: "test",
 		Verbose:    true,
+		CertFile:   "/path/to/cert.pem",
+		KeyFile:    "", // Missing key file - should fail validation
 	}
 
 	app, err := NewApp(config)
@@ -164,10 +172,13 @@ func TestApp_Start_InvalidConfig(t *testing.T) {
 		t.Fatalf("Expected no error creating app, got %v", err)
 	}
 
-	// Test Start method with invalid config
+	// Test Start method with invalid config - should fail validation
 	err = app.Start()
 	if err == nil {
 		t.Error("Expected error starting app with invalid config")
+	}
+	if err != nil && !strings.Contains(err.Error(), "invalid configuration") {
+		t.Errorf("Expected validation error, got: %v", err)
 	}
 }
 
@@ -359,10 +370,57 @@ func TestApp_Start_SMTPServerError(t *testing.T) {
 }
 
 func TestApp_Start_MetricsServerError(t *testing.T) {
-	// Test metrics server start error path (lines 140-144)
-	// This test is disabled because it causes Prometheus registration conflicts
-	// The metrics server error path is covered by other tests
-	t.Skip("Skipping metrics server error test due to Prometheus registration conflicts")
+	// Test metrics server start error path (lines 156-160)
+	// Use a mock metrics server to avoid Prometheus registration conflicts
+	// Since the metrics server Start() method doesn't actually return errors in the current implementation,
+	// we test the error handling code path by verifying the code structure exists.
+	// The actual error would occur if the metrics server Start() method returned an error.
+
+	config := &config.Config{
+		ListenAddr:    "127.0.0.1:0",
+		WebhookURL:    "http://localhost:8080/webhook",
+		ServerName:    "test",
+		Verbose:       true,
+		EnableMetrics: true, // Enable metrics to trigger the error path check
+		MetricsAddr:   "127.0.0.1:0",
+		EnableSentry:  false, // Disable sentry to avoid initialization issues
+	}
+
+	app, err := NewApp(config)
+	if err != nil {
+		t.Fatalf("Expected no error creating app, got %v", err)
+	}
+
+	// Replace the metrics server with a mock that returns an error
+	mockServer := &mockMetricsServer{
+		startErr: errors.New("metrics server start failed"),
+	}
+
+	// Access the private metricsServer field using unsafe
+	// Since we're in the same package, we can use unsafe to access unexported fields
+	appValue := reflect.ValueOf(app).Elem()
+	metricsServerField := appValue.FieldByName("metricsServer")
+	if !metricsServerField.IsValid() {
+		t.Fatal("Could not find metricsServer field")
+	}
+
+	// Use unsafe to get a settable pointer to the field
+	fieldPtr := unsafe.Pointer(metricsServerField.UnsafeAddr())
+	metricsServerPtr := (*observability.MetricsServer)(fieldPtr)
+	originalServer := *metricsServerPtr
+	*metricsServerPtr = mockServer
+	defer func() {
+		*metricsServerPtr = originalServer
+	}()
+
+	// Test Start method - should return error from metrics server
+	err = app.Start()
+	if err == nil {
+		t.Error("Expected error starting app with metrics server error")
+	}
+	if err != nil && !strings.Contains(err.Error(), "failed to start metrics server") {
+		t.Errorf("Expected error message about metrics server, got: %v", err)
+	}
 }
 
 func TestApp_Start_WithTLSConfigLogging(t *testing.T) {

@@ -308,7 +308,7 @@ func TestLoadEnv(t *testing.T) {
 	t.Run("loads env file successfully", func(t *testing.T) {
 		// Create temporary .env file
 		envContent := []byte("SITE_NAME=test_site\nSECRET_KEY=test_secret\nDATABASE_HOST=localhost\nDATABASE_PORT=5432\nDATABASE_USER=postgres\nDATABASE_PASSWORD=postgres\nDATABASE_NAME=postgres\nSENTRY_DSN=test_sentry_dsn\nFRONTEND_URL=http://localhost:5187\nREDIS_HOST=host.docker.internal\nREDIS_PORT=6379\nSTRIPE_SECRET_KEY=sk_test_123\nSTRIPE_WEBHOOK_SECRET=whsec_123\nSTRIPE_PUBLISHABLE_KEY=pk_test_123\nGITHUB_CLIENT_ID=github_client_123\nGITHUB_CLIENT_SECRET=github_secret_123\nGOOGLE_CLIENT_ID=google_client_123\nGOOGLE_CLIENT_SECRET=google_secret_123")
-		err := os.WriteFile(".env", envContent, 0644)
+		err := os.WriteFile(".env", envContent, 0o644)
 		assert.NoError(t, err, "Failed to create test .env file")
 		defer os.Remove(".env")
 
