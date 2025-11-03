@@ -61,36 +61,26 @@ type webhookSender struct {
 
 // NewWebhookSender creates a new webhook sender
 func NewWebhookSender(config WebhookConfig, logger observability.Logger, metrics observability.MetricsCollector) WebhookSender {
-	// Set default values if not configured
-	if config.MaxRetries == 0 {
-		config.MaxRetries = 3
-	}
-	if config.RetryDelay == 0 {
-		config.RetryDelay = 1 * time.Second
-	}
-	if config.MaxRetryDelay == 0 {
-		config.MaxRetryDelay = 30 * time.Second
-	}
-	if config.RetryMultiplier == 0 {
-		config.RetryMultiplier = 2.0
-	}
-	if config.RateLimitPerSecond == 0 {
-		config.RateLimitPerSecond = 10
-	}
-	if config.RateLimitBurst == 0 {
-		config.RateLimitBurst = 20
-	}
-
 	// Create retry policy
+	// Note: failsafe-go doesn't directly support context cancellation in retry delays,
+	// so we rely on context checks inside the execution function
+	// MaxRetries of -1 means disable retries (convert to 0)
+	maxRetries := config.MaxRetries
+	if maxRetries < 0 {
+		maxRetries = 0 // Disable retries
+	}
 	retryPolicy := retrypolicy.NewBuilder[any]().
-		WithMaxRetries(config.MaxRetries).
+		WithMaxRetries(maxRetries).
 		WithDelay(config.RetryDelay).
 		Build()
 
 	// Create rate limiter
+	// Safety check: rate limiter requires at least 1 to avoid divide by zero
+	// Note: Proper defaults should be set in config.Config, but we add this
+	// safety check for when WebhookConfig is created directly (e.g., in tests)
 	rateLimit := config.RateLimitPerSecond
-	if rateLimit < 0 {
-		rateLimit = 0
+	if rateLimit <= 0 {
+		rateLimit = 10 // Default fallback to prevent divide by zero
 	}
 	// Ensure rate limit is within valid uint range
 	if rateLimit > int(^uint(0)>>1) {
@@ -163,6 +153,11 @@ func (w *webhookSender) SendWebhook(ctx context.Context, payload interface{}) er
 	executor := failsafe.With(w.retryPolicy, w.rateLimiter, w.circuitBreaker)
 
 	err = executor.Run(func() error {
+		// Check if context is canceled before retrying
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+
 		// Make the HTTP request
 		httpResp, httpErr := w.client.Do(req)
 		if httpErr != nil {
@@ -237,5 +232,37 @@ func (w *webhookSender) SendWebhook(ctx context.Context, payload interface{}) er
 		Int64("response_size", responseSize).
 		Msg("Webhook request completed")
 
+	return nil
+}
+
+// NoOpWebhookSender is a no-op implementation of WebhookSender
+// that logs payloads when verbose logging is enabled
+type NoOpWebhookSender struct {
+	logger  observability.Logger
+	verbose bool
+}
+
+// NewNoOpWebhookSender creates a new no-op webhook sender
+func NewNoOpWebhookSender(logger observability.Logger, verbose bool) WebhookSender {
+	return &NoOpWebhookSender{
+		logger:  logger,
+		verbose: verbose,
+	}
+}
+
+// SendWebhook logs the payload if verbose logging is enabled, otherwise silently accepts
+func (n *NoOpWebhookSender) SendWebhook(ctx context.Context, payload interface{}) error {
+	if n.verbose {
+		jsonData, err := json.Marshal(payload)
+		if err != nil {
+			n.logger.Warn().
+				Err(err).
+				Msg("Failed to marshal webhook payload for logging")
+			return nil // Don't fail processing if logging fails
+		}
+		n.logger.Info().
+			RawJSON("payload", jsonData).
+			Msg("Webhook payload (no webhook URL configured)")
+	}
 	return nil
 }

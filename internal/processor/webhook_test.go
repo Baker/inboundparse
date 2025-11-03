@@ -337,9 +337,11 @@ func TestWebhookSender_SendWebhook_ServiceUnavailable(t *testing.T) {
 	}))
 	defer server.Close()
 
+	// Disable retries to avoid test timeout - failsafe retry delays don't respect context cancellation
 	config := WebhookConfig{
-		URL:     server.URL,
-		Timeout: 5 * time.Second,
+		URL:        server.URL,
+		Timeout:    5 * time.Second,
+		MaxRetries: -1, // Use -1 to disable retries (0 gets converted to default 3)
 	}
 
 	sender := NewWebhookSender(config, &mockLogger{}, &mockMetricsCollector{})

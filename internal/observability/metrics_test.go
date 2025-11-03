@@ -2,6 +2,9 @@ package observability
 
 import (
 	"context"
+	"io"
+	"net"
+	"net/http"
 	"testing"
 	"time"
 
@@ -772,10 +775,51 @@ func TestMetricsServer_Start_WithEmptyAddress(t *testing.T) {
 }
 
 func TestMetricsServer_HealthEndpointNew(t *testing.T) {
-	// Test health endpoint (lines 238-244)
-	// This test is disabled because it requires complex server setup
-	// The health endpoint code is covered by other tests
-	t.Skip("Skipping health endpoint test due to server setup complexity")
+	// Test health endpoint by making an actual HTTP request
+	// Use a listener to get an available port
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("Failed to create listener: %v", err)
+	}
+	addr := listener.Addr().String()
+	listener.Close() // Close the temporary listener so the port is available
+
+	config := MetricsConfig{
+		EnableMetrics: true,
+		MetricsAddr:   addr,
+	}
+
+	server := NewMetricsServer(config)
+	err = server.Start()
+	if err != nil {
+		t.Fatalf("Expected no error starting metrics server, got %v", err)
+	}
+	defer server.Stop(context.Background())
+
+	// Give the server a moment to start
+	time.Sleep(200 * time.Millisecond)
+
+	// Make HTTP request to health endpoint
+	resp, err := http.Get("http://" + addr + "/health")
+	if err != nil {
+		t.Fatalf("Failed to make HTTP request to health endpoint: %v", err)
+	}
+	defer resp.Body.Close()
+
+	// Verify status code
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("Expected status code %d, got %d", http.StatusOK, resp.StatusCode)
+	}
+
+	// Verify response body
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("Failed to read response body: %v", err)
+	}
+
+	if string(body) != "OK" {
+		t.Errorf("Expected response body 'OK', got '%s'", string(body))
+	}
 }
 
 // Test new webhook metrics

@@ -174,14 +174,12 @@ func TestValidate_ValidConfig(t *testing.T) {
 }
 
 func TestValidate_MissingWebhookURL(t *testing.T) {
+	// Webhook URL is now optional - empty URL should not cause validation error
 	cfg := &Config{}
 
 	err := cfg.Validate()
-	if err == nil {
-		t.Error("Expected error for missing webhook URL")
-	}
-	if err.Error() != "webhook URL is required" {
-		t.Errorf("Expected error 'webhook URL is required', got '%s'", err.Error())
+	if err != nil {
+		t.Errorf("Expected no error for missing webhook URL (now optional), got %v", err)
 	}
 }
 
@@ -272,7 +270,7 @@ func TestLoadFromFlags_WithWebhookURL(t *testing.T) {
 }
 
 func TestLoadFromFlags_WithoutWebhookURL(t *testing.T) {
-	// Test LoadFromFlags without webhook URL (should fail)
+	// Test LoadFromFlags without webhook URL (now optional, should succeed)
 	os.Unsetenv("WEBHOOK_URL")
 
 	// Use a custom flag set to avoid redefinition issues
@@ -282,8 +280,8 @@ func TestLoadFromFlags_WithoutWebhookURL(t *testing.T) {
 	cfg.WebhookURL = ""
 
 	err := cfg.Validate()
-	if err == nil {
-		t.Error("Expected error for missing webhook URL")
+	if err != nil {
+		t.Errorf("Expected no error for missing webhook URL (now optional), got %v", err)
 	}
 }
 

@@ -1,6 +1,7 @@
 package config
 
 import (
+	"inboundparse/internal/utils"
 	"os"
 	"testing"
 )
@@ -35,12 +36,11 @@ func TestSetEnvString(t *testing.T) {
 			os.Setenv(tt.envKey, tt.envValue)
 			defer os.Unsetenv(tt.envKey)
 
-			// Test the function
-			target := tt.initial
-			overrideFromEnv(tt.envKey, &target)
+			// Test using utils.GetEnv (which is what config.go now uses)
+			result := utils.GetEnv(tt.envKey, tt.initial)
 
-			if target != tt.expected {
-				t.Errorf("Expected %q, got %q", tt.expected, target)
+			if result != tt.expected {
+				t.Errorf("Expected %q, got %q", tt.expected, result)
 			}
 		})
 	}
@@ -69,11 +69,11 @@ func TestSetEnvBool(t *testing.T) {
 			expected: false,
 		},
 		{
-			name:     "Set to false when env var is not 'true'",
+			name:     "Return default when env var is not a valid boolean",
 			envKey:   "TEST_BOOL_OTHER",
 			envValue: "other",
 			initial:  true,
-			expected: false,
+			expected: true, // GetEnvBool returns default when parse fails
 		},
 		{
 			name:     "Keep initial when env var is empty",
@@ -90,12 +90,11 @@ func TestSetEnvBool(t *testing.T) {
 			os.Setenv(tt.envKey, tt.envValue)
 			defer os.Unsetenv(tt.envKey)
 
-			// Test the function
-			target := tt.initial
-			overrideBoolFromEnv(tt.envKey, &target)
+			// Test using utils.GetEnvBool (which is what config.go now uses)
+			result := utils.GetEnvBool(tt.envKey, tt.initial)
 
-			if target != tt.expected {
-				t.Errorf("Expected %v, got %v", tt.expected, target)
+			if result != tt.expected {
+				t.Errorf("Expected %v, got %v", tt.expected, result)
 			}
 		})
 	}
