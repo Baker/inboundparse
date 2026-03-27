@@ -1154,6 +1154,250 @@ func TestMetricsCollector_NewMetricsEdgeCases(t *testing.T) {
 	collector.TrackSessionDuration(24 * time.Hour)
 }
 
+// TestNoOpMetricsCollector_AllMethods tests ALL NoOp methods to ensure 100% coverage
+func TestNoOpMetricsCollector_AllMethods(t *testing.T) {
+	collector := &NoOpMetricsCollector{}
+
+	// TrackConnection returns a func - call it too
+	done := collector.TrackConnection()
+	if done == nil {
+		t.Error("Expected non-nil func from TrackConnection")
+	}
+	done()
+
+	// TrackSession returns a func - call it too
+	sessionDone := collector.TrackSession()
+	if sessionDone == nil {
+		t.Error("Expected non-nil func from TrackSession")
+	}
+	sessionDone()
+
+	// Basic track methods
+	collector.TrackMessage(1024, true)
+	collector.TrackMessage(0, false)
+	collector.TrackSPFResult("pass")
+	collector.TrackDKIMResult(true)
+	collector.TrackDKIMResult(false)
+	collector.TrackDMARCResult("pass", "reject")
+	collector.TrackDMARCResult("none", "")
+	collector.TrackWebhookRequest(200, time.Millisecond)
+	collector.TrackWebhookRequest(500, time.Second)
+
+	// Webhook methods
+	collector.TrackWebhookRequestSize(1024, 2048)
+	collector.TrackWebhookRetry(true)
+	collector.TrackWebhookRetry(false)
+	collector.TrackWebhookError("network")
+
+	// Auth duration methods
+	collector.TrackSPFDuration(100 * time.Millisecond)
+	collector.TrackDKIMDuration(50 * time.Millisecond)
+	collector.TrackDMARCDuration(75 * time.Millisecond)
+
+	// Domain-based auth methods
+	collector.TrackSPFResultByDomain("example.com", "pass")
+	collector.TrackDKIMResultByDomain("example.com", "valid")
+	collector.TrackDMARCResultByDomain("example.com", "pass")
+	collector.TrackAuthError("spf", "dns")
+
+	// Processing stage methods
+	collector.TrackMessageReadDuration(10 * time.Millisecond)
+	collector.TrackMessageParseDuration(5 * time.Millisecond)
+	collector.TrackMessageAuthDuration(20 * time.Millisecond)
+	collector.TrackMessageWebhookDuration(30 * time.Millisecond)
+	collector.TrackMessageTotalProcessingDuration(100 * time.Millisecond)
+
+	// Email characteristics methods
+	collector.TrackEmailAttachmentCount(5)
+	collector.TrackEmailAttachmentSize(1024)
+	collector.TrackEmailBodyType("html")
+	collector.TrackEmailHeaderCount(20)
+	collector.TrackEmailRecipientCount(3)
+
+	// Session lifecycle methods
+	collector.TrackSessionDuration(30 * time.Second)
+	collector.TrackSessionCommandCount("MAIL")
+	collector.TrackSessionErrorCount("syntax_error")
+	collector.TrackSessionMessageCount()
+}
+
+// TestMetricsServer_AuthMiddleware_HTTP tests the authMiddleware with actual HTTP requests
+func TestMetricsServer_AuthMiddleware_HTTP(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("Failed to create listener: %v", err)
+	}
+	addr := listener.Addr().String()
+	listener.Close()
+
+	t.Run("no_auth_configured", func(t *testing.T) {
+		config := MetricsConfig{
+			EnableMetrics: true,
+			MetricsAddr:   addr,
+		}
+		server := NewMetricsServer(config)
+		if err := server.Start(); err != nil {
+			t.Fatalf("Failed to start server: %v", err)
+		}
+		defer server.Stop(context.Background())
+		time.Sleep(50 * time.Millisecond)
+
+		resp, err := http.Get("http://" + addr + "/metrics")
+		if err != nil {
+			t.Fatalf("Failed to GET /metrics: %v", err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			t.Errorf("Expected 200, got %d", resp.StatusCode)
+		}
+	})
+}
+
+// TestMetricsServer_AuthMiddleware_BearerToken_HTTP tests bearer token auth via HTTP
+func TestMetricsServer_AuthMiddleware_BearerToken_HTTP(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("Failed to create listener: %v", err)
+	}
+	addr := listener.Addr().String()
+	listener.Close()
+
+	config := MetricsConfig{
+		EnableMetrics: true,
+		MetricsAddr:   addr,
+		MetricsAPIKey: "secret-token",
+	}
+	server := NewMetricsServer(config)
+	if err := server.Start(); err != nil {
+		t.Fatalf("Failed to start server: %v", err)
+	}
+	defer server.Stop(context.Background())
+	time.Sleep(50 * time.Millisecond)
+
+	t.Run("no_auth_header", func(t *testing.T) {
+		resp, err := http.Get("http://" + addr + "/metrics")
+		if err != nil {
+			t.Fatalf("Request failed: %v", err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusUnauthorized {
+			t.Errorf("Expected 401, got %d", resp.StatusCode)
+		}
+	})
+
+	t.Run("correct_bearer_token", func(t *testing.T) {
+		req, _ := http.NewRequest("GET", "http://"+addr+"/metrics", nil)
+		req.Header.Set("Authorization", "Bearer secret-token")
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatalf("Request failed: %v", err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			t.Errorf("Expected 200, got %d", resp.StatusCode)
+		}
+	})
+
+	t.Run("wrong_bearer_token", func(t *testing.T) {
+		req, _ := http.NewRequest("GET", "http://"+addr+"/metrics", nil)
+		req.Header.Set("Authorization", "Bearer wrong-token")
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatalf("Request failed: %v", err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusUnauthorized {
+			t.Errorf("Expected 401, got %d", resp.StatusCode)
+		}
+	})
+
+	t.Run("malformed_auth_header", func(t *testing.T) {
+		req, _ := http.NewRequest("GET", "http://"+addr+"/metrics", nil)
+		req.Header.Set("Authorization", "NotBearer token")
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatalf("Request failed: %v", err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusUnauthorized {
+			t.Errorf("Expected 401, got %d", resp.StatusCode)
+		}
+	})
+}
+
+// TestMetricsServer_AuthMiddleware_BasicAuth_HTTP tests basic auth via HTTP
+func TestMetricsServer_AuthMiddleware_BasicAuth_HTTP(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("Failed to create listener: %v", err)
+	}
+	addr := listener.Addr().String()
+	listener.Close()
+
+	config := MetricsConfig{
+		EnableMetrics:   true,
+		MetricsAddr:     addr,
+		MetricsUsername: "admin",
+		MetricsPassword: "password",
+	}
+	server := NewMetricsServer(config)
+	if err := server.Start(); err != nil {
+		t.Fatalf("Failed to start server: %v", err)
+	}
+	defer server.Stop(context.Background())
+	time.Sleep(50 * time.Millisecond)
+
+	t.Run("correct_basic_auth", func(t *testing.T) {
+		req, _ := http.NewRequest("GET", "http://"+addr+"/metrics", nil)
+		req.SetBasicAuth("admin", "password")
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatalf("Request failed: %v", err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			t.Errorf("Expected 200, got %d", resp.StatusCode)
+		}
+	})
+
+	t.Run("wrong_basic_auth", func(t *testing.T) {
+		req, _ := http.NewRequest("GET", "http://"+addr+"/metrics", nil)
+		req.SetBasicAuth("admin", "wrong")
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatalf("Request failed: %v", err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusUnauthorized {
+			t.Errorf("Expected 401, got %d", resp.StatusCode)
+		}
+	})
+
+	t.Run("no_auth", func(t *testing.T) {
+		resp, err := http.Get("http://" + addr + "/metrics")
+		if err != nil {
+			t.Fatalf("Request failed: %v", err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusUnauthorized {
+			t.Errorf("Expected 401, got %d", resp.StatusCode)
+		}
+	})
+}
+
+// TestNewMetricsCollectorWithRegistry tests the registry-based constructor
+func TestNewMetricsCollectorWithRegistry(t *testing.T) {
+	registry := prometheus.NewRegistry()
+	collector := NewMetricsCollectorWithRegistry(registry)
+	if collector == nil {
+		t.Error("Expected non-nil collector")
+	}
+	// Exercise it
+	done := collector.TrackConnection()
+	done()
+	collector.TrackMessage(100, true)
+}
+
 // Test concurrent access to new metrics
 func TestMetricsCollector_NewMetricsConcurrentAccess(t *testing.T) {
 	registry := prometheus.NewRegistry()

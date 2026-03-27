@@ -12,6 +12,11 @@ func TestExtractDomainFromEmail(t *testing.T) {
 		{"<user@example.com>", "example.com"},
 		{"John <user@example.com>", "example.com"},
 		{"no-at", ""},
+		// angleEnd <= angleStart: '>' appears before '<' (not at boundaries so not trimmed)
+		// e.g. "John > <user@example.com" has '>' at index 5 and '<' at index 7: 5 < 7 so skip
+		{"John > <user@example.com", "example.com"},
+		// angleEnd > angleStart with trailing content: brackets not at edges so Trim doesn't remove them
+		{"John <user@example.com> extra", "example.com"},
 	}
 	for _, c := range cases {
 		if got := ExtractDomainFromEmail(c.in); got != c.want {

@@ -514,6 +514,54 @@ func TestLoadFromFlags_WithSentryConfig(t *testing.T) {
 	}
 }
 
+func TestValidate_InvalidWebhookURLScheme(t *testing.T) {
+	cfg := &Config{
+		WebhookURL:             "ftp://test.example.com/webhook",
+		WebhookRetryMultiplier: DefaultWebhookRetryMultiplier,
+	}
+
+	err := cfg.Validate()
+	if err == nil {
+		t.Error("Expected error for webhook URL with invalid scheme")
+	}
+}
+
+func TestValidate_WebhookURLNotParseable(t *testing.T) {
+	cfg := &Config{
+		WebhookURL:             "://invalid-url",
+		WebhookRetryMultiplier: DefaultWebhookRetryMultiplier,
+	}
+
+	err := cfg.Validate()
+	if err == nil {
+		t.Error("Expected error for unparseable webhook URL")
+	}
+}
+
+func TestValidate_WebhookRetryMultiplierZero(t *testing.T) {
+	cfg := &Config{
+		WebhookURL:             "http://test.example.com/webhook",
+		WebhookRetryMultiplier: 0,
+	}
+
+	err := cfg.Validate()
+	if err == nil {
+		t.Error("Expected error for zero webhook retry multiplier")
+	}
+}
+
+func TestValidate_WebhookRetryMultiplierNegative(t *testing.T) {
+	cfg := &Config{
+		WebhookURL:             "http://test.example.com/webhook",
+		WebhookRetryMultiplier: -1.0,
+	}
+
+	err := cfg.Validate()
+	if err == nil {
+		t.Error("Expected error for negative webhook retry multiplier")
+	}
+}
+
 func TestLoadFromFlags_WithMetricsConfig(t *testing.T) {
 	// Test LoadFromFlags with Metrics configuration
 	os.Setenv("WEBHOOK_URL", "http://test.example.com/webhook")

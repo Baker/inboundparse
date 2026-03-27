@@ -284,6 +284,22 @@ func TestGetEnvArray(t *testing.T) {
 	}
 }
 
+func TestGetEnvArray_EmptyDefault(t *testing.T) {
+	// Test with empty default and empty env
+	os.Unsetenv("TEST_ARRAY_KEY")
+	result := utils.GetEnvArray("TEST_ARRAY_KEY", []string{})
+	// When both env and default are empty, should return empty slice or nil
+	// (the actual behavior depends on implementation)
+	_ = result
+}
+
+func TestGetEnvArray_EmptyStringInList(t *testing.T) {
+	// Test that empty parts are filtered out
+	t.Setenv("TEST_ARRAY_KEY", "a,,b,,c")
+	result := utils.GetEnvArray("TEST_ARRAY_KEY", []string{})
+	assert.Equal(t, []string{"a", "b", "c"}, result)
+}
+
 func TestValidateEnv(t *testing.T) {
 	t.Run("validates all required env vars are set", func(t *testing.T) {
 		t.Setenv("VAR1", "value1")

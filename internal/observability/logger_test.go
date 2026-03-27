@@ -135,6 +135,38 @@ func TestLogger_WithError(t *testing.T) {
 	// If we get here without panicking, the test passes
 }
 
+func TestSessionLoggerWrapper_AllMethods(t *testing.T) {
+	// Test the sessionLoggerWrapper methods (Fatal and With)
+	logger := NewSessionLogger(DefaultLogger(), "test-session-123", "192.168.1.1")
+
+	// Test With() - line 81
+	ctx := logger.With()
+	// Just verify we can call Logger() on the context without panicking
+	_ = ctx.Logger()
+
+	// Test all other methods
+	logger.Debug().Msg("debug from session logger")
+	logger.Info().Msg("info from session logger")
+	logger.Warn().Msg("warn from session logger")
+	logger.Error().Msg("error from session logger")
+	// Note: Fatal() calls os.Exit, skip it
+
+	// Test NewSessionLogger returns non-nil
+	if logger == nil {
+		t.Error("Expected non-nil session logger")
+	}
+}
+
+func TestSessionLoggerWrapper_Fatal(t *testing.T) {
+	// We can't actually call Fatal() because it calls os.Exit(1)
+	// But we can test that the method exists on the wrapper
+	// by creating the wrapper and checking the type
+	logger := NewSessionLogger(DefaultLogger(), "session-id", "127.0.0.1")
+
+	// Verify it implements the Logger interface (which includes Fatal)
+	var _ Logger = logger
+}
+
 // Helper functions and types
 
 func contains(s, substr string) bool {
