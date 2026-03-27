@@ -486,3 +486,127 @@ func TestWebhookSender_SendWebhook_WithNilPayload(t *testing.T) {
 		t.Fatalf("Expected no error, got %v", err)
 	}
 }
+
+// TestNoOpWebhookSender_SendWebhook_NonVerbose tests NoOpWebhookSender in non-verbose mode
+func TestNoOpWebhookSender_SendWebhook_NonVerbose(t *testing.T) {
+	logger := &mockLogger{}
+	sender := NewNoOpWebhookSender(logger, false)
+
+	payload := map[string]interface{}{
+		"test": "data",
+	}
+
+	err := sender.SendWebhook(context.Background(), payload)
+	if err != nil {
+		t.Fatalf("Expected no error from NoOp sender, got %v", err)
+	}
+}
+
+// TestNoOpWebhookSender_SendWebhook_Verbose tests NoOpWebhookSender in verbose mode
+func TestNoOpWebhookSender_SendWebhook_Verbose(t *testing.T) {
+	logger := &mockLogger{}
+	sender := NewNoOpWebhookSender(logger, true)
+
+	payload := map[string]interface{}{
+		"subject": "test email",
+		"from":    "sender@example.com",
+		"to":      []string{"recipient@example.com"},
+	}
+
+	err := sender.SendWebhook(context.Background(), payload)
+	if err != nil {
+		t.Fatalf("Expected no error from NoOp sender, got %v", err)
+	}
+}
+
+// TestNoOpWebhookSender_SendWebhook_Verbose_NilPayload tests verbose mode with nil payload
+func TestNoOpWebhookSender_SendWebhook_Verbose_NilPayload(t *testing.T) {
+	logger := &mockLogger{}
+	sender := NewNoOpWebhookSender(logger, true)
+
+	var payload interface{} = nil
+
+	err := sender.SendWebhook(context.Background(), payload)
+	if err != nil {
+		t.Fatalf("Expected no error from NoOp sender, got %v", err)
+	}
+}
+
+// TestNoOpWebhookSender_SendWebhook_Verbose_EmptyPayload tests verbose mode with empty payload
+func TestNoOpWebhookSender_SendWebhook_Verbose_EmptyPayload(t *testing.T) {
+	logger := &mockLogger{}
+	sender := NewNoOpWebhookSender(logger, true)
+
+	payload := map[string]interface{}{}
+
+	err := sender.SendWebhook(context.Background(), payload)
+	if err != nil {
+		t.Fatalf("Expected no error from NoOp sender, got %v", err)
+	}
+}
+
+// TestNoOpWebhookSender_DirectAccess tests the NoOpWebhookSender struct directly
+func TestNoOpWebhookSender_DirectAccess(t *testing.T) {
+	logger := &mockLogger{}
+	noopSender := &NoOpWebhookSender{logger: logger, verbose: false}
+
+	err := noopSender.SendWebhook(context.Background(), map[string]string{"key": "value"})
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+
+	noopSender.verbose = true
+	err = noopSender.SendWebhook(context.Background(), map[string]string{"key": "value"})
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+}
+
+// TestNoOpWebhookSender_SendWebhook_Verbose_UnmarshalablePayload exercises the JSON marshal
+// error branch inside NoOpWebhookSender.SendWebhook when verbose=true.
+func TestNoOpWebhookSender_SendWebhook_Verbose_UnmarshalablePayload(t *testing.T) {
+	logger := &mockLogger{}
+	sender := NewNoOpWebhookSender(logger, true)
+
+	// Channels cannot be marshaled to JSON — this triggers the Warn + return nil path
+	payload := map[string]interface{}{
+		"channel": make(chan int),
+	}
+
+	err := sender.SendWebhook(context.Background(), payload)
+	// Should return nil (not fail) even when JSON marshal fails
+	if err != nil {
+		t.Fatalf("Expected no error even on JSON marshal failure, got %v", err)
+	}
+}
+
+// TestWebhookSender_SendWebhook_DeadlineExceeded exercises the ctx.Err() == DeadlineExceeded
+// branch in the error-type determination logic.
+func TestWebhookSender_SendWebhook_DeadlineExceeded(t *testing.T) {
+	// Use a server that delays longer than our deadline
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(500 * time.Millisecond)
+		w.WriteHeader(200)
+	}))
+	defer server.Close()
+
+	config := WebhookConfig{
+		URL:     server.URL,
+		Timeout: 5 * time.Second,
+		// No retries so we get a quick failure
+		MaxRetries: -1,
+	}
+
+	sender := NewWebhookSender(config, &mockLogger{}, &mockMetricsCollector{})
+
+	// Create a context with deadline that's already past
+	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(-1*time.Second))
+	defer cancel()
+
+	payload := map[string]interface{}{"test": "data"}
+	err := sender.SendWebhook(ctx, payload)
+	// Should fail since the context deadline is exceeded
+	if err == nil {
+		t.Fatal("Expected error for expired deadline context")
+	}
+}

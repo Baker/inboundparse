@@ -666,3 +666,87 @@ type failingReader struct{}
 func (f *failingReader) Read(p []byte) (n int, err error) {
 	return 0, io.ErrUnexpectedEOF
 }
+
+// TestMessageProcessor_ProcessMessage_WithAttachment exercises the totalAttachmentSize > 0
+// branch and bodyType="multipart" branch in trackEmailCharacteristics.
+func TestMessageProcessor_ProcessMessage_WithAttachment(t *testing.T) {
+	config := ProcessorConfig{
+		EnableSPF:   false,
+		EnableDKIM:  false,
+		EnableDMARC: false,
+	}
+
+	authChecker := &mockAuthChecker{}
+	webhookSender := &mockWebhookSender{}
+	metrics := &mockMetricsCollector{}
+	sentry := &mockSentryClient{}
+	logger := &mockLogger{}
+
+	processor := NewMessageProcessor(config, authChecker, webhookSender, metrics, sentry, logger)
+
+	// Construct a minimal multipart email with a text attachment
+	message := "MIME-Version: 1.0\r\n" +
+		"From: sender@example.com\r\n" +
+		"To: recipient@example.com\r\n" +
+		"Subject: Test with attachment\r\n" +
+		"Content-Type: multipart/mixed; boundary=\"boundary123\"\r\n" +
+		"\r\n" +
+		"--boundary123\r\n" +
+		"Content-Type: text/plain; charset=utf-8\r\n" +
+		"\r\n" +
+		"This is the message body.\r\n" +
+		"--boundary123\r\n" +
+		"Content-Type: text/plain; name=\"file.txt\"\r\n" +
+		"Content-Disposition: attachment; filename=\"file.txt\"\r\n" +
+		"\r\n" +
+		"This is attachment content.\r\n" +
+		"--boundary123--\r\n"
+
+	ctx := context.Background()
+	from := "sender@example.com"
+	to := []string{"recipient@example.com"}
+	sessionID := "attach-test-session"
+	remoteIP := net.ParseIP("127.0.0.1")
+
+	err := processor.ProcessMessage(ctx, strings.NewReader(message), from, to, sessionID, remoteIP)
+	if err != nil {
+		t.Errorf("Expected no error for multipart message, got %v", err)
+	}
+}
+
+// TestMessageProcessor_ProcessMessage_WithHTMLBody exercises the bodyType="html" branch.
+func TestMessageProcessor_ProcessMessage_WithHTMLBody(t *testing.T) {
+	config := ProcessorConfig{
+		EnableSPF:   false,
+		EnableDKIM:  false,
+		EnableDMARC: false,
+	}
+
+	authChecker := &mockAuthChecker{}
+	webhookSender := &mockWebhookSender{}
+	metrics := &mockMetricsCollector{}
+	sentry := &mockSentryClient{}
+	logger := &mockLogger{}
+
+	processor := NewMessageProcessor(config, authChecker, webhookSender, metrics, sentry, logger)
+
+	// Construct an email with HTML body only
+	message := "MIME-Version: 1.0\r\n" +
+		"From: sender@example.com\r\n" +
+		"To: recipient@example.com\r\n" +
+		"Subject: HTML Test\r\n" +
+		"Content-Type: text/html; charset=utf-8\r\n" +
+		"\r\n" +
+		"<html><body><p>Hello World</p></body></html>\r\n"
+
+	ctx := context.Background()
+	from := "sender@example.com"
+	to := []string{"recipient@example.com"}
+	sessionID := "html-test-session"
+	remoteIP := net.ParseIP("127.0.0.1")
+
+	err := processor.ProcessMessage(ctx, strings.NewReader(message), from, to, sessionID, remoteIP)
+	if err != nil {
+		t.Errorf("Expected no error for HTML message, got %v", err)
+	}
+}

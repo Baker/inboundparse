@@ -164,7 +164,8 @@ func TestWithMetrics(t *testing.T) {
 
 func TestValidate_ValidConfig(t *testing.T) {
 	cfg := &Config{
-		WebhookURL: "http://test.example.com/webhook",
+		WebhookURL:             "http://test.example.com/webhook",
+		WebhookRetryMultiplier: DefaultWebhookRetryMultiplier,
 	}
 
 	err := cfg.Validate()
@@ -175,7 +176,7 @@ func TestValidate_ValidConfig(t *testing.T) {
 
 func TestValidate_MissingWebhookURL(t *testing.T) {
 	// Webhook URL is now optional - empty URL should not cause validation error
-	cfg := &Config{}
+	cfg := &Config{WebhookRetryMultiplier: DefaultWebhookRetryMultiplier}
 
 	err := cfg.Validate()
 	if err != nil {
@@ -231,9 +232,10 @@ func TestValidate_SentryEnabledWithoutDSN(t *testing.T) {
 
 func TestValidate_SentryEnabledWithDSN(t *testing.T) {
 	cfg := &Config{
-		WebhookURL:   "http://test.example.com/webhook",
-		EnableSentry: true,
-		SentryDSN:    "https://test@sentry.io/123456",
+		WebhookURL:             "http://test.example.com/webhook",
+		EnableSentry:           true,
+		SentryDSN:              "https://test@sentry.io/123456",
+		WebhookRetryMultiplier: DefaultWebhookRetryMultiplier,
 	}
 
 	err := cfg.Validate()
@@ -244,9 +246,10 @@ func TestValidate_SentryEnabledWithDSN(t *testing.T) {
 
 func TestValidate_BothCertAndKeyFiles(t *testing.T) {
 	cfg := &Config{
-		WebhookURL: "http://test.example.com/webhook",
-		CertFile:   "/path/to/cert.pem",
-		KeyFile:    "/path/to/key.pem",
+		WebhookURL:             "http://test.example.com/webhook",
+		CertFile:               "/path/to/cert.pem",
+		KeyFile:                "/path/to/key.pem",
+		WebhookRetryMultiplier: DefaultWebhookRetryMultiplier,
 	}
 
 	err := cfg.Validate()
@@ -508,6 +511,54 @@ func TestLoadFromFlags_WithSentryConfig(t *testing.T) {
 	}
 	if cfg.SentryRelease != "v1.0.0" {
 		t.Errorf("Expected SentryRelease 'v1.0.0', got '%s'", cfg.SentryRelease)
+	}
+}
+
+func TestValidate_InvalidWebhookURLScheme(t *testing.T) {
+	cfg := &Config{
+		WebhookURL:             "ftp://test.example.com/webhook",
+		WebhookRetryMultiplier: DefaultWebhookRetryMultiplier,
+	}
+
+	err := cfg.Validate()
+	if err == nil {
+		t.Error("Expected error for webhook URL with invalid scheme")
+	}
+}
+
+func TestValidate_WebhookURLNotParseable(t *testing.T) {
+	cfg := &Config{
+		WebhookURL:             "://invalid-url",
+		WebhookRetryMultiplier: DefaultWebhookRetryMultiplier,
+	}
+
+	err := cfg.Validate()
+	if err == nil {
+		t.Error("Expected error for unparseable webhook URL")
+	}
+}
+
+func TestValidate_WebhookRetryMultiplierZero(t *testing.T) {
+	cfg := &Config{
+		WebhookURL:             "http://test.example.com/webhook",
+		WebhookRetryMultiplier: 0,
+	}
+
+	err := cfg.Validate()
+	if err == nil {
+		t.Error("Expected error for zero webhook retry multiplier")
+	}
+}
+
+func TestValidate_WebhookRetryMultiplierNegative(t *testing.T) {
+	cfg := &Config{
+		WebhookURL:             "http://test.example.com/webhook",
+		WebhookRetryMultiplier: -1.0,
+	}
+
+	err := cfg.Validate()
+	if err == nil {
+		t.Error("Expected error for negative webhook retry multiplier")
 	}
 }
 

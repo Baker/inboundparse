@@ -322,12 +322,13 @@ func TestApp_Start_WithTLSConfig(t *testing.T) {
 func TestApp_Start_SMTPServerError(t *testing.T) {
 	// Test SMTP server start error path (lines 168-170)
 	config := &config.Config{
-		ListenAddr:    "invalid-address:99999", // Invalid port should cause error
-		WebhookURL:    "http://localhost:8080/webhook",
-		ServerName:    "test",
-		Verbose:       true,
-		EnableMetrics: false,
-		EnableSentry:  false,
+		ListenAddr:             "invalid-address:99999", // Invalid port should cause error
+		WebhookURL:             "http://localhost:8080/webhook",
+		ServerName:             "test",
+		Verbose:                true,
+		EnableMetrics:          false,
+		EnableSentry:           false,
+		WebhookRetryMultiplier: config.DefaultWebhookRetryMultiplier,
 	}
 
 	app, err := NewApp(config)
@@ -353,13 +354,14 @@ func TestApp_Start_MetricsServerError(t *testing.T) {
 	// The actual error would occur if the metrics server Start() method returned an error.
 
 	config := &config.Config{
-		ListenAddr:    "127.0.0.1:0",
-		WebhookURL:    "http://localhost:8080/webhook",
-		ServerName:    "test",
-		Verbose:       true,
-		EnableMetrics: true, // Enable metrics to trigger the error path check
-		MetricsAddr:   "127.0.0.1:0",
-		EnableSentry:  false, // Disable sentry to avoid initialization issues
+		ListenAddr:             "127.0.0.1:0",
+		WebhookURL:             "http://localhost:8080/webhook",
+		ServerName:             "test",
+		Verbose:                true,
+		EnableMetrics:          true, // Enable metrics to trigger the error path check
+		MetricsAddr:            "127.0.0.1:0",
+		EnableSentry:           false, // Disable sentry to avoid initialization issues
+		WebhookRetryMultiplier: config.DefaultWebhookRetryMultiplier,
 	}
 
 	app, err := NewApp(config)
@@ -399,6 +401,83 @@ func TestApp_Start_MetricsServerError(t *testing.T) {
 	}
 }
 
+// TestApp_Run_GoRoutinesCoverage exercises the Run() method goroutine setup paths.
+// It starts the app and then stops the SMTP server to allow Run() to proceed past
+// Start() and into its goroutine setup code.
+func TestApp_Run_GoRoutinesCoverage(t *testing.T) {
+	cfg := &config.Config{
+		ListenAddr:             "127.0.0.1:0",
+		WebhookURL:             "http://localhost:8080/webhook",
+		ServerName:             "test",
+		Verbose:                false,
+		EnableMetrics:          false,
+		EnableSentry:           false,
+		WebhookRetryMultiplier: config.DefaultWebhookRetryMultiplier,
+	}
+
+	app, err := NewApp(cfg)
+	if err != nil {
+		t.Fatalf("Expected no error creating app, got %v", err)
+	}
+
+	done := make(chan error, 1)
+	go func() {
+		done <- app.Run()
+	}()
+
+	// Give Run() time to enter Start() (which blocks on SMTP listen)
+	time.Sleep(50 * time.Millisecond)
+
+	// Stop the SMTP server to unblock Start(), allowing Run() to proceed to goroutine setup
+	app.smtpServer.Stop()
+
+	// Run() should now set up its goroutines and wait for signal/ctx.Done()
+	// Give it a moment then stop
+	time.Sleep(50 * time.Millisecond)
+
+	// Stop gracefully
+	app.Stop()
+
+	// The goroutines in Run() are still waiting for signal, so we just wait briefly
+	select {
+	case runErr := <-done:
+		t.Logf("Run() returned: %v", runErr)
+	case <-time.After(2 * time.Second):
+		// This is expected - Run's goroutines don't terminate without a signal
+		// but the code paths are covered
+	}
+}
+
+// TestApp_Stop_WithMetricsEnabled tests Stop() when metrics are enabled
+func TestApp_Stop_WithMetricsEnabled(t *testing.T) {
+	cfg := &config.Config{
+		ListenAddr:             "127.0.0.1:0",
+		WebhookURL:             "http://localhost:8080/webhook",
+		ServerName:             "test",
+		Verbose:                false,
+		EnableMetrics:          true,
+		MetricsAddr:            "127.0.0.1:0",
+		EnableSentry:           false,
+		WebhookRetryMultiplier: config.DefaultWebhookRetryMultiplier,
+	}
+
+	app, err := NewApp(cfg)
+	if err != nil {
+		t.Fatalf("Expected no error creating app, got %v", err)
+	}
+
+	// Start metrics server first
+	if err := app.metricsServer.Start(); err != nil {
+		t.Fatalf("Failed to start metrics server: %v", err)
+	}
+
+	// Stop should stop metrics server too
+	err = app.Stop()
+	if err != nil {
+		t.Fatalf("Expected no error stopping app, got %v", err)
+	}
+}
+
 func TestApp_Start_WithTLSConfigLogging(t *testing.T) {
 	// Test TLS configuration logging (lines 160-165)
 	// This test verifies that TLS config is set but doesn't actually start the server
@@ -427,5 +506,51 @@ func TestApp_Start_WithTLSConfigLogging(t *testing.T) {
 	}
 	if app.config.KeyFile != "" {
 		t.Errorf("Expected KeyFile '', got '%s'", app.config.KeyFile)
+	}
+}
+
+// TestNewApp_WithSentryInitError exercises the sentry.Init failure warning path (line 46-54).
+// An invalid DSN with EnableSentry=true causes Init to return an error (logged as a warning).
+func TestNewApp_WithSentryInitError(t *testing.T) {
+	cfg := &config.Config{
+		ListenAddr:             "127.0.0.1:0",
+		WebhookURL:             "http://localhost:8080/webhook",
+		ServerName:             "test",
+		EnableSentry:           true,
+		SentryDSN:              "invalid-dsn-that-causes-error", // causes sentry.Init to fail
+		WebhookRetryMultiplier: config.DefaultWebhookRetryMultiplier,
+	}
+
+	// Should still create the app — sentry init failure is a warning, not fatal
+	app, err := NewApp(cfg)
+	if err != nil {
+		t.Fatalf("Expected no error even when sentry init fails, got %v", err)
+	}
+	if app == nil {
+		t.Fatal("Expected non-nil app")
+	}
+}
+
+// TestApp_Stop_AfterNoStart exercises Stop() when SMTP server was never started.
+func TestApp_Stop_AfterNoStart(t *testing.T) {
+	cfg := &config.Config{
+		ListenAddr:             "127.0.0.1:0",
+		WebhookURL:             "http://localhost:8080/webhook",
+		ServerName:             "test",
+		Verbose:                false,
+		EnableMetrics:          false,
+		EnableSentry:           false,
+		WebhookRetryMultiplier: config.DefaultWebhookRetryMultiplier,
+	}
+
+	app, err := NewApp(cfg)
+	if err != nil {
+		t.Fatalf("Expected no error creating app, got %v", err)
+	}
+
+	// Stop the app without starting it — exercises the Stop() happy path
+	err = app.Stop()
+	if err != nil {
+		t.Fatalf("Expected no error stopping app, got %v", err)
 	}
 }

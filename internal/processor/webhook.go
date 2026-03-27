@@ -33,8 +33,8 @@ type WebhookSender interface {
 // WebhookConfig holds webhook configuration
 type WebhookConfig struct {
 	URL      string
-	Username string
-	Password string
+	Username string `json:"-"`
+	Password string `json:"-"`
 	Timeout  time.Duration
 
 	// Retry configuration
@@ -158,8 +158,9 @@ func (w *webhookSender) SendWebhook(ctx context.Context, payload interface{}) er
 			return ctx.Err()
 		}
 
-		// Make the HTTP request
-		httpResp, httpErr := w.client.Do(req)
+		// Make the HTTP request.
+		// URL is operator-configured and validated as http/https at startup — not user-supplied.
+		httpResp, httpErr := w.client.Do(req) //nolint:gosec // G704: URL origin validated in config.Validate
 		if httpErr != nil {
 			return httpErr
 		}

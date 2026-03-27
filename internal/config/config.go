@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"inboundparse/internal/utils"
+	"net/url"
 	"strconv"
 	"time"
 )
@@ -57,6 +58,10 @@ type Config struct {
 	MetricsAPIKey   string
 	MetricsUsername string
 	MetricsPassword string
+
+	// SMTP/Processing Configuration
+	TrustedProxyCIDRs        []string
+	MessageProcessingTimeout time.Duration
 }
 
 // Default values
@@ -77,6 +82,9 @@ const (
 	DefaultWebhookRetryMultiplier    = 2.0
 	DefaultWebhookRateLimitPerSecond = 10
 	DefaultWebhookRateLimitBurst     = 20
+
+	// Processing defaults
+	DefaultMessageProcessingTimeout = 5 * time.Minute
 )
 
 // Option is a functional option for configuring the application
@@ -177,6 +185,8 @@ func New(options ...Option) *Config {
 		WebhookRetryMultiplier:    DefaultWebhookRetryMultiplier,
 		WebhookRateLimitPerSecond: DefaultWebhookRateLimitPerSecond,
 		WebhookRateLimitBurst:     DefaultWebhookRateLimitBurst,
+		// Processing defaults
+		MessageProcessingTimeout: DefaultMessageProcessingTimeout,
 	}
 
 	for _, option := range options {
@@ -224,6 +234,8 @@ func LoadFromFlags() (*Config, error) {
 		metricsAPIKey   = flag.String("metrics-api-key", "", "Metrics API key for Bearer token authentication")
 		metricsUsername = flag.String("metrics-username", "", "Metrics username for Basic authentication")
 		metricsPassword = flag.String("metrics-password", "", "Metrics password for Basic authentication")
+		// Processing flags
+		messageProcessingTimeout = flag.Int("message-processing-timeout", int(DefaultMessageProcessingTimeout.Seconds()), "Maximum time in seconds to process a single message (including auth checks and webhook delivery)")
 	)
 
 	// Load .env file if present
@@ -268,6 +280,8 @@ func LoadFromFlags() (*Config, error) {
 	metricsAPIKeyVal := utils.GetEnv("METRICS_API_KEY", *metricsAPIKey)
 	metricsUsernameVal := utils.GetEnv("METRICS_USERNAME", *metricsUsername)
 	metricsPasswordVal := utils.GetEnv("METRICS_PASSWORD", *metricsPassword)
+	trustedProxyCIDRsVal := utils.GetEnvArray("TRUSTED_PROXY_CIDRS", []string{})
+	messageProcessingTimeoutVal := utils.GetEnvInt("MESSAGE_PROCESSING_TIMEOUT", *messageProcessingTimeout)
 
 	// Build config
 	config := New(
@@ -311,6 +325,10 @@ func LoadFromFlags() (*Config, error) {
 		config.MetricsPassword = metricsPasswordVal
 	}
 
+	// Processing configuration
+	config.TrustedProxyCIDRs = trustedProxyCIDRsVal
+	config.MessageProcessingTimeout = time.Duration(messageProcessingTimeoutVal) * time.Second
+
 	return config, nil
 }
 
@@ -326,6 +344,17 @@ func (c *Config) Validate() error {
 
 	if c.EnableSentry && c.SentryDSN == "" {
 		return fmt.Errorf("sentry DSN is required when Sentry is enabled")
+	}
+
+	if c.WebhookRetryMultiplier <= 0 {
+		return fmt.Errorf("webhook retry multiplier must be greater than 0, got %v", c.WebhookRetryMultiplier)
+	}
+
+	if c.WebhookURL != "" {
+		u, err := url.Parse(c.WebhookURL)
+		if err != nil || (u.Scheme != "http" && u.Scheme != "https") {
+			return fmt.Errorf("webhook URL must be a valid http or https URL, got %q", c.WebhookURL)
+		}
 	}
 
 	return nil

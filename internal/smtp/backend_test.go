@@ -840,3 +840,28 @@ func (m *mockUnknownAddr) Network() string {
 func (m *mockUnknownAddr) String() string {
 	return "unknown"
 }
+
+// TestSession_Data_ZeroProcessingTimeout exercises the timeout <= 0 default path (line 163-164).
+func TestSession_Data_ZeroProcessingTimeout(t *testing.T) {
+	// BackendConfig with ProcessingTimeout = 0 triggers the default 5-minute timeout path
+	config := BackendConfig{
+		MaxRecipients:     100,
+		ProcessingTimeout: 0, // Zero causes the default timeout to be used
+	}
+	messageProcessor := createMockMessageProcessor()
+	metrics := &mockMetricsCollector{}
+	logger := &mockLogger{}
+
+	backend := NewBackend(config, messageProcessor, metrics, logger)
+	session, _ := backend.NewSession(nil)
+	sessionImpl := session.(*Session)
+
+	sessionImpl.Mail("test@example.com", &smtp.MailOptions{})
+	sessionImpl.Rcpt("recipient@example.com", &smtp.RcptOptions{})
+
+	message := "From: test@example.com\r\nTo: recipient@example.com\r\nSubject: Test\r\n\r\nTest message"
+	err := sessionImpl.Data(strings.NewReader(message))
+	if err != nil {
+		t.Errorf("Expected no error with zero processing timeout, got %v", err)
+	}
+}

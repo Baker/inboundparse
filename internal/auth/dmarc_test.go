@@ -6,6 +6,7 @@ import (
 	"net/mail"
 	"testing"
 
+	"github.com/emersion/go-msgauth/dmarc"
 	"github.com/mnako/letters"
 )
 
@@ -613,6 +614,91 @@ func TestDMARCChecker_CheckDMARC_ErrorTracking(t *testing.T) {
 	}
 }
 
+// TestDMARCChecker_HandleLookupError tests the handleLookupError method directly
+func TestDMARCChecker_HandleLookupError(t *testing.T) {
+	checker := &dmarcChecker{}
+	metrics := &mockMetricsCollector{}
+	logger := &MockLogger{}
+
+	tests := []struct {
+		name         string
+		err          error
+		expectedType string
+	}{
+		{
+			name:         "dns_error",
+			err:          &netError{msg: "connection refused"},
+			expectedType: "dns_error",
+		},
+		{
+			name:         "parse_error",
+			err:          &netError{msg: "failed to parse record"},
+			expectedType: "parse_error",
+		},
+		{
+			name:         "timeout_error",
+			err:          &mockNetError{timeout: true, msg: "i/o timeout"},
+			expectedType: "timeout_error",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := checker.handleLookupError(tt.err, "example.com", nil, logger, metrics)
+			if result == nil {
+				t.Fatal("Expected non-nil result")
+			}
+			if result.Result != "none" {
+				t.Errorf("Expected result 'none', got %s", result.Result)
+			}
+			if result.Error == "" {
+				t.Error("Expected non-empty error field")
+			}
+		})
+	}
+}
+
+// mockNetError implements net.Error for testing timeout path
+type mockNetError struct {
+	timeout   bool
+	temporary bool
+	msg       string
+}
+
+func (e *mockNetError) Error() string   { return e.msg }
+func (e *mockNetError) Timeout() bool   { return e.timeout }
+func (e *mockNetError) Temporary() bool { return e.temporary }
+
+// TestDMARCChecker_HandleLookupError_ViaCheckDMARC tests the error path through CheckDMARC
+// by using a domain that would cause a non-recoverable DNS error
+func TestDMARCChecker_HandleLookupError_ViaCheckDMARC(t *testing.T) {
+	checker := &dmarcChecker{}
+	metrics := &mockMetricsCollector{}
+	logger := &MockLogger{}
+
+	// Test handleLookupError with parse error
+	parseErr := &netError{msg: "failed to parse DMARC record"}
+	result := checker.handleLookupError(parseErr, "test.example.com", nil, logger, metrics)
+	if result == nil {
+		t.Fatal("Expected non-nil result from handleLookupError")
+	}
+	if result.Result != "none" {
+		t.Errorf("Expected 'none', got %s", result.Result)
+	}
+
+	// Test with details
+	details := []domain.DMARCLookupDetail{
+		{Domain: "test.example.com", RecordFound: false, Error: "lookup failed"},
+	}
+	result = checker.handleLookupError(parseErr, "test.example.com", details, logger, metrics)
+	if result == nil {
+		t.Fatal("Expected non-nil result with details")
+	}
+	if len(result.Details) != 1 {
+		t.Errorf("Expected 1 detail, got %d", len(result.Details))
+	}
+}
+
 func TestDMARCChecker_CheckDMARC_NoPolicyFoundHierarchy(t *testing.T) {
 	checker := NewDMARCChecker()
 
@@ -654,5 +740,211 @@ func TestDMARCChecker_CheckDMARC_NoPolicyFoundHierarchy(t *testing.T) {
 	lastDetail := result.Details[len(result.Details)-1]
 	if lastDetail.Domain != "francispbaker.com" {
 		t.Errorf("Expected last lookup at 'francispbaker.com', got %s", lastDetail.Domain)
+	}
+}
+
+func TestDMARCChecker_EvaluateDMARCPolicy(t *testing.T) {
+	checker := &dmarcChecker{}
+
+	tests := []struct {
+		name           string
+		policy         dmarc.Policy
+		spfPass        bool
+		spfAligned     bool
+		dkimPass       bool
+		dkimAligned    bool
+		expectedResult string
+	}{
+		{
+			name:           "PolicyNone - pass with SPF",
+			policy:         dmarc.PolicyNone,
+			spfPass:        true,
+			spfAligned:     true,
+			dkimPass:       false,
+			dkimAligned:    false,
+			expectedResult: "pass",
+		},
+		{
+			name:           "PolicyNone - fail",
+			policy:         dmarc.PolicyNone,
+			spfPass:        false,
+			spfAligned:     false,
+			dkimPass:       false,
+			dkimAligned:    false,
+			expectedResult: "fail",
+		},
+		{
+			name:           "PolicyNone - pass with DKIM",
+			policy:         dmarc.PolicyNone,
+			spfPass:        false,
+			spfAligned:     false,
+			dkimPass:       true,
+			dkimAligned:    true,
+			expectedResult: "pass",
+		},
+		{
+			name:           "PolicyQuarantine - pass",
+			policy:         dmarc.PolicyQuarantine,
+			spfPass:        true,
+			spfAligned:     true,
+			dkimPass:       false,
+			dkimAligned:    false,
+			expectedResult: "pass",
+		},
+		{
+			name:           "PolicyQuarantine - fail",
+			policy:         dmarc.PolicyQuarantine,
+			spfPass:        false,
+			spfAligned:     false,
+			dkimPass:       false,
+			dkimAligned:    false,
+			expectedResult: "fail",
+		},
+		{
+			name:           "PolicyReject - pass",
+			policy:         dmarc.PolicyReject,
+			spfPass:        false,
+			spfAligned:     false,
+			dkimPass:       true,
+			dkimAligned:    true,
+			expectedResult: "pass",
+		},
+		{
+			name:           "PolicyReject - fail",
+			policy:         dmarc.PolicyReject,
+			spfPass:        false,
+			spfAligned:     false,
+			dkimPass:       true,
+			dkimAligned:    false,
+			expectedResult: "fail",
+		},
+		{
+			name:           "default policy - returns none",
+			policy:         dmarc.Policy("unknown"),
+			spfPass:        true,
+			spfAligned:     true,
+			dkimPass:       true,
+			dkimAligned:    true,
+			expectedResult: "none",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := checker.evaluateDMARCPolicy(tt.policy, tt.spfPass, tt.spfAligned, tt.dkimPass, tt.dkimAligned)
+			if result != tt.expectedResult {
+				t.Errorf("evaluateDMARCPolicy() = %q, want %q", result, tt.expectedResult)
+			}
+		})
+	}
+}
+
+func TestDMARCChecker_ExtractDKIMDomain(t *testing.T) {
+	checker := &dmarcChecker{}
+
+	tests := []struct {
+		name       string
+		signatures []string
+		expected   string
+	}{
+		{
+			name:       "valid signature",
+			signatures: []string{"Valid: example.com"},
+			expected:   "example.com",
+		},
+		{
+			name:       "multiple valid signatures",
+			signatures: []string{"Valid: example.com", "Valid: other.com"},
+			expected:   "example.com,other.com",
+		},
+		{
+			name:       "no valid signatures",
+			signatures: []string{"Invalid: example.com"},
+			expected:   "",
+		},
+		{
+			name:       "mixed signatures",
+			signatures: []string{"Invalid: example.com", "Valid: other.com"},
+			expected:   "other.com",
+		},
+		{
+			name:       "empty signatures",
+			signatures: []string{},
+			expected:   "",
+		},
+		{
+			name:       "nil signatures",
+			signatures: nil,
+			expected:   "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := checker.extractDKIMDomain(tt.signatures)
+			if result != tt.expected {
+				t.Errorf("extractDKIMDomain() = %q, want %q", result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestDMARCChecker_ConvertFailureOptionsToString(t *testing.T) {
+	checker := &dmarcChecker{}
+
+	tests := []struct {
+		name     string
+		options  dmarc.FailureOptions
+		expected string
+	}{
+		{
+			name:     "zero value returns default 0",
+			options:  0,
+			expected: "0",
+		},
+		{
+			name:     "FailureAll",
+			options:  dmarc.FailureAll,
+			expected: "0",
+		},
+		{
+			name:     "FailureAny",
+			options:  dmarc.FailureAny,
+			expected: "1",
+		},
+		{
+			name:     "FailureDKIM",
+			options:  dmarc.FailureDKIM,
+			expected: "d",
+		},
+		{
+			name:     "FailureSPF",
+			options:  dmarc.FailureSPF,
+			expected: "s",
+		},
+		{
+			name:     "FailureAll and FailureAny",
+			options:  dmarc.FailureAll | dmarc.FailureAny,
+			expected: "0:1",
+		},
+		{
+			name:     "FailureDKIM and FailureSPF",
+			options:  dmarc.FailureDKIM | dmarc.FailureSPF,
+			expected: "d:s",
+		},
+		{
+			name:     "all options",
+			options:  dmarc.FailureAll | dmarc.FailureAny | dmarc.FailureDKIM | dmarc.FailureSPF,
+			expected: "0:1:d:s",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := checker.convertFailureOptionsToString(tt.options)
+			if result != tt.expected {
+				t.Errorf("convertFailureOptionsToString() = %q, want %q", result, tt.expected)
+			}
+		})
 	}
 }
