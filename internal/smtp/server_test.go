@@ -9,6 +9,7 @@ import (
 	"encoding/pem"
 	"io"
 	"math/big"
+	"net"
 	"os"
 	"testing"
 	"time"
@@ -618,6 +619,200 @@ func TestSMTPServer_Stop_NotStarted(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error stopping non-started server: %v", err)
 	}
+}
+
+func TestNewSMTPServer_InvalidProxyCIDR(t *testing.T) {
+	config := ServerConfig{
+		ListenAddr:        "127.0.0.1:0",
+		ServerName:        "test",
+		TrustedProxyCIDRs: []string{"not-a-valid-cidr"},
+	}
+	backend := createMockBackend()
+	logger := &mockLogger{}
+
+	_, err := NewSMTPServer(config, backend, logger)
+	if err == nil {
+		t.Fatal("expected error for invalid CIDR, got nil")
+	}
+}
+
+// getFreeAddr returns a free TCP address by briefly binding to port 0.
+func getFreeAddr(t *testing.T) string {
+	t.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("failed to find free address: %v", err)
+	}
+	addr := ln.Addr().String()
+	ln.Close()
+	return addr
+}
+
+// waitForPort polls until the TCP port accepts connections or the timeout expires.
+func waitForPort(t *testing.T, addr string, timeout time.Duration) {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		conn, err := net.Dial("tcp", addr)
+		if err == nil {
+			conn.Close()
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatalf("server at %s did not become reachable within %v", addr, timeout)
+}
+
+func TestSMTPServer_Start_PlainAndStop(t *testing.T) {
+	addr := getFreeAddr(t)
+	config := ServerConfig{
+		ListenAddr: addr,
+		ServerName: "test",
+	}
+	backend := createMockBackend()
+	logger := &mockLogger{}
+
+	s, err := NewSMTPServer(config, backend, logger)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	errCh := make(chan error, 1)
+	go func() { errCh <- s.Start() }()
+
+	waitForPort(t, addr, 2*time.Second)
+
+	if err := s.Stop(); err != nil {
+		t.Fatalf("Stop() error: %v", err)
+	}
+
+	select {
+	case <-errCh:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Start() did not return after Stop()")
+	}
+}
+
+func TestSMTPServer_Start_TLSAndStop(t *testing.T) {
+	certFile, keyFile := createTempCertFiles(t)
+	defer os.Remove(certFile)
+	defer os.Remove(keyFile)
+
+	plainAddr := getFreeAddr(t)
+	tlsAddr := getFreeAddr(t)
+
+	config := ServerConfig{
+		ListenAddr:    plainAddr,
+		ListenAddrTLS: tlsAddr,
+		ServerName:    "test",
+		CertFile:      certFile,
+		KeyFile:       keyFile,
+	}
+	backend := createMockBackend()
+	logger := &mockLogger{}
+
+	s, err := NewSMTPServer(config, backend, logger)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	errCh := make(chan error, 1)
+	go func() { errCh <- s.Start() }()
+
+	// Both plain and TLS ports must be reachable before Stop
+	waitForPort(t, plainAddr, 2*time.Second)
+	waitForPort(t, tlsAddr, 2*time.Second)
+
+	if err := s.Stop(); err != nil {
+		t.Fatalf("Stop() error: %v", err)
+	}
+
+	select {
+	case <-errCh:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Start() did not return after Stop()")
+	}
+}
+
+func TestSMTPServer_ProxyPolicy_NoRestrictions(t *testing.T) {
+	addr := getFreeAddr(t)
+	config := ServerConfig{
+		ListenAddr:        addr,
+		ServerName:        "test",
+		TrustedProxyCIDRs: nil, // no restriction — any source accepted
+	}
+	backend := createMockBackend()
+	logger := &mockLogger{}
+
+	s, err := NewSMTPServer(config, backend, logger)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	go func() { s.Start() }() //nolint:errcheck
+	waitForPort(t, addr, 2*time.Second)
+
+	// Connect to trigger the proxy policy function
+	conn, err := net.Dial("tcp", addr)
+	if err == nil {
+		conn.Close()
+	}
+
+	s.Stop()
+}
+
+func TestSMTPServer_ProxyPolicy_WithTrustedCIDRs_Untrusted(t *testing.T) {
+	addr := getFreeAddr(t)
+	config := ServerConfig{
+		ListenAddr:        addr,
+		ServerName:        "test",
+		TrustedProxyCIDRs: []string{"10.0.0.0/8"}, // 127.0.0.1 is NOT in this range
+	}
+	backend := createMockBackend()
+	logger := &mockLogger{}
+
+	s, err := NewSMTPServer(config, backend, logger)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	go func() { s.Start() }() //nolint:errcheck
+	waitForPort(t, addr, 2*time.Second)
+
+	// Connect from 127.0.0.1 — not in trusted CIDRs, exercises the IGNORE path
+	conn, err := net.Dial("tcp", addr)
+	if err == nil {
+		conn.Close()
+	}
+
+	s.Stop()
+}
+
+func TestSMTPServer_ProxyPolicy_WithTrustedCIDRs_Trusted(t *testing.T) {
+	addr := getFreeAddr(t)
+	config := ServerConfig{
+		ListenAddr:        addr,
+		ServerName:        "test",
+		TrustedProxyCIDRs: []string{"127.0.0.0/8"}, // 127.0.0.1 IS in this range
+	}
+	backend := createMockBackend()
+	logger := &mockLogger{}
+
+	s, err := NewSMTPServer(config, backend, logger)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	go func() { s.Start() }() //nolint:errcheck
+	waitForPort(t, addr, 2*time.Second)
+
+	// Connect from 127.0.0.1 — in trusted CIDRs, exercises the USE path
+	conn, err := net.Dial("tcp", addr)
+	if err == nil {
+		conn.Close()
+	}
+
+	s.Stop()
 }
 
 // Helper functions and mocks
