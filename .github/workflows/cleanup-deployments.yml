@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       environment:
-        description: Environment name to filter (optional)
+        description: Environment name to filter (leave empty for all environments)
         required: false
-        default: "production"
+        default: ""
         type: string
       keep_latest:
         description: Number of most recent deployments to keep
