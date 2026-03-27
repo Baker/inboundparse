@@ -2,9 +2,11 @@ package auth
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"inboundparse/internal/domain"
 	"inboundparse/internal/observability"
+	"net"
 	"strings"
 	"time"
 
@@ -95,7 +97,8 @@ func (d *dmarcChecker) extractFromDomain(headers letters.Headers, logger observa
 func (d *dmarcChecker) handleLookupError(err error, fromDomain string, lookupDetails []domain.DMARCLookupDetail, logger observability.Logger, metrics observability.MetricsCollector) *domain.DMARCResult {
 	// Determine error type for metrics
 	errorType := "dns_error"
-	if strings.Contains(err.Error(), "timeout") {
+	var netErr net.Error
+	if errors.As(err, &netErr) && netErr.Timeout() {
 		errorType = "timeout_error"
 	} else if strings.Contains(err.Error(), "parse") {
 		errorType = "parse_error"

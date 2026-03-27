@@ -267,7 +267,7 @@ func TestGetEnvArray(t *testing.T) {
 			name:         "handles values with spaces",
 			envValue:     "value1, value2, value3",
 			defaultValue: []string{"default"},
-			expected:     []string{"value1", " value2", " value3"},
+			expected:     []string{"value1", "value2", "value3"},
 		},
 	}
 

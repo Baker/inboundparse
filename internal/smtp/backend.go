@@ -15,7 +15,8 @@ import (
 
 // BackendConfig holds backend configuration
 type BackendConfig struct {
-	MaxRecipients int
+	MaxRecipients     int
+	ProcessingTimeout time.Duration
 }
 
 // Backend implements smtp.Backend
@@ -157,8 +158,13 @@ func (s *Session) Data(r io.Reader) error {
 		}
 	}
 
-	// Process the email message with session-aware logger
-	ctx := context.Background() // TODO: Add proper context with timeout
+	// Process the email message with a bounded context to prevent indefinite blocking
+	timeout := s.config.ProcessingTimeout
+	if timeout <= 0 {
+		timeout = 5 * time.Minute
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
 	err := s.messageProcessor.ProcessMessage(ctx, r, s.from, s.to, s.sessionID, remoteIP)
 
 	// Track message count regardless of success/failure

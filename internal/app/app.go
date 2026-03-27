@@ -109,7 +109,8 @@ func NewApp(cfg *config.Config) (*App, error) {
 	// Initialize SMTP backend
 	smtpBackend := smtp.NewBackend(
 		smtp.BackendConfig{
-			MaxRecipients: 100, // Default value
+			MaxRecipients:     100, // Default value
+			ProcessingTimeout: cfg.MessageProcessingTimeout,
 		},
 		messageProcessor,
 		metrics,

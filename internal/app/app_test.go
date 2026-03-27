@@ -322,12 +322,13 @@ func TestApp_Start_WithTLSConfig(t *testing.T) {
 func TestApp_Start_SMTPServerError(t *testing.T) {
 	// Test SMTP server start error path (lines 168-170)
 	config := &config.Config{
-		ListenAddr:    "invalid-address:99999", // Invalid port should cause error
-		WebhookURL:    "http://localhost:8080/webhook",
-		ServerName:    "test",
-		Verbose:       true,
-		EnableMetrics: false,
-		EnableSentry:  false,
+		ListenAddr:             "invalid-address:99999", // Invalid port should cause error
+		WebhookURL:             "http://localhost:8080/webhook",
+		ServerName:             "test",
+		Verbose:                true,
+		EnableMetrics:          false,
+		EnableSentry:           false,
+		WebhookRetryMultiplier: config.DefaultWebhookRetryMultiplier,
 	}
 
 	app, err := NewApp(config)
@@ -353,13 +354,14 @@ func TestApp_Start_MetricsServerError(t *testing.T) {
 	// The actual error would occur if the metrics server Start() method returned an error.
 
 	config := &config.Config{
-		ListenAddr:    "127.0.0.1:0",
-		WebhookURL:    "http://localhost:8080/webhook",
-		ServerName:    "test",
-		Verbose:       true,
-		EnableMetrics: true, // Enable metrics to trigger the error path check
-		MetricsAddr:   "127.0.0.1:0",
-		EnableSentry:  false, // Disable sentry to avoid initialization issues
+		ListenAddr:             "127.0.0.1:0",
+		WebhookURL:             "http://localhost:8080/webhook",
+		ServerName:             "test",
+		Verbose:                true,
+		EnableMetrics:          true, // Enable metrics to trigger the error path check
+		MetricsAddr:            "127.0.0.1:0",
+		EnableSentry:           false, // Disable sentry to avoid initialization issues
+		WebhookRetryMultiplier: config.DefaultWebhookRetryMultiplier,
 	}
 
 	app, err := NewApp(config)

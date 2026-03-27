@@ -9,6 +9,7 @@ import (
 	"inboundparse/internal/observability"
 	"io"
 	"net"
+	"sync"
 	"time"
 
 	"github.com/mnako/letters"
@@ -173,7 +174,8 @@ func (mp *MessageProcessor) ProcessMessage(ctx context.Context, r io.Reader, fro
 	return nil
 }
 
-// performAuthenticationChecks runs all enabled authentication checks
+// performAuthenticationChecks runs all enabled authentication checks.
+// SPF and DKIM run concurrently; DMARC runs after both since it depends on their results.
 func (mp *MessageProcessor) performAuthenticationChecks(ctx context.Context, rawMessage string, headers letters.Headers, from string, remoteIP net.IP, sessionLogger observability.Logger) (domain.AuthenticationResults, error) {
 	results := domain.AuthenticationResults{}
 
@@ -183,51 +185,63 @@ func (mp *MessageProcessor) performAuthenticationChecks(ctx context.Context, raw
 		Bool("dmarc_enabled", mp.config.EnableDMARC).
 		Msg("Starting authentication checks")
 
-	// Extract domain from MAIL FROM (envelope sender)
-	domain := auth.ExtractDomainFromEmail(from)
+	senderDomain := auth.ExtractDomainFromEmail(from)
 
-	// SPF Check
+	// Run SPF and DKIM concurrently since they are independent
+	var (
+		spfResult  *domain.SPFResult
+		dkimResult *domain.DKIMResult
+		spfErr     error
+		dkimErr    error
+		wg         sync.WaitGroup
+	)
+
 	if mp.config.EnableSPF {
-		spfResult, err := mp.authChecker.CheckSPF(ctx, remoteIP, domain, from, sessionLogger, mp.metrics)
-		if err != nil {
-			sessionLogger.Warn().
-				Err(err).
-				Msg("SPF check failed")
-			mp.sentry.CaptureError(err, map[string]interface{}{
-				"check_type": "spf",
-				"from":       from,
-				"domain":     domain,
-			})
-		} else if spfResult != nil {
-			results.SPF = spfResult
-			mp.metrics.TrackSPFResult(spfResult.Result)
-		}
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			spfResult, spfErr = mp.authChecker.CheckSPF(ctx, remoteIP, senderDomain, from, sessionLogger, mp.metrics)
+		}()
 	}
 
-	// DKIM Check
 	if mp.config.EnableDKIM {
-		dkimResult, err := mp.authChecker.CheckDKIM(ctx, rawMessage, sessionLogger, mp.metrics)
-		if err != nil {
-			sessionLogger.Warn().
-				Err(err).
-				Msg("DKIM check failed")
-			mp.sentry.CaptureError(err, map[string]interface{}{
-				"check_type": "dkim",
-				"from":       from,
-			})
-		} else if dkimResult != nil {
-			results.DKIM = dkimResult
-			mp.metrics.TrackDKIMResult(dkimResult.Valid)
-		}
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			dkimResult, dkimErr = mp.authChecker.CheckDKIM(ctx, rawMessage, sessionLogger, mp.metrics)
+		}()
 	}
 
-	// DMARC Check - pass previously computed results to avoid redundant checks
+	wg.Wait()
+
+	if spfErr != nil {
+		sessionLogger.Warn().Err(spfErr).Msg("SPF check failed")
+		mp.sentry.CaptureError(spfErr, map[string]interface{}{
+			"check_type": "spf",
+			"from":       from,
+			"domain":     senderDomain,
+		})
+	} else if spfResult != nil {
+		results.SPF = spfResult
+		mp.metrics.TrackSPFResult(spfResult.Result)
+	}
+
+	if dkimErr != nil {
+		sessionLogger.Warn().Err(dkimErr).Msg("DKIM check failed")
+		mp.sentry.CaptureError(dkimErr, map[string]interface{}{
+			"check_type": "dkim",
+			"from":       from,
+		})
+	} else if dkimResult != nil {
+		results.DKIM = dkimResult
+		mp.metrics.TrackDKIMResult(dkimResult.Valid)
+	}
+
+	// DMARC depends on SPF and DKIM results, so it runs after both complete
 	if mp.config.EnableDMARC {
 		dmarcResult, err := mp.authChecker.CheckDMARC(ctx, rawMessage, headers, results.SPF, results.DKIM, sessionLogger, mp.metrics)
 		if err != nil {
-			sessionLogger.Warn().
-				Err(err).
-				Msg("DMARC check failed")
+			sessionLogger.Warn().Err(err).Msg("DMARC check failed")
 			mp.sentry.CaptureError(err, map[string]interface{}{
 				"check_type": "dmarc",
 				"from":       from,

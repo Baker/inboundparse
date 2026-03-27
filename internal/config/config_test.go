@@ -164,7 +164,8 @@ func TestWithMetrics(t *testing.T) {
 
 func TestValidate_ValidConfig(t *testing.T) {
 	cfg := &Config{
-		WebhookURL: "http://test.example.com/webhook",
+		WebhookURL:             "http://test.example.com/webhook",
+		WebhookRetryMultiplier: DefaultWebhookRetryMultiplier,
 	}
 
 	err := cfg.Validate()
@@ -175,7 +176,7 @@ func TestValidate_ValidConfig(t *testing.T) {
 
 func TestValidate_MissingWebhookURL(t *testing.T) {
 	// Webhook URL is now optional - empty URL should not cause validation error
-	cfg := &Config{}
+	cfg := &Config{WebhookRetryMultiplier: DefaultWebhookRetryMultiplier}
 
 	err := cfg.Validate()
 	if err != nil {
@@ -231,9 +232,10 @@ func TestValidate_SentryEnabledWithoutDSN(t *testing.T) {
 
 func TestValidate_SentryEnabledWithDSN(t *testing.T) {
 	cfg := &Config{
-		WebhookURL:   "http://test.example.com/webhook",
-		EnableSentry: true,
-		SentryDSN:    "https://test@sentry.io/123456",
+		WebhookURL:             "http://test.example.com/webhook",
+		EnableSentry:           true,
+		SentryDSN:              "https://test@sentry.io/123456",
+		WebhookRetryMultiplier: DefaultWebhookRetryMultiplier,
 	}
 
 	err := cfg.Validate()
@@ -244,9 +246,10 @@ func TestValidate_SentryEnabledWithDSN(t *testing.T) {
 
 func TestValidate_BothCertAndKeyFiles(t *testing.T) {
 	cfg := &Config{
-		WebhookURL: "http://test.example.com/webhook",
-		CertFile:   "/path/to/cert.pem",
-		KeyFile:    "/path/to/key.pem",
+		WebhookURL:             "http://test.example.com/webhook",
+		CertFile:               "/path/to/cert.pem",
+		KeyFile:                "/path/to/key.pem",
+		WebhookRetryMultiplier: DefaultWebhookRetryMultiplier,
 	}
 
 	err := cfg.Validate()

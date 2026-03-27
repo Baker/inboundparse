@@ -8,6 +8,7 @@ import (
 	"inboundparse/internal/observability"
 	"net"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/emersion/go-smtp"
@@ -16,23 +17,26 @@ import (
 
 // ServerConfig holds SMTP server configuration
 type ServerConfig struct {
-	ListenAddr     string
-	ListenAddrTLS  string
-	ServerName     string
-	MaxMessageSize int64
-	ReadTimeout    time.Duration
-	WriteTimeout   time.Duration
-	CertFile       string
-	KeyFile        string
-	MaxRecipients  int
+	ListenAddr        string
+	ListenAddrTLS     string
+	ServerName        string
+	MaxMessageSize    int64
+	ReadTimeout       time.Duration
+	WriteTimeout      time.Duration
+	CertFile          string
+	KeyFile           string
+	MaxRecipients     int
+	TrustedProxyCIDRs []string
 }
 
 // SMTPServer manages SMTP servers
 type SMTPServer struct {
-	config    ServerConfig
-	server    *smtp.Server
-	tlsServer *smtp.Server
-	logger    observability.Logger
+	config            ServerConfig
+	server            *smtp.Server
+	tlsServer         *smtp.Server
+	logger            observability.Logger
+	trustedProxyCIDRs []*net.IPNet
+	wg                sync.WaitGroup
 }
 
 // NewSMTPServer creates a new SMTP server
@@ -41,6 +45,16 @@ func NewSMTPServer(
 	backend *Backend,
 	logger observability.Logger,
 ) (*SMTPServer, error) {
+	// Parse trusted proxy CIDRs at startup to catch configuration errors early
+	var trustedProxyCIDRs []*net.IPNet
+	for _, cidr := range config.TrustedProxyCIDRs {
+		_, ipNet, err := net.ParseCIDR(cidr)
+		if err != nil {
+			return nil, fmt.Errorf("invalid trusted proxy CIDR %q: %w", cidr, err)
+		}
+		trustedProxyCIDRs = append(trustedProxyCIDRs, ipNet)
+	}
+
 	var tlsServer *smtp.Server
 
 	server := smtp.NewServer(backend)
@@ -79,17 +93,20 @@ func NewSMTPServer(
 	}
 
 	return &SMTPServer{
-		config:    config,
-		server:    server,
-		tlsServer: tlsServer,
-		logger:    logger,
+		config:            config,
+		server:            server,
+		tlsServer:         tlsServer,
+		logger:            logger,
+		trustedProxyCIDRs: trustedProxyCIDRs,
 	}, nil
 }
 
 // Start starts the SMTP server
 func (s *SMTPServer) Start() error {
 	if s.tlsServer != nil {
+		s.wg.Add(1)
 		go func() {
+			defer s.wg.Done()
 			s.logger.Info().
 				Str("address", s.config.ListenAddr).
 				Msg("Starting plain SMTP server")
@@ -120,16 +137,31 @@ func (s *SMTPServer) listenAndServeWithProxy(server *smtp.Server, addr string) e
 	proxyListener := &proxyproto.Listener{
 		Listener: ln,
 		Policy: func(upstream net.Addr) (proxyproto.Policy, error) {
-			// Accept PROXY protocol from any source
-			// TODO: In production, you might want to restrict this to Fly.io's proxy IPs
-			return proxyproto.USE, nil
+			if len(s.trustedProxyCIDRs) == 0 {
+				// No restriction configured — accept from any source
+				return proxyproto.USE, nil
+			}
+			host, _, err := net.SplitHostPort(upstream.String())
+			if err != nil {
+				return proxyproto.IGNORE, nil
+			}
+			ip := net.ParseIP(host)
+			if ip == nil {
+				return proxyproto.IGNORE, nil
+			}
+			for _, cidr := range s.trustedProxyCIDRs {
+				if cidr.Contains(ip) {
+					return proxyproto.USE, nil
+				}
+			}
+			return proxyproto.IGNORE, nil
 		},
 	}
 
 	return server.Serve(proxyListener)
 }
 
-// Stop stops the SMTP server
+// Stop stops the SMTP server and waits for all goroutines to finish
 func (s *SMTPServer) Stop() error {
 	var closeErrors error
 	if s.server != nil {
@@ -148,6 +180,8 @@ func (s *SMTPServer) Stop() error {
 			}
 		}
 	}
+	// Wait for the plain SMTP goroutine (if any) to exit cleanly
+	s.wg.Wait()
 	return closeErrors
 }
 
@@ -158,15 +192,16 @@ func NewSMTPServerFromConfig(
 	logger observability.Logger,
 ) (*SMTPServer, error) {
 	serverConfig := ServerConfig{
-		ListenAddr:     appConfig.ListenAddr,
-		ListenAddrTLS:  appConfig.ListenAddrTLS,
-		ServerName:     appConfig.ServerName,
-		MaxMessageSize: appConfig.MaxMessageSize,
-		ReadTimeout:    appConfig.ReadTimeout,
-		WriteTimeout:   appConfig.WriteTimeout,
-		CertFile:       appConfig.CertFile,
-		KeyFile:        appConfig.KeyFile,
-		MaxRecipients:  100, // Default value
+		ListenAddr:        appConfig.ListenAddr,
+		ListenAddrTLS:     appConfig.ListenAddrTLS,
+		ServerName:        appConfig.ServerName,
+		MaxMessageSize:    appConfig.MaxMessageSize,
+		ReadTimeout:       appConfig.ReadTimeout,
+		WriteTimeout:      appConfig.WriteTimeout,
+		CertFile:          appConfig.CertFile,
+		KeyFile:           appConfig.KeyFile,
+		MaxRecipients:     100, // Default value
+		TrustedProxyCIDRs: appConfig.TrustedProxyCIDRs,
 	}
 
 	return NewSMTPServer(serverConfig, backend, logger)

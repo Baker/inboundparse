@@ -81,5 +81,16 @@ func GetEnvInt(key string, defaultValue int) int {
 
 func GetEnvArray(key string, defaultValue []string) []string {
 	value := GetEnv(key, strings.Join(defaultValue, ","))
-	return strings.Split(value, ",")
+	if value == "" {
+		return defaultValue
+	}
+	parts := strings.Split(value, ",")
+	result := make([]string, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			result = append(result, p)
+		}
+	}
+	return result
 }
