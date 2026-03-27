@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"inboundparse/internal/utils"
+	"net/url"
 	"strconv"
 	"time"
 )
@@ -347,6 +348,13 @@ func (c *Config) Validate() error {
 
 	if c.WebhookRetryMultiplier <= 0 {
 		return fmt.Errorf("webhook retry multiplier must be greater than 0, got %v", c.WebhookRetryMultiplier)
+	}
+
+	if c.WebhookURL != "" {
+		u, err := url.Parse(c.WebhookURL)
+		if err != nil || (u.Scheme != "http" && u.Scheme != "https") {
+			return fmt.Errorf("webhook URL must be a valid http or https URL, got %q", c.WebhookURL)
+		}
 	}
 
 	return nil
