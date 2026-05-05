@@ -23,17 +23,10 @@ echo "  Domain: ${DOMAIN}"
 echo "  DNS API: ${DNS_API}"
 echo "  ACME Email: ${ACME_SH_EMAIL}"
 
-# Check if acme.sh is installed, if not install it
+# acme.sh must be present in the image (installed at build time); never curl|sh at runtime
 if ! command -v acme.sh >/dev/null 2>&1; then
-    echo 'acme.sh not found, installing...'
-    curl https://get.acme.sh | sh -s email=${ACME_SH_EMAIL}
-    # Source the acme.sh environment
-    . ~/.acme.sh/acme.sh.env
-fi
-
-# Ensure acme.sh env is loaded if available (path, aliases)
-if [ -f ~/.acme.sh/acme.sh.env ]; then
-    . ~/.acme.sh/acme.sh.env
+    echo 'ERROR: acme.sh is not installed or not on PATH'
+    exit 1
 fi
 
 # Set up account on first startup
@@ -109,7 +102,7 @@ else
 fi
 
 # Start SMTP server with environment variables
-./inboundparse \
+exec /usr/local/bin/inboundparse \
     -webhook="${WEBHOOK_URL}" \
     -enable-spf="${ENABLE_SPF}" \
     -enable-dkim="${ENABLE_DKIM}" \
@@ -117,4 +110,3 @@ fi
     -cert-file="${CERT_FILE}" \
     -key-file="${KEY_FILE}" \
     -verbose="${VERBOSE}"
-    

@@ -138,8 +138,9 @@ func (s *SMTPServer) listenAndServeWithProxy(server *smtp.Server, addr string) e
 		Listener: ln,
 		Policy: func(upstream net.Addr) (proxyproto.Policy, error) {
 			if len(s.trustedProxyCIDRs) == 0 {
-				// No restriction configured — accept from any source
-				return proxyproto.USE, nil
+				// No trusted proxies configured — ignore PROXY headers so clients
+				// cannot spoof source IPs (SPF/DMARC rely on the real TCP peer).
+				return proxyproto.IGNORE, nil
 			}
 			host, _, err := net.SplitHostPort(upstream.String())
 			if err != nil {

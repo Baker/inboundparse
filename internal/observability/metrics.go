@@ -2,6 +2,9 @@ package observability
 
 import (
 	"context"
+	"crypto/subtle"
+	"log"
+	"net"
 	"net/http"
 	"strings"
 	"sync"
@@ -598,8 +601,7 @@ func (m *metricsServer) Start() error {
 
 	go func() {
 		if err := m.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			// Log error but don't fail the application - this is expected behavior
-			_ = err
+			log.Printf("metrics server: ListenAndServe: %v", err)
 		}
 	}()
 
@@ -615,24 +617,54 @@ func (m *metricsServer) Stop(ctx context.Context) error {
 	return m.server.Shutdown(ctx)
 }
 
+// metricsAddrAllowsUnauthenticatedMetrics is true only for loopback binds where
+// open /metrics is acceptable (local development and unit tests).
+func metricsAddrAllowsUnauthenticatedMetrics(addr string) bool {
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil || host == "" {
+		return false
+	}
+	switch strings.ToLower(host) {
+	case "localhost", "127.0.0.1", "::1":
+		return true
+	default:
+		return false
+	}
+}
+
+func constantTimeEqualString(a, b string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	return subtle.ConstantTimeCompare([]byte(a), []byte(b)) == 1
+}
+
 // authMiddleware provides authentication for the metrics endpoint
 func (m *metricsServer) authMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// If no authentication is configured, allow access
-		if m.config.MetricsAPIKey == "" && m.config.MetricsUsername == "" {
-			next.ServeHTTP(w, r)
+		hasBearer := m.config.MetricsAPIKey != ""
+		hasBasic := m.config.MetricsUsername != "" && m.config.MetricsPassword != ""
+
+		if !hasBearer && !hasBasic {
+			if metricsAddrAllowsUnauthenticatedMetrics(m.config.MetricsAddr) {
+				next.ServeHTTP(w, r)
+				return
+			}
+			w.Header().Set("WWW-Authenticate", `Bearer realm="metrics"`)
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
 		}
 
 		authenticated := false
 
 		// Check Bearer token authentication
-		if m.config.MetricsAPIKey != "" {
+		if hasBearer {
 			authHeader := r.Header.Get("Authorization")
 			if authHeader != "" {
 				parts := strings.SplitN(authHeader, " ", 2)
-				if len(parts) == 2 && parts[0] == "Bearer" {
-					if parts[1] == m.config.MetricsAPIKey {
+				if len(parts) == 2 && strings.EqualFold(parts[0], "Bearer") {
+					token := strings.TrimSpace(parts[1])
+					if constantTimeEqualString(token, m.config.MetricsAPIKey) {
 						authenticated = true
 					}
 				}
@@ -640,9 +672,10 @@ func (m *metricsServer) authMiddleware(next http.Handler) http.Handler {
 		}
 
 		// Check Basic authentication
-		if !authenticated && m.config.MetricsUsername != "" && m.config.MetricsPassword != "" {
+		if !authenticated && hasBasic {
 			username, password, ok := r.BasicAuth()
-			if ok && username == m.config.MetricsUsername && password == m.config.MetricsPassword {
+			if ok && username == m.config.MetricsUsername &&
+				constantTimeEqualString(password, m.config.MetricsPassword) {
 				authenticated = true
 			}
 		}

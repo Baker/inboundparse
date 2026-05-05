@@ -1,5 +1,5 @@
 # Build stage
-FROM golang:1.26.1-alpine AS builder
+FROM golang:1.26.2-alpine3.21 AS builder
 
 WORKDIR /app
 
@@ -16,27 +16,30 @@ COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o inboundparse ./cmd/inboundparse
 
 # Final stage
-FROM alpine:latest
+FROM alpine:3.21
 
-# Install ca-certificates, openssl, and curl for HTTPS webhook calls and certificate management
-RUN apk --no-cache add ca-certificates openssl curl socat
+ARG ACME_SH_VERSION=3.0.7
 
-# Install acme.sh
-RUN curl https://get.acme.sh | sh -s email=${ACME_SH_EMAIL:-dev@inboundparse.com}
+# Install ca-certificates, openssl, socat, git, bash; pin acme.sh via git tag (no curl|sh)
+RUN apk add --no-cache ca-certificates openssl socat git bash curl \
+ && git clone --depth 1 --branch "${ACME_SH_VERSION}" https://github.com/acmesh-official/acme.sh.git /opt/acme.sh \
+ && addgroup -S inboundparse \
+ && adduser -S -G inboundparse -h /home/inboundparse inboundparse \
+ && mkdir -p /cert /home/inboundparse \
+ && chown -R inboundparse:inboundparse /cert /home/inboundparse /opt/acme.sh \
+ && ln -sf /opt/acme.sh/acme.sh /usr/local/bin/acme.sh \
+ && rm -rf /opt/acme.sh/.git
 
-WORKDIR /root/
+WORKDIR /home/inboundparse
 
-# Copy the binary from builder stage
-COPY --from=builder /app/inboundparse .
+COPY --from=builder /app/inboundparse /usr/local/bin/inboundparse
+COPY start.sh /usr/local/bin/start.sh
 
-# Copy scripts
-COPY start.sh ./start.sh
+RUN chmod +x /usr/local/bin/inboundparse /usr/local/bin/start.sh \
+ && chown inboundparse:inboundparse /usr/local/bin/inboundparse /usr/local/bin/start.sh
 
-# Make scripts executable
-RUN chmod +x ./start.sh
-
-# Create cert directory
-RUN mkdir -p /cert
+USER inboundparse
+ENV HOME=/home/inboundparse
 
 # Environment variables for acme.sh and SMTP server
 ENV CF_Token=""
@@ -61,4 +64,4 @@ EXPOSE 587
 EXPOSE 9090
 
 # Run the startup script
-ENTRYPOINT ["./start.sh"]
+ENTRYPOINT ["/usr/local/bin/start.sh"]

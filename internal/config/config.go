@@ -4,8 +4,10 @@ import (
 	"flag"
 	"fmt"
 	"inboundparse/internal/utils"
+	"net"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -357,5 +359,50 @@ func (c *Config) Validate() error {
 		}
 	}
 
+	if c.EnableMetrics {
+		if err := validateMetricsAuth(c.MetricsAddr, c.MetricsAPIKey, c.MetricsUsername, c.MetricsPassword); err != nil {
+			return err
+		}
+	}
+
 	return nil
+}
+
+// metricsBindHostAllowsUnauthenticated returns true only for loopback binds
+// where exposing /metrics without credentials is acceptable (local dev/tests).
+func metricsBindHostAllowsUnauthenticated(host string) bool {
+	switch strings.ToLower(host) {
+	case "localhost", "127.0.0.1", "::1":
+		return true
+	default:
+		return false
+	}
+}
+
+func validateMetricsAuth(addr, apiKey, username, password string) error {
+	if addr == "" {
+		return fmt.Errorf("metrics address is required when metrics are enabled")
+	}
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		return fmt.Errorf("invalid metrics address %q: %w", addr, err)
+	}
+	// Empty host (e.g. ":9090") means all interfaces — never allow open /metrics.
+	if host == "" {
+		host = "0.0.0.0"
+	}
+
+	userOrPass := (username != "") != (password != "")
+	if userOrPass {
+		return fmt.Errorf("metrics: both username and password must be set for basic authentication")
+	}
+
+	hasAuth := apiKey != "" || (username != "" && password != "")
+	if hasAuth {
+		return nil
+	}
+	if metricsBindHostAllowsUnauthenticated(host) {
+		return nil
+	}
+	return fmt.Errorf("metrics: set METRICS_API_KEY or METRICS_USERNAME and METRICS_PASSWORD when binding to %q (unauthenticated /metrics is only allowed on loopback)", addr)
 }
