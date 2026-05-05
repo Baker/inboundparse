@@ -258,6 +258,52 @@ func TestValidate_BothCertAndKeyFiles(t *testing.T) {
 	}
 }
 
+func TestValidate_MetricsNonLoopbackRequiresAuth(t *testing.T) {
+	cfg := &Config{
+		WebhookRetryMultiplier: DefaultWebhookRetryMultiplier,
+		EnableMetrics:          true,
+		MetricsAddr:            "0.0.0.0:9090",
+	}
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("expected validation error for metrics on non-loopback without credentials")
+	}
+}
+
+func TestValidate_MetricsLoopbackNoAuthOK(t *testing.T) {
+	cfg := &Config{
+		WebhookRetryMultiplier: DefaultWebhookRetryMultiplier,
+		EnableMetrics:          true,
+		MetricsAddr:            "127.0.0.1:9090",
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("expected nil, got %v", err)
+	}
+}
+
+func TestValidate_MetricsWildcardBindRequiresAuth(t *testing.T) {
+	cfg := &Config{
+		WebhookRetryMultiplier: DefaultWebhookRetryMultiplier,
+		EnableMetrics:          true,
+		MetricsAddr:            ":9090",
+	}
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("expected validation error for bind-all address without credentials")
+	}
+}
+
+func TestValidate_MetricsPartialBasicAuthRejected(t *testing.T) {
+	cfg := &Config{
+		WebhookRetryMultiplier: DefaultWebhookRetryMultiplier,
+		EnableMetrics:          true,
+		MetricsAddr:            "0.0.0.0:9090",
+		MetricsUsername:        "admin",
+		MetricsPassword:        "",
+	}
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("expected validation error for partial basic auth")
+	}
+}
+
 func TestLoadFromFlags_WithWebhookURL(t *testing.T) {
 	// Test webhook URL configuration by creating a config manually
 	// to avoid flag redefinition issues

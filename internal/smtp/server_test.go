@@ -734,12 +734,12 @@ func TestSMTPServer_Start_TLSAndStop(t *testing.T) {
 	}
 }
 
-func TestSMTPServer_ProxyPolicy_NoRestrictions(t *testing.T) {
+func TestSMTPServer_ProxyPolicy_NoTrustedProxies(t *testing.T) {
 	addr := getFreeAddr(t)
 	config := ServerConfig{
 		ListenAddr:        addr,
 		ServerName:        "test",
-		TrustedProxyCIDRs: nil, // no restriction — any source accepted
+		TrustedProxyCIDRs: nil, // no trusted proxies — PROXY headers ignored
 	}
 	backend := createMockBackend()
 	logger := &mockLogger{}

@@ -5,7 +5,6 @@ A SMTP server that receives emails from any domain without authentication and fo
 > [!NOTE]
 > This is my first major Golang product, so I may not do things the **golang way**, but I am open to feedback. I have used this application privately for the last 6 months, and have received well over **100,000** of pieces of mail (mostly spam, but thats for another day).
 
-
 ## Features
 
 ### Core SMTP Functionality
@@ -17,6 +16,7 @@ A SMTP server that receives emails from any domain without authentication and fo
 - 📏 **Message Size Limits**: Configurable maximum message size (default: 10MB)
 
 ### Email Authentication (RFC Compliant)
+
 - 🧐 **SPF Validation (RFC 7208)**: Validates Sender Policy Framework with HELO and envelope sender
 - 🖊️ **DKIM Validation (RFC 6376)**: Verifies DomainKeys Identified Mail signatures with multi-signature support
 - 🕵️‍♂️ **DMARC Validation (RFC 7489)**: Evaluates DMARC policy with hierarchical domain lookup and subdomain policy inheritance
@@ -24,6 +24,7 @@ A SMTP server that receives emails from any domain without authentication and fo
 - 🔍 **Domain Hierarchy Tracking**: Tracks all attempted DMARC lookups with detailed per-domain results
 
 ### Observability & Monitoring
+
 - 📋 **Structured Logging**: JSON-formatted logs with configurable levels
 - 📊 **Prometheus Metrics**: Comprehensive metrics collection and monitoring
 - 🛎️ **Sentry Integration**: Error tracking and performance monitoring
@@ -31,6 +32,7 @@ A SMTP server that receives emails from any domain without authentication and fo
 - 📈 **Grafana Dashboards**: Pre-configured monitoring dashboards
 
 ### Deployment & Operations
+
 - 🐳 **Docker Support**: Multi-stage Docker builds with Alpine Linux
 - 🧩 **Docker Compose**: Complete development stack with monitoring
 - 🚀 **Fly.io Ready**: Pre-configured for Fly.io deployment (more to come!)
@@ -38,6 +40,7 @@ A SMTP server that receives emails from any domain without authentication and fo
 - ⚙️ **Environment Configuration**: Flexible configuration via environment variables
 
 ### Webhook Integration
+
 - 🔐 **HTTP Basic Auth**: Secure webhook authentication
 - 📨 **Rich Payload**: Complete email data including headers and attachments
 - 🔁 **Reliability Features**: Automatic retry with exponential backoff, rate limiting, and circuit breaker
@@ -102,6 +105,7 @@ make dev
 ```
 
 With the dev stack running, you'll have:
+
 - **InboundParse SMTP server** (`:25`, `:587`, `:9090`)
 - **Prometheus** for metrics (`:9091`)
 - **Grafana** dashboards (`:3000`, login `admin`/`admin`)
@@ -146,9 +150,7 @@ Usage of ./inboundparse:
   -sentry-release string    Sentry release version (optional)
 ```
 
-
-
-### 🔒 Environment Variables 
+### 🔒 Environment Variables
 
 You can configure InboundParse using environment variables or command line flags:
 
@@ -265,7 +267,6 @@ The service sends a JSON payload to your webhook with comprehensive email data:
 }
 ```
 
-
 ## 🤝 Contributing
 
 Contributions of all kinds are welcome! See [CONTRIBUTE.md](./docs/CONTRIBUTE.md) for guidelines, and don’t hesitate to open issues, fork, or create PRs.
@@ -274,3 +275,4 @@ Contributions of all kinds are welcome! See [CONTRIBUTE.md](./docs/CONTRIBUTE.md
 
 > **Need help or want to suggest new features?**  
 > Open an issue or start a discussion on GitHub!
+

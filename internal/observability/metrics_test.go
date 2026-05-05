@@ -1253,6 +1253,41 @@ func TestMetricsServer_AuthMiddleware_HTTP(t *testing.T) {
 	})
 }
 
+func TestMetricsServer_AuthMiddleware_NonLoopbackRequiresCredentials(t *testing.T) {
+	l, err := net.Listen("tcp", "0.0.0.0:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	addr := l.Addr().String()
+	l.Close()
+
+	config := MetricsConfig{
+		EnableMetrics: true,
+		MetricsAddr:   addr,
+	}
+	server := NewMetricsServer(config)
+	if err := server.Start(); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	defer server.Stop(context.Background())
+	time.Sleep(80 * time.Millisecond)
+
+	_, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		t.Fatalf("SplitHostPort: %v", err)
+	}
+	metricsURL := "http://" + net.JoinHostPort("127.0.0.1", port) + "/metrics"
+
+	resp, err := http.Get(metricsURL)
+	if err != nil {
+		t.Fatalf("GET /metrics: %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("expected 401 without credentials on %s, got %d", addr, resp.StatusCode)
+	}
+}
+
 // TestMetricsServer_AuthMiddleware_BearerToken_HTTP tests bearer token auth via HTTP
 func TestMetricsServer_AuthMiddleware_BearerToken_HTTP(t *testing.T) {
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
@@ -1288,6 +1323,19 @@ func TestMetricsServer_AuthMiddleware_BearerToken_HTTP(t *testing.T) {
 	t.Run("correct_bearer_token", func(t *testing.T) {
 		req, _ := http.NewRequest("GET", "http://"+addr+"/metrics", nil)
 		req.Header.Set("Authorization", "Bearer secret-token")
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatalf("Request failed: %v", err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			t.Errorf("Expected 200, got %d", resp.StatusCode)
+		}
+	})
+
+	t.Run("bearer_scheme_case_insensitive", func(t *testing.T) {
+		req, _ := http.NewRequest("GET", "http://"+addr+"/metrics", nil)
+		req.Header.Set("Authorization", "bearer secret-token")
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
 			t.Fatalf("Request failed: %v", err)

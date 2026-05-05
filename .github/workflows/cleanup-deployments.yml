@@ -30,7 +30,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       - name: Cleanup GitHub deployments
         env:
@@ -43,6 +43,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+
+          if ! printf '%s' "${KEEP}" | grep -Eq '^[0-9]+$'; then
+            echo "keep_latest must be a non-negative integer"
+            exit 1
+          fi
 
           # Ensure jq is available
           if ! command -v jq >/dev/null 2>&1; then
@@ -85,7 +90,7 @@ jobs:
           echo "Found $total deployment(s)${ENV_FILTER:+ for environment '${ENV_FILTER}'}"
 
           # Determine which to delete (skip the first KEEP entries)
-          to_delete=$(echo "$deployments_sorted" | jq ".[${KEEP}:]")
+          to_delete=$(echo "$deployments_sorted" | jq --argjson skip "$KEEP" '.[$skip:]')
           del_count=$(echo "$to_delete" | jq 'length')
           echo "Keeping ${KEEP}, candidate deletions: $del_count"
           if [ "$del_count" -eq 0 ]; then

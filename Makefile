@@ -5,6 +5,9 @@
 BINARY_NAME=inboundparse
 DOCKER_IMAGE=inboundparse:latest
 GOBIN := $(shell go env GOPATH)/bin
+# govulncheck must load packages with the same Go version as go.mod; otherwise
+# the loader can fail (e.g. internal error: x/sys/unix "without types").
+GOTOOLCHAIN_GO := go$(shell awk '/^go /{print $$2; exit}' go.mod)
 
 help:
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "%-30s %s\n", $$1, $$2}'
@@ -68,9 +71,9 @@ lint: ## Lint (golangci-lint) + vuln scan (govulncheck)
 	@echo "Running golangci-lint..."
 	@command -v $(GOBIN)/golangci-lint >/dev/null 2>&1 || go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
 	@$(GOBIN)/golangci-lint run --fix --timeout=5m
-	@echo "Running govulncheck..."
-	@command -v $(GOBIN)/govulncheck >/dev/null 2>&1 || go install golang.org/x/vuln/cmd/govulncheck@latest
-	@$(GOBIN)/govulncheck ./...
+	@echo "Running govulncheck ($(GOTOOLCHAIN_GO))..."
+	@GOTOOLCHAIN=$(GOTOOLCHAIN_GO) go install golang.org/x/vuln/cmd/govulncheck@latest
+	@GOTOOLCHAIN=$(GOTOOLCHAIN_GO) $(GOBIN)/govulncheck ./...
 
 fl: format lint vet ## Format, lint, and vet the code
 
