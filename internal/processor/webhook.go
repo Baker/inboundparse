@@ -69,9 +69,21 @@ func NewWebhookSender(config WebhookConfig, logger observability.Logger, metrics
 	if maxRetries < 0 {
 		maxRetries = 0 // Disable retries
 	}
+	retryDelay := config.RetryDelay
+	if retryDelay <= 0 {
+		retryDelay = time.Second
+	}
+	maxRetryDelay := config.MaxRetryDelay
+	if maxRetryDelay <= 0 {
+		maxRetryDelay = 30 * time.Second
+	}
+	retryMultiplier := config.RetryMultiplier
+	if retryMultiplier <= 0 {
+		retryMultiplier = 2.0
+	}
 	retryPolicy := retrypolicy.NewBuilder[any]().
 		WithMaxRetries(maxRetries).
-		WithDelay(config.RetryDelay).
+		WithBackoffFactor(retryDelay, maxRetryDelay, retryMultiplier).
 		Build()
 
 	// Create rate limiter

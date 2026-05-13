@@ -1,6 +1,6 @@
 # Build stage
-# Official images publish 1.26.2-alpine / 1.26.2-alpine3.22+ — not alpine3.21.
-FROM golang:1.26.2-alpine AS builder
+# Official images publish 1.26.3-alpine / 1.26.3-alpine3.22+ — not alpine3.21.
+FROM golang:1.26.3-alpine AS builder
 
 WORKDIR /app
 

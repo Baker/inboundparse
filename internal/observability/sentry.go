@@ -75,9 +75,13 @@ func (s *sentryClient) CaptureError(err error, context map[string]interface{}) {
 
 	hub := sentry.CurrentHub()
 	hub.WithScope(func(scope *sentry.Scope) {
-		// Add context to the scope as extras
-		for key, value := range context {
-			scope.SetExtra(key, value)
+		if len(context) > 0 {
+			// sentry-go v0.46+ removed Scope.SetExtra; attach arbitrary data as a context object.
+			c := make(sentry.Context, len(context))
+			for key, value := range context {
+				c[key] = value
+			}
+			scope.SetContext("app", c)
 		}
 		hub.CaptureException(err)
 	})
@@ -92,8 +96,12 @@ func (s *sentryClient) CaptureMessage(message string, level sentry.Level, contex
 	hub := sentry.CurrentHub()
 	hub.WithScope(func(scope *sentry.Scope) {
 		scope.SetLevel(level)
-		for key, value := range context {
-			scope.SetExtra(key, value)
+		if len(context) > 0 {
+			c := make(sentry.Context, len(context))
+			for key, value := range context {
+				c[key] = value
+			}
+			scope.SetContext("app", c)
 		}
 		hub.CaptureMessage(message)
 	})

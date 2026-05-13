@@ -34,7 +34,7 @@ We appreciate all kinds of contributions:
 
 ### 2. Set Up Your Environment
 
-- **Ensure you have Go >= 1.24 installed.**
+- **Ensure you have a Go toolchain that matches `go.mod` (currently Go 1.26.x).**
 - Install dependencies:
   ```bash
   make deps
@@ -56,9 +56,9 @@ We appreciate all kinds of contributions:
   ```bash
   make test
   ```
-- For coverage and additional checks:
+- For coverage summary:
   ```bash
-  make test-coverage
+  make coverage
   ```
 
 ---
