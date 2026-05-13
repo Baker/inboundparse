@@ -9,44 +9,44 @@ A SMTP server that receives emails from any domain without authentication and fo
 
 ### Core SMTP Functionality
 
-- ✉️ **No SMTP Auth Required**: Accepts emails from any domain without username/password
-- 🔒 **TLS Support**: Automatic SSL/TLS certificate management with Let's Encrypt
-- 🔌 **Multiple Ports**: Listens on 25 (SMTP) and 587 (Submission) with optional TLS
-- 🛡️ **PROXY Protocol**: Accepts PROXY protocol connections (e.g., from load balancers)
-- 📏 **Message Size Limits**: Configurable maximum message size (default: 10MB)
+- **No SMTP Auth Required**: Accepts emails from any domain without username/password
+- **TLS Support**: Automatic SSL/TLS certificate management with Let's Encrypt
+- **Multiple Ports**: Listens on 25 (SMTP) and 587 (Submission) with optional TLS
+- **PROXY Protocol**: Accepts PROXY protocol connections (e.g., from load balancers)
+- **Message Size Limits**: Configurable maximum message size (default: 10MB)
 
 ### Email Authentication (RFC Compliant)
 
-- 🧐 **SPF Validation (RFC 7208)**: Validates Sender Policy Framework with HELO and envelope sender
-- 🖊️ **DKIM Validation (RFC 6376)**: Verifies DomainKeys Identified Mail signatures with multi-signature support
-- 🕵️‍♂️ **DMARC Validation (RFC 7489)**: Evaluates DMARC policy with hierarchical domain lookup and subdomain policy inheritance
-- 📝 **Comprehensive Results**: Detailed authentication results with domain, mechanism, and alignment data
-- 🔍 **Domain Hierarchy Tracking**: Tracks all attempted DMARC lookups with detailed per-domain results
+- **SPF Validation (RFC 7208)**: Validates Sender Policy Framework with HELO and envelope sender
+- **DKIM Validation (RFC 6376)**: Verifies DomainKeys Identified Mail signatures with multi-signature support
+- **DMARC Validation (RFC 7489)**: Evaluates DMARC policy with hierarchical domain lookup and subdomain policy inheritance
+- **Comprehensive Results**: Detailed authentication results with domain, mechanism, and alignment data
+- **Domain Hierarchy Tracking**: Tracks all attempted DMARC lookups with detailed per-domain results
 
 ### Observability & Monitoring
 
-- 📋 **Structured Logging**: JSON-formatted logs with configurable levels
-- 📊 **Prometheus Metrics**: Comprehensive metrics collection and monitoring
-- 🛎️ **Sentry Integration**: Error tracking and performance monitoring
-- ❤️ **Health Checks**: Built-in health endpoint for load balancers
-- 📈 **Grafana Dashboards**: Pre-configured monitoring dashboards
+- **Structured Logging**: JSON-formatted logs with configurable levels
+- **Prometheus Metrics**: Comprehensive metrics collection and monitoring
+- **Sentry Integration**: Error tracking and performance monitoring
+- **Health Checks**: Built-in health endpoint for load balancers
+- **Grafana Dashboards**: Pre-configured monitoring dashboards
 
 ### Deployment & Operations
 
-- 🐳 **Docker Support**: Multi-stage Docker builds with Alpine Linux
-- 🧩 **Docker Compose**: Complete development stack with monitoring
-- 🚀 **Fly.io Ready**: Pre-configured for Fly.io deployment (more to come!)
-- 🔑 **Automatic Certificates**: Let's Encrypt integration with DNS validation
-- ⚙️ **Environment Configuration**: Flexible configuration via environment variables
+- **Docker Support**: Multi-stage Docker builds with Alpine Linux
+- **Docker Compose**: Complete development stack with monitoring
+- **Fly.io Ready**: Pre-configured for Fly.io deployment (more to come!)
+- **Automatic Certificates**: Let's Encrypt integration with DNS validation
+- **Environment Configuration**: Flexible configuration via environment variables
 
 ### Webhook Integration
 
-- 🔐 **HTTP Basic Auth**: Secure webhook authentication
-- 📨 **Rich Payload**: Complete email data including headers and attachments
-- 🔁 **Reliability Features**: Automatic retry with exponential backoff, rate limiting, and circuit breaker
-- 🛡️ **Fault Tolerance**: Circuit breaker pattern prevents cascading failures
-- ⚡ **Rate Limiting**: Configurable requests per second to protect downstream endpoints
-- ✂️ **Content Processing**: Parsed text and HTML content extraction
+- **HTTP Basic Auth**: Secure webhook authentication
+- **Rich Payload**: Complete email data including headers and attachments
+- **Reliability Features**: Automatic retry with exponential backoff, rate limiting, and circuit breaker
+- **Fault Tolerance**: Circuit breaker pattern prevents cascading failures
+- **Rate Limiting**: Smooth per-second webhook rate cap (`WEBHOOK_RATE_LIMIT`)
+- **Content Processing**: Parsed text and HTML content extraction
 
 ## Quick Start
 
@@ -54,7 +54,7 @@ Welcome to **InboundParse**! Whether you're a developer, sysadmin, or open sourc
 
 ---
 
-### 1. ⚡ Fastest Start with Make
+### 1. Fastest start with Make
 
 Most development and deployment tasks are automated with `make` for simplicity.
 
@@ -73,20 +73,20 @@ make run-dev
 
 ---
 
-### 2. 👐 Manual Build & Run (for non-Make users)
+### 2. Manual build and run (for non-Make users)
 
 ```bash
-# 1. Ensure Go ≥ 1.20 is installed
+# 1. Install a Go toolchain that matches go.mod (see the `go` directive there).
 go mod tidy      # Download dependencies
 go build -o inboundparse ./cmd/inboundparse/
 
-# 2. Start the server with a custom webhook endpoint
+# 2. Start the server (set WEBHOOK_URL or -webhook for real deliveries; omit for no-op / dev)
 ./inboundparse -webhook=https://your-app.com/webhook
 ```
 
 ---
 
-### 3. 🐳 Full Local Dev Stack (Docker Compose, Monitoring, Visual Dashboards)
+### 3. Full local dev stack (Docker Compose, monitoring, dashboards)
 
 Spin up the whole ecosystem: SMTP, metrics, dashboards, and log viewing, all with familiar tooling.
 
@@ -95,7 +95,7 @@ Spin up the whole ecosystem: SMTP, metrics, dashboards, and log viewing, all wit
 make up
 
 # View logs (all services)
-docker-compose -f docker-compose.dev.yml logs -f
+docker compose -f docker-compose.dev.yml logs -f
 
 # Stop all services
 make down
@@ -112,7 +112,7 @@ With the dev stack running, you'll have:
 
 ---
 
-### 4. 🛠️ Command Line Reference
+### 4. Command line reference
 
 You can configure nearly everything via CLI flags (or use environment variables). Use `./inboundparse -h` to see all options.
 
@@ -120,19 +120,20 @@ You can configure nearly everything via CLI flags (or use environment variables)
 Usage of ./inboundparse:
   -listen string            SMTP server listen address (default "0.0.0.0:25")
   -listen-tls string        SMTP TLS listen address (default "0.0.0.0:587")
-  -webhook string           Webhook URL for email payloads (required)
+  -webhook string           Webhook URL for email payloads (optional; empty disables delivery)
   -webhook-user string      Basic auth username for webhook (optional)
   -webhook-pass string      Basic auth password for webhook (optional)
   -webhook-max-retries int  Maximum webhook retry attempts (default 3)
   -webhook-retry-delay int  Initial webhook retry delay in seconds (default 1)
   -webhook-max-retry-delay int Maximum webhook retry delay in seconds (default 30)
   -webhook-retry-multiplier float Webhook retry delay multiplier (default 2.0)
-  -webhook-rate-limit int   Webhook requests per second rate limit (default 10)
-  -webhook-rate-burst int   Webhook rate limit burst capacity (default 20)
+  -webhook-rate-limit int   Webhook requests per second (smooth limiter; default 10)
+  -webhook-rate-burst int   Parsed for API compatibility; smooth limiter uses rate only (default 20)
   -name string              SMTP server name (default "mx.inboundparse.com")
   -max-size int             Max message size bytes (default 10485760)
   -read-timeout int         Read timeout (seconds, default 30)
   -write-timeout int        Write timeout (seconds, default 30)
+  -message-processing-timeout int Per-message processing timeout in seconds, including auth and webhook (default 300)
   -enable-spf               Enable SPF validation (default true)
   -enable-dkim              Enable DKIM validation (default true)
   -enable-dmarc             Enable DMARC validation (default true)
@@ -142,21 +143,21 @@ Usage of ./inboundparse:
   -enable-metrics           Enable Prometheus metrics (default false)
   -metrics-addr string      Metrics server listen addr (default "0.0.0.0:9090")
   -metrics-api-key string   Metrics API key (optional)
-  -metrics-username string  Metrics username (optional)
-  -metrics-password string  Metrics password (optional)
+  -metrics-username string   Metrics username (optional)
+  -metrics-password string   Metrics password (optional)
   -enable-sentry            Enable Sentry error tracking (default false)
   -sentry-dsn string        Sentry DSN for errors (optional)
   -sentry-env string        Sentry env (default "production")
   -sentry-release string    Sentry release version (optional)
 ```
 
-### 🔒 Environment Variables
+### Environment variables
 
 You can configure InboundParse using environment variables or command line flags:
 
 #### Core Environment Variables
 
-- `WEBHOOK_URL`           Webhook URL to receive email payloads (**required**)
+- `WEBHOOK_URL`           Webhook URL to receive email payloads (optional; if unset, messages are processed but not POSTed)
 - `WEBHOOK_USER`          Basic auth username for the webhook (optional)
 - `WEBHOOK_PASS`          Basic auth password for the webhook (optional)
 
@@ -164,13 +165,21 @@ You can configure InboundParse using environment variables or command line flags
 
 - `WEBHOOK_MAX_RETRIES`      Maximum retry attempts (default: `3`)
 - `WEBHOOK_RETRY_DELAY`      Initial retry delay in seconds (default: `1`)
-- `WEBHOOK_MAX_RETRY_DELAY`  Maximum retry delay in seconds (default: `30`)
+- `WEBHOOK_MAX_RETRY_DELAY`  Maximum retry delay cap in seconds (default: `30`)
 - `WEBHOOK_RETRY_MULTIPLIER` Exponential backoff multiplier (default: `2.0`)
-- `WEBHOOK_RATE_LIMIT`       Requests per second rate limit (default: `10`)
-- `WEBHOOK_RATE_BURST`       Rate limit burst capacity (default: `20`)
+- `WEBHOOK_RATE_LIMIT`       Target average webhook requests per second for the smooth limiter (default: `10`)
+- `WEBHOOK_RATE_BURST`       Parsed for compatibility; not used by the current smooth rate limiter (default: `20`)
+
+#### Server & Processing
+
 - `LISTEN_ADDR`           SMTP listen address (default: `0.0.0.0:25`)
 - `LISTEN_ADDR_TLS`       TLS listen address (default: `0.0.0.0:587`)
 - `SERVER_NAME`           SMTP service name for banner (default: `mx.inboundparse.com`)
+- `MAX_SIZE`              Maximum message size in bytes (default: `10485760`)
+- `READ_TIMEOUT`          Read timeout in seconds (default: `30`)
+- `WRITE_TIMEOUT`         Write timeout in seconds (default: `30`)
+- `MESSAGE_PROCESSING_TIMEOUT` Upper bound in seconds for processing one message (parse, auth, webhook; default: `300`)
+- `TRUSTED_PROXY_CIDRS`   Comma-separated CIDRs trusted when interpreting PROXY protocol and client IP (optional)
 
 #### TLS Settings
 
@@ -189,8 +198,10 @@ You can configure InboundParse using environment variables or command line flags
 - `ENABLE_METRICS`        Enable Prometheus metrics endpoint (`true`/`false`, default: `false`)
 - `METRICS_ADDR`          Metrics endpoint listen address (default: `0.0.0.0:9090`)
 - `METRICS_API_KEY`       Bearer token used for metrics endpoint authentication (optional)
-- `METRICS_USERNAME`      Username for metrics endpoint basic auth (optional)
-- `METRICS_PASSWORD`      Password for metrics endpoint basic auth (optional)
+- `METRICS_USERNAME`      Username for metrics endpoint basic auth (optional; must be set together with `METRICS_PASSWORD`)
+- `METRICS_PASSWORD`      Password for metrics endpoint basic auth (optional; must be set together with `METRICS_USERNAME`)
+
+When metrics are enabled on a non-loopback address (`0.0.0.0`, public IP, etc.), you must configure either `METRICS_API_KEY` or both `METRICS_USERNAME` and `METRICS_PASSWORD`. Unauthenticated `/metrics` is only allowed when bound to loopback (for example `127.0.0.1:9090`).
 
 #### Sentry Error Tracking
 
@@ -201,73 +212,82 @@ You can configure InboundParse using environment variables or command line flags
 
 ## Webhook Payload
 
-The service sends a JSON payload to your webhook with comprehensive email data:
+The webhook receives a JSON document shaped like `domain.WebhookPayload`: message metadata and `authentication_results` for SPF/DKIM/DMARC. `from` and `to` are `net/mail.Address` values (JSON fields **`Name`** and **`Address`**). `timestamp` is taken from the parsed `Date` header when present. Attachments and inline parts use the structures from [`letters`](https://github.com/mnako/letters).
 
 ```json
 {
   "timestamp": "2024-01-01T12:00:00Z",
-  "from": [{ "address": "sender@example.com", "name": "Sender" }],
-  "to":   [{ "address": "recipient@example.com", "name": "Recipient" }],
+  "from": [{ "Name": "Sender", "Address": "sender@example.com" }],
+  "to": [{ "Name": "", "Address": "recipient@example.com" }],
   "subject": "Email Subject",
-  "body": "Plain text body content",
+  "message_id": "<unique-message-id@example.com>",
   "headers": {
-    "From": "sender@example.com",
-    "To": "recipient@example.com", 
-    "Subject": "Email Subject",
-    "Message-ID": "<unique-message-id@example.com>",
-    "Date": "Mon, 01 Jan 2024 12:00:00 +0000"
+    "X-Custom": ["value"]
   },
-  "remote_ip": "192.168.1.100",
-  "auth": {
+  "text_body": "Plain text body",
+  "enriched_text_body": "",
+  "html_body": "<p>HTML body</p>",
+  "attachments": [],
+  "inline_files": [],
+  "authentication_results": {
     "spf": {
       "result": "pass",
-      "domain": "example.com",
-      "mechanism": "ip4",
-      "explanation": ""
+      "raw": "v=spf1 ...",
+      "mechanism": "include",
+      "qualifier": "~",
+      "explanation": "",
+      "problem": "",
+      "sender": "sender@example.com",
+      "ip_address": "192.0.2.1"
     },
     "dkim": {
-      "result": "pass",
-      "signatures": [
+      "valid": true,
+      "signatures": ["example.com"],
+      "details": [
         {
           "domain": "example.com",
-          "result": "pass",
-          "canonicalization": "signed headers: 8"
+          "headers_signed": ["from", "to", "subject"],
+          "timestamp": 1704110400,
+          "expiration": 0,
+          "valid": true,
+          "error": ""
         }
       ],
-      "body": "at least one signature passed verification"
+      "raw": "",
+      "error": ""
     },
     "dmarc": {
       "result": "pass",
+      "raw": "v=DMARC1; p=reject; ...",
       "policy": "reject",
-      "subdomain_policy": "quarantine",
+      "domain": "example.com",
       "percentage": 100,
+      "subdomain_policy": "quarantine",
       "spf_aligned": true,
       "dkim_aligned": true,
       "spf_domain": "example.com",
       "dkim_domain": "example.com",
       "details": [
         {
-          "domain": "sub.example.com",
-          "record_found": false,
-          "error": "dmarc: no policy found for domain"
-        },
-        {
           "domain": "example.com",
           "record_found": true,
-          "policy_used": "sp"
+          "policy_used": "p",
+          "error": ""
         }
       ],
       "spf_alignment": "relaxed",
       "dkim_alignment": "relaxed",
-      "failure_options": "0",
-      "report_uris": ["mailto:dmarc@example.com"],
-      "failure_uris": ["mailto:dmarc-fail@example.com"]
+      "failure_options": "",
+      "report_uris": [],
+      "failure_uris": []
     }
   }
 }
 ```
 
-## 🤝 Contributing
+Omitted optional fields are elided from the JSON (`omitempty`). If all auth checks are disabled, `authentication_results` may be empty.
+
+## Contributing
 
 Contributions of all kinds are welcome! See [CONTRIBUTE.md](./docs/CONTRIBUTE.md) for guidelines, and don’t hesitate to open issues, fork, or create PRs.
 
@@ -275,4 +295,3 @@ Contributions of all kinds are welcome! See [CONTRIBUTE.md](./docs/CONTRIBUTE.md
 
 > **Need help or want to suggest new features?**  
 > Open an issue or start a discussion on GitHub!
-

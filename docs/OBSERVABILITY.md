@@ -139,11 +139,7 @@ Example retry sequence with defaults:
 
 ### Rate Limiting
 
-Smooth rate limiting using token bucket algorithm:
-
-- **Rate Limit**: Requests per second (default: 10)
-- **Burst Capacity**: Burst allowance (default: 20)
-- **Algorithm**: Token bucket for smooth rate limiting
+Webhook delivery uses failsafe-go’s **smooth** rate limiter: it enforces an average of `WEBHOOK_RATE_LIMIT` executions per second. `WEBHOOK_RATE_BURST` / `-webhook-rate-burst` are still read for compatibility but are **not** applied by the current limiter implementation.
 
 ### Circuit Breaker
 
@@ -264,8 +260,10 @@ Or via flags:
 
 #### Webhook Metrics
 
-- `webhook_requests_total{status_code="200|500|..."}` - Webhook requests by status (counter)
+- `webhook_requests_total{status_code}` - Webhook outcomes; `status_code` is the HTTP status **text** from Go's `http.StatusText` (for example `OK` for 200, `Internal Server Error` for 500), not the numeric code
 - `webhook_duration_seconds` - Webhook request duration histogram
+
+Additional histograms and counters (payload sizes, per-stage message timing, session metrics, etc.) are registered in `internal/observability/metrics.go`.
 
 ### Authentication
 
@@ -281,7 +279,7 @@ The /metrics endpoint supports three authentication methods:
    curl -u admin:secret http://localhost:9090/metrics
    ```
 
-3. **No Auth**: If no credentials are configured, the endpoint is open
+3. **No auth on loopback only**: If you bind the metrics listener to `localhost` / `127.0.0.1` / `::1` and do not set API key or basic auth, `/metrics` is open (intended for local development). Binding to `0.0.0.0` or a public interface **requires** credentials — the process fails validation at startup otherwise.
 
 ### Health Endpoint
 
@@ -371,8 +369,8 @@ rate(smtp_messages_total[5m])
 # Authentication pass rate
 rate(spf_results_total{result="pass"}[5m]) / rate(spf_results_total[5m])
 
-# Webhook success rate
-rate(webhook_requests_total{status_code="OK"}[5m]) / rate(webhook_requests_total[5m])
+# Webhook success rate (label is HTTP status text, not numeric)
+sum(rate(webhook_requests_total{status_code="OK"}[5m])) / sum(rate(webhook_requests_total[5m]))
 
 # P95 webhook latency
 histogram_quantile(0.95, rate(webhook_duration_seconds_bucket[5m]))
@@ -423,5 +421,5 @@ The observability features have minimal performance impact:
 - [zerolog Documentation](https://github.com/rs/zerolog)
 - [Sentry Go SDK](https://docs.sentry.io/platforms/go/)
 - [Prometheus Best Practices](https://prometheus.io/docs/practices/naming/)
-- [Grafana Dashboards](./docs/grafana-dashboards.md)
+- [Grafana provisioning in this repo](../_data/grafana/) (dashboards mounted by `docker-compose.dev.yml`)
 
