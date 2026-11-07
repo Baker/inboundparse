@@ -174,10 +174,14 @@ func (s *SMTPServer) listenAndServeWithProxy(server *smtp.Server, addr string) e
 		// Conn.Write waits that long before the SMTP 220 when the client
 		// sends no PROXY header.
 		ReadHeaderTimeout: 200 * time.Millisecond,
-		Policy: func(upstream net.Addr) (proxyproto.Policy, error) {
+		ConnPolicy: func(opts proxyproto.ConnPolicyOptions) (proxyproto.Policy, error) {
 			if len(s.trustedProxyCIDRs) == 0 {
 				// No trusted proxies configured — ignore PROXY headers so clients
 				// cannot spoof source IPs (SPF/DMARC rely on the real TCP peer).
+				return proxyproto.IGNORE, nil
+			}
+			upstream := opts.Upstream
+			if upstream == nil {
 				return proxyproto.IGNORE, nil
 			}
 			host, _, err := net.SplitHostPort(upstream.String())

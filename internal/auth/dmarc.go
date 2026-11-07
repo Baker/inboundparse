@@ -434,12 +434,8 @@ func (d *dmarcChecker) isOrganizationalDomainMatch(domain1, domain2 string) bool
 		return true
 	}
 
-	orgDomain1, err1 := organizationalDomain(domain1)
-	orgDomain2, err2 := organizationalDomain(domain2)
-	if err1 != nil || err2 != nil {
-		return false
-	}
-
+	orgDomain1 := d.getOrganizationalDomain(domain1)
+	orgDomain2 := d.getOrganizationalDomain(domain2)
 	return orgDomain1 == orgDomain2 && orgDomain1 != ""
 }
 
