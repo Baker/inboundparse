@@ -12,8 +12,6 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
-
-	"golang.org/x/sync/errgroup"
 )
 
 // App represents the application
@@ -190,45 +188,31 @@ func (a *App) Start() error {
 	return nil
 }
 
-// Run runs the application with graceful shutdown
+// Run runs the application with graceful shutdown.
+// Signal handlers are installed before Start is launched. Start blocks in SMTP
+// Serve for the life of the process, so waiting for it to return would leave
+// SIGINT and SIGTERM unhandled while mail is accepted.
 func (a *App) Run() error {
-	// Start the application
-	if err := a.Start(); err != nil {
-		return err
-	}
-
-	// Set up graceful shutdown
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	// Create error group for managing goroutines
-	g, ctx := errgroup.WithContext(ctx)
-
-	// Handle shutdown signals
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+	defer signal.Stop(sigChan)
 
-	g.Go(func() error {
-		select {
-		case sig := <-sigChan:
-			a.logger.Info().
-				Str("signal", sig.String()).
-				Msg("Received shutdown signal")
-			cancel()
-			return nil
-		case <-ctx.Done():
-			return ctx.Err()
-		}
-	})
+	// Buffered so the Start goroutine can send after Run has already returned
+	// on a signal. An unbuffered send would leak that goroutine.
+	startErr := make(chan error, 1)
+	go func() {
+		startErr <- a.Start()
+	}()
 
-	// Wait for context cancellation
-	g.Go(func() error {
-		<-ctx.Done()
+	select {
+	case sig := <-sigChan:
+		a.logger.Info().
+			Str("signal", sig.String()).
+			Msg("Received shutdown signal")
 		return a.Stop()
-	})
-
-	// Wait for all goroutines to complete
-	return g.Wait()
+	case err := <-startErr:
+		return err
+	}
 }
 
 // Stop stops the application gracefully

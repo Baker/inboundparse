@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"errors"
 	"inboundparse/internal/domain"
 	"net/mail"
 	"testing"
@@ -10,14 +11,33 @@ import (
 	"github.com/mnako/letters"
 )
 
-func TestDMARCChecker_GetParentDomain(t *testing.T) {
-	checker := &dmarcChecker{}
-
-	if got := checker.getParentDomain("a.b.example.com"); got != "b.example.com" {
-		t.Fatalf("getParentDomain('a.b.example.com') = %q, want 'b.example.com'", got)
+func TestDMARCPolicyDomains(t *testing.T) {
+	got := dmarcPolicyDomains("a.mail.example.com")
+	if len(got) != 2 || got[0] != "a.mail.example.com" || got[1] != "example.com" {
+		t.Fatalf("dmarcPolicyDomains(a.mail.example.com) = %v, want [a.mail.example.com example.com]", got)
 	}
-	if got := checker.getParentDomain("example.com"); got != "" {
-		t.Fatalf("getParentDomain('example.com') = %q, want ''", got)
+
+	got = dmarcPolicyDomains("a.example.co.uk")
+	if len(got) != 2 || got[0] != "a.example.co.uk" || got[1] != "example.co.uk" {
+		t.Fatalf("dmarcPolicyDomains(a.example.co.uk) = %v, want [a.example.co.uk example.co.uk]", got)
+	}
+
+	got = dmarcPolicyDomains("user.blogspot.com")
+	if len(got) != 1 || got[0] != "user.blogspot.com" {
+		t.Fatalf("dmarcPolicyDomains(user.blogspot.com) = %v, want [user.blogspot.com]", got)
+	}
+
+	got = dmarcPolicyDomains("example.com")
+	if len(got) != 1 || got[0] != "example.com" {
+		t.Fatalf("dmarcPolicyDomains(example.com) = %v, want [example.com]", got)
+	}
+}
+
+func TestDMARCNotFoundError_DNSFailureIsNotMissing(t *testing.T) {
+	checker := &dmarcChecker{}
+	err := errors.New("dmarc: failed to lookup TXT record: REFUSED")
+	if checker.isDMARCNotFoundError(err) {
+		t.Fatal("a TXT lookup failure must not be treated as a missing DMARC record")
 	}
 }
 
@@ -32,6 +52,28 @@ func TestDMARCChecker_IsOrganizationalDomainMatch(t *testing.T) {
 	}
 	if checker.isOrganizationalDomainMatch("example.com", "other.com") {
 		t.Fatal("Expected no match for example.com and other.com")
+	}
+	if checker.isOrganizationalDomainMatch("attacker.blogspot.com", "victim.blogspot.com") {
+		t.Fatal("Expected no match for different blogspot.com tenants")
+	}
+	if !checker.isOrganizationalDomainMatch("a.example.co.uk", "b.example.co.uk") {
+		t.Fatal("Expected match for a.example.co.uk and b.example.co.uk")
+	}
+	if !checker.isOrganizationalDomainMatch("mail.example.com", "example.com") {
+		t.Fatal("Expected match for mail.example.com and example.com")
+	}
+	if !checker.isOrganizationalDomainMatch("MAIL.EXAMPLE.COM", "example.com") {
+		t.Fatal("Expected case-insensitive match for MAIL.EXAMPLE.COM and example.com")
+	}
+	// Public suffixes have no eTLD+1. Unequal names must not align.
+	if checker.isOrganizationalDomainMatch("blogspot.com", "attacker.blogspot.com") {
+		t.Fatal("Expected no match when one domain has no organizational domain")
+	}
+	if checker.isOrganizationalDomainMatch("com", "co.uk") {
+		t.Fatal("Expected no match for public suffixes that fail eTLD+1")
+	}
+	if !checker.isOrganizationalDomainMatch("Blogspot.com", "blogspot.com") {
+		t.Fatal("Expected equal domains to align when eTLD+1 cannot be derived")
 	}
 }
 
@@ -362,7 +404,16 @@ func TestDMARCChecker_GetOrganizationalDomain(t *testing.T) {
 		{"sub.example.com", "example.com"},
 		{"a.b.example.com", "example.com"},
 		{"a.b.c.example.com", "example.com"},
-		{"localhost", "localhost"},
+		{"mail.example.com", "example.com"},
+		{"a.example.co.uk", "example.co.uk"},
+		{"b.example.co.uk", "example.co.uk"},
+		{"attacker.blogspot.com", "attacker.blogspot.com"},
+		{"victim.blogspot.com", "victim.blogspot.com"},
+		{"Mail.Example.COM", "example.com"},
+		// No registrable domain: single labels and public suffixes themselves.
+		{"localhost", ""},
+		{"blogspot.com", ""},
+		{"co.uk", ""},
 		{"", ""},
 	}
 
@@ -459,7 +510,7 @@ func TestDMARCChecker_CheckDMARC_AlignmentBugFix(t *testing.T) {
 func TestDMARCChecker_CheckDMARC_WithMultipleFromAddresses(t *testing.T) {
 	checker := NewDMARCChecker()
 
-	// Test with multiple From addresses (should use the first one)
+	// Several From addresses that share one domain still use that domain.
 	headers := letters.Headers{
 		From: []*mail.Address{
 			{Address: "test@example.com"},
@@ -474,6 +525,91 @@ func TestDMARCChecker_CheckDMARC_WithMultipleFromAddresses(t *testing.T) {
 
 	if result.Result != "fail" {
 		t.Errorf("Expected result 'fail', got %s", result.Result)
+	}
+}
+
+func TestDMARCChecker_CheckDMARC_MultipleFromDomains(t *testing.T) {
+	checker := NewDMARCChecker()
+
+	headers := letters.Headers{
+		From: []*mail.Address{
+			{Address: "a@example.com"},
+			{Address: "b@other.com"},
+		},
+	}
+
+	result, err := checker.CheckDMARC(context.Background(), "raw message", headers, nil, nil, &MockLogger{}, &mockMetricsCollector{})
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+	if result.Result != "permerror" {
+		t.Fatalf("Expected result 'permerror', got %s", result.Result)
+	}
+	if len(result.Details) != 0 {
+		t.Fatalf("Expected no DNS lookup, got %d details", len(result.Details))
+	}
+}
+
+func TestDMARCChecker_ExtractFromDomain_SharedAndDistinct(t *testing.T) {
+	checker := &dmarcChecker{}
+
+	shared, result := checker.extractFromDomain(letters.Headers{
+		From: []*mail.Address{
+			{Address: "a@Example.com"},
+			{Address: "b@example.com"},
+		},
+	}, &MockLogger{})
+	if result != nil {
+		t.Fatalf("Expected one shared domain, got result %s", result.Result)
+	}
+	if shared != "Example.com" {
+		t.Fatalf("Expected domain Example.com, got %q", shared)
+	}
+
+	_, result = checker.extractFromDomain(letters.Headers{
+		From: []*mail.Address{
+			{Address: "a@a.example.com"},
+			{Address: "b@b.example.com"},
+		},
+	}, &MockLogger{})
+	if result == nil || result.Result != "permerror" {
+		t.Fatal("Expected permerror for distinct From domains")
+	}
+}
+
+func TestDMARCChecker_CheckDMARC_ContextCanceled(t *testing.T) {
+	checker := NewDMARCChecker()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	headers := letters.Headers{
+		From: []*mail.Address{
+			{Address: "test@example.com"},
+		},
+	}
+	result, err := checker.CheckDMARC(ctx, "raw message", headers, nil, nil, &MockLogger{}, &mockMetricsCollector{})
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+	if result.Result != "temperror" {
+		t.Fatalf("Expected result 'temperror', got %s", result.Result)
+	}
+	if result.Error != ctx.Err().Error() {
+		t.Fatalf("Expected error %q, got %q", ctx.Err().Error(), result.Error)
+	}
+}
+
+func TestDMARCChecker_CheckDMARC_CanceledContextNoFrom(t *testing.T) {
+	checker := NewDMARCChecker()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	result, err := checker.CheckDMARC(ctx, "raw message", letters.Headers{}, nil, nil, &MockLogger{}, &mockMetricsCollector{})
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+	if result.Result != "none" {
+		t.Fatalf("Expected result 'none', got %s", result.Result)
 	}
 }
 

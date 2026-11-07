@@ -245,3 +245,20 @@ This is a test message with a malformed DKIM signature.`
 		t.Error("Expected signatures in result")
 	}
 }
+
+func TestDKIMChecker_CheckDKIM_ContextCanceled(t *testing.T) {
+	checker := NewDKIMChecker()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	result, err := checker.CheckDKIM(ctx, "not a message", &MockLogger{}, &mockMetricsCollector{})
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+	if result.Valid {
+		t.Fatal("Expected Valid false when the context is canceled")
+	}
+	if result.Error == "" || result.Error != ctx.Err().Error() {
+		t.Fatalf("Expected error %q, got %q", ctx.Err().Error(), result.Error)
+	}
+}

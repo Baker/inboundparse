@@ -12,6 +12,7 @@ import (
 
 	"github.com/emersion/go-msgauth/dmarc"
 	"github.com/mnako/letters"
+	"golang.org/x/net/publicsuffix"
 )
 
 // dmarcChecker implements DMARCChecker interface
@@ -36,8 +37,36 @@ func (d *dmarcChecker) CheckDMARC(ctx context.Context, rawMessage string, header
 		return result, nil
 	}
 
-	// Look up DMARC policy with domain hierarchy traversal
-	record, actualDomain, lookupDetails, err := d.lookupDMARCRecord(fromDomain)
+	// Lookup does not take a context. Run it aside so a canceled
+	// MESSAGE_PROCESSING_TIMEOUT can return without waiting on DNS.
+	type dmarcLookup struct {
+		record       *dmarc.Record
+		actualDomain string
+		details      []domain.DMARCLookupDetail
+		err          error
+	}
+	lookup, ok := callWithContext(ctx, func() dmarcLookup {
+		record, actualDomain, lookupDetails, err := d.lookupDMARCRecord(fromDomain)
+		return dmarcLookup{
+			record:       record,
+			actualDomain: actualDomain,
+			details:      lookupDetails,
+			err:          err,
+		}
+	})
+	if !ok {
+		metrics.TrackAuthError("dmarc", "timeout_error")
+		logger.Warn().
+			Err(ctx.Err()).
+			Str("domain", fromDomain).
+			Msg("DMARC lookup canceled")
+		return &domain.DMARCResult{
+			Result: "temperror",
+			Raw:    fmt.Sprintf("DMARC lookup error: %v", ctx.Err()),
+			Error:  ctx.Err().Error(),
+		}, nil
+	}
+	record, actualDomain, lookupDetails, err := lookup.record, lookup.actualDomain, lookup.details, lookup.err
 	if err != nil {
 		return d.handleLookupError(err, fromDomain, lookupDetails, logger, metrics), nil
 	}
@@ -67,22 +96,44 @@ func (d *dmarcChecker) CheckDMARC(ctx context.Context, rawMessage string, header
 	return d.buildDMARCResult(record, actualDomain, policyToApply, dmarcResult, rawMsg, spfAligned, dkimAligned, spfDomain, dkimDomain, lookupDetails, metrics), nil
 }
 
-// extractFromDomain extracts and validates the From domain from headers
+// extractFromDomain extracts and validates the From domain from headers.
+// RFC 7489 section 6.6.1: every mailbox in From must share one domain.
+// More than one domain is a permanent error and does not query DNS.
 func (d *dmarcChecker) extractFromDomain(headers letters.Headers, logger observability.Logger) (string, *domain.DMARCResult) {
-	if len(headers.From) == 0 || headers.From[0] == nil || len(headers.From[0].Address) == 0 {
+	if len(headers.From) == 0 {
 		logger.Debug().Msg("DMARC check: No From header found")
 		return "", &domain.DMARCResult{
 			Result: "none",
 			Raw:    "No From header found",
 		}
 	}
-	fromHeader := headers.From[0].Address
+
+	type mailbox struct {
+		address string
+		domain  string
+	}
+	var boxes []mailbox
+	for _, addr := range headers.From {
+		if addr == nil || len(addr.Address) == 0 {
+			continue
+		}
+		boxes = append(boxes, mailbox{
+			address: addr.Address,
+			domain:  ExtractDomainFromEmail(addr.Address),
+		})
+	}
+	if len(boxes) == 0 {
+		logger.Debug().Msg("DMARC check: No From header found")
+		return "", &domain.DMARCResult{
+			Result: "none",
+			Raw:    "No From header found",
+		}
+	}
 
 	// RFC 7489: The domain in the RFC5322.From field is the primary identifier
-	fromDomain := ExtractDomainFromEmail(fromHeader)
-	if fromDomain == "" {
+	if len(boxes) == 1 && boxes[0].domain == "" {
 		logger.Debug().
-			Str("from_header", fromHeader).
+			Str("from_header", boxes[0].address).
 			Msg("DMARC check: No domain found in From header")
 		return "", &domain.DMARCResult{
 			Result: "none",
@@ -90,7 +141,18 @@ func (d *dmarcChecker) extractFromDomain(headers letters.Headers, logger observa
 		}
 	}
 
-	return fromDomain, nil
+	shared := boxes[0].domain
+	for _, box := range boxes[1:] {
+		if shared == "" || box.domain == "" || !strings.EqualFold(shared, box.domain) {
+			logger.Debug().Msg("DMARC check: multiple From domains")
+			return "", &domain.DMARCResult{
+				Result: "permerror",
+				Raw:    "Multiple domains in From header",
+			}
+		}
+	}
+
+	return shared, nil
 }
 
 // handleLookupError handles DMARC lookup errors
@@ -273,63 +335,53 @@ func (d *dmarcChecker) buildDMARCResult(record *dmarc.Record, actualDomain strin
 	}
 }
 
-// lookupDMARCRecord performs hierarchical DMARC record lookup per RFC 7489
+// dmarcPolicyDomains is the From domain and, when that name is not already
+// the organizational domain, the public-suffix-plus-one name. RFC 7489
+// section 6.6.3 consults only those two. Intermediate parents are not
+// queried, and neither is the public suffix itself.
+func dmarcPolicyDomains(fromDomain string) []string {
+	fromDomain = strings.ToLower(strings.TrimSpace(fromDomain))
+	if fromDomain == "" {
+		return nil
+	}
+	org, err := organizationalDomain(fromDomain)
+	if err != nil || org == "" || org == fromDomain {
+		return []string{fromDomain}
+	}
+	return []string{fromDomain, org}
+}
+
+// lookupDMARCRecord looks up the DMARC policy for domainName.
+// A DNS error stops the lookup. Only a missing record falls through to the
+// organizational domain.
 func (d *dmarcChecker) lookupDMARCRecord(domainName string) (*dmarc.Record, string, []domain.DMARCLookupDetail, error) {
-	currentDomain := domainName
 	var details []domain.DMARCLookupDetail
 
-	for {
+	for _, currentDomain := range dmarcPolicyDomains(domainName) {
 		record, err := dmarc.Lookup(currentDomain)
 
-		// Create lookup detail for this attempt
 		detail := domain.DMARCLookupDetail{
 			Domain: currentDomain,
 		}
 
 		if err == nil && record != nil {
-			// Found a record
 			detail.RecordFound = true
 			details = append(details, detail)
 			return record, currentDomain, details, nil
 		}
 
-		// Record not found or error occurred
 		detail.RecordFound = false
 		if err != nil {
 			detail.Error = err.Error()
 		}
 		details = append(details, detail)
 
-		// If the error is "dmarc: failed to lookup TXT record", continue as if not found
-		if err != nil && strings.Contains(err.Error(), "dmarc: failed to lookup TXT record") {
-			// continue down to parent domain
-		} else if err != nil && !d.isDMARCNotFoundError(err) {
-			// Early return for other errors (let outer logic handle)
+		if err != nil && !d.isDMARCNotFoundError(err) {
 			return nil, "", details, err
 		}
-
-		// RFC 7489: Move up the domain hierarchy
-		nextDomain := d.getParentDomain(currentDomain)
-		if nextDomain == "" || nextDomain == currentDomain {
-			// Reached the top or can't go further
-			break
-		}
-		currentDomain = nextDomain
 	}
 
 	return nil, "", details, nil
-}
-
-// getParentDomain returns the parent domain or empty string if at top level
-func (d *dmarcChecker) getParentDomain(domain string) string {
-	parts := strings.Split(domain, ".")
-	if len(parts) <= 2 {
-		// Already at top level domain (e.g., "example.com")
-		return ""
-	}
-
-	// Remove the leftmost subdomain
-	return strings.Join(parts[1:], ".")
 }
 
 // isDMARCNotFoundError checks if the error indicates DMARC record not found
@@ -371,12 +423,10 @@ func (d *dmarcChecker) checkDKIMAlignment(signatures []string, fromDomain string
 	return false
 }
 
-// isOrganizationalDomainMatch checks if two domains belong to the same organization per RFC 7489
+// isOrganizationalDomainMatch checks if two domains belong to the same organization per RFC 7489.
+// Relaxed alignment compares organizational domains from the public suffix list.
+// If either domain has no eTLD+1, they align only when the domains are equal.
 func (d *dmarcChecker) isOrganizationalDomainMatch(domain1, domain2 string) bool {
-	// RFC 7489: Organizational domain matching for relaxed alignment
-	// NOTE: Production implementation should use Public Suffix List (PSL)
-	// This is a simplified implementation for basic organizational domain matching
-
 	domain1 = strings.ToLower(domain1)
 	domain2 = strings.ToLower(domain2)
 
@@ -384,24 +434,23 @@ func (d *dmarcChecker) isOrganizationalDomainMatch(domain1, domain2 string) bool
 		return true
 	}
 
-	// Get organizational domains (simplified - should use PSL in production)
 	orgDomain1 := d.getOrganizationalDomain(domain1)
 	orgDomain2 := d.getOrganizationalDomain(domain2)
-
 	return orgDomain1 == orgDomain2 && orgDomain1 != ""
 }
 
-// getOrganizationalDomain extracts the organizational domain
-// NOTE: This is a simplified implementation. Production should use Public Suffix List
+// getOrganizationalDomain extracts the organizational domain using the public suffix list.
+// It returns an empty string when the domain has no registrable eTLD+1.
 func (d *dmarcChecker) getOrganizationalDomain(domain string) string {
-	parts := strings.Split(domain, ".")
-	if len(parts) < 2 {
-		return domain
+	org, err := organizationalDomain(domain)
+	if err != nil {
+		return ""
 	}
+	return org
+}
 
-	// Simple heuristic: take last two parts as organizational domain
-	// In production, use Public Suffix List to determine the actual organizational domain
-	return strings.Join(parts[len(parts)-2:], ".")
+func organizationalDomain(domain string) (string, error) {
+	return publicsuffix.EffectiveTLDPlusOne(strings.ToLower(domain))
 }
 
 // extractDKIMDomain extracts domain(s) from DKIM signatures for alignment reporting
