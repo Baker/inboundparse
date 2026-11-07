@@ -1,6 +1,7 @@
 package app
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"inboundparse/internal/config"
@@ -8,12 +9,34 @@ import (
 	"inboundparse/internal/observability"
 	"io"
 	"net"
+	"os"
+	"os/exec"
 	"reflect"
 	"strings"
+	"sync"
+	"syscall"
 	"testing"
 	"time"
 	"unsafe"
 )
+
+// lockedBuf is safe for exec to write while the test reads failure output.
+type lockedBuf struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *lockedBuf) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *lockedBuf) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
+}
 
 // Mock implementations for testing
 type mockLogger struct{}
@@ -232,40 +255,7 @@ func TestApp_Start_WithTLS(t *testing.T) {
 }
 
 func TestApp_Run_WithSignalHandling(t *testing.T) {
-	config := &config.Config{
-		ListenAddr: "127.0.0.1:0",
-		WebhookURL: "http://localhost:8080/webhook",
-		ServerName: "test",
-		Verbose:    true,
-	}
-
-	app, err := NewApp(config)
-	if err != nil {
-		t.Fatalf("Expected no error, got %v", err)
-	}
-
-	// Test Run method - this will test signal handling setup
-	// We can't easily test the actual signal handling without complex setup
-	// but we can test that the method doesn't panic
-	go func() {
-		// Simulate a signal after a short delay
-		time.Sleep(10 * time.Millisecond)
-		// The actual signal handling is complex to test in unit tests
-	}()
-
-	// Start the app in a goroutine and then stop it quickly
-	go func() {
-		app.Run()
-	}()
-
-	// Give it a moment to start
-	time.Sleep(50 * time.Millisecond)
-
-	// Stop the app
-	err = app.Stop()
-	if err != nil {
-		t.Fatalf("Expected no error stopping app, got %v", err)
-	}
+	testRunShutsDownOnSignal(t, syscall.SIGTERM)
 }
 
 func TestApp_Stop_WithoutMetrics(t *testing.T) {
@@ -401,15 +391,19 @@ func TestApp_Start_MetricsServerError(t *testing.T) {
 	}
 }
 
-// TestApp_Run_GoRoutinesCoverage exercises the Run() method goroutine setup paths.
-// It starts the app and then stops the SMTP server to allow Run() to proceed past
-// Start() and into its goroutine setup code.
+// TestApp_Run_GoRoutinesCoverage runs Start in the background and shuts down
+// on SIGINT. The handler must already be installed while SMTP is accepting.
 func TestApp_Run_GoRoutinesCoverage(t *testing.T) {
+	testRunShutsDownOnSignal(t, syscall.SIGINT)
+}
+
+// TestApp_Run_ReturnsStartError checks that a bind failure from Start is what
+// Run returns, instead of waiting for a signal.
+func TestApp_Run_ReturnsStartError(t *testing.T) {
 	cfg := &config.Config{
-		ListenAddr:             "127.0.0.1:0",
+		ListenAddr:             "invalid-address:99999",
 		WebhookURL:             "http://localhost:8080/webhook",
 		ServerName:             "test",
-		Verbose:                false,
 		EnableMetrics:          false,
 		EnableSentry:           false,
 		WebhookRetryMultiplier: config.DefaultWebhookRetryMultiplier,
@@ -425,27 +419,154 @@ func TestApp_Run_GoRoutinesCoverage(t *testing.T) {
 		done <- app.Run()
 	}()
 
-	// Give Run() time to enter Start() (which blocks on SMTP listen)
-	time.Sleep(50 * time.Millisecond)
-
-	// Stop the SMTP server to unblock Start(), allowing Run() to proceed to goroutine setup
-	app.smtpServer.Stop()
-
-	// Run() should now set up its goroutines and wait for signal/ctx.Done()
-	// Give it a moment then stop
-	time.Sleep(50 * time.Millisecond)
-
-	// Stop gracefully
-	app.Stop()
-
-	// The goroutines in Run() are still waiting for signal, so we just wait briefly
 	select {
-	case runErr := <-done:
-		t.Logf("Run() returned: %v", runErr)
-	case <-time.After(2 * time.Second):
-		// This is expected - Run's goroutines don't terminate without a signal
-		// but the code paths are covered
+	case err := <-done:
+		if err == nil {
+			t.Fatal("Expected Run to return Start error")
+		}
+		if !strings.Contains(err.Error(), "failed to start SMTP server") {
+			t.Fatalf("Expected SMTP start error, got %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Run did not return the SMTP start error")
 	}
+}
+
+// testRunShutsDownOnSignal re-executes this test in a child process so a
+// missed SIGINT/SIGTERM cannot kill the parent test run. The child blocks in
+// Run; the parent signals only after the SMTP port accepts a connection.
+func testRunShutsDownOnSignal(t *testing.T, sig syscall.Signal) {
+	t.Helper()
+
+	if os.Getenv("INBOUNDPARSE_RUN_SIGNAL_CHILD") == "1" {
+		serveUntilShutdownSignal(t)
+		return
+	}
+
+	addr := reserveLoopbackAddr(t)
+	cmd := exec.Command(os.Args[0], "-test.run=^"+t.Name()+"$", "-test.count=1", "-test.timeout=30s")
+	cmd.Env = append(os.Environ(),
+		"INBOUNDPARSE_RUN_SIGNAL_CHILD=1",
+		"INBOUNDPARSE_LISTEN_ADDR="+addr,
+	)
+	var stdout, stderr lockedBuf
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("start shutdown child: %v", err)
+	}
+
+	finished := false
+	t.Cleanup(func() {
+		if finished || cmd.Process == nil {
+			return
+		}
+		_ = cmd.Process.Kill()
+		_, _ = cmd.Process.Wait()
+	})
+
+	logs := func() string {
+		return stdout.String() + stderr.String()
+	}
+
+	if err := dialUntil(addr, 5*time.Second); err != nil {
+		t.Fatalf("child never accepted SMTP connections on %s: %v\n%s", addr, err, logs())
+	}
+
+	if err := cmd.Process.Signal(sig); err != nil {
+		t.Fatalf("signal child: %v", err)
+	}
+
+	waitDone := make(chan error, 1)
+	go func() {
+		waitDone <- cmd.Wait()
+	}()
+
+	select {
+	case err := <-waitDone:
+		finished = true
+		if err != nil {
+			t.Fatalf("child exited with %v\n%s", err, logs())
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatalf("child did not exit after %s\n%s", sig, logs())
+	}
+
+	output := logs()
+	if !strings.Contains(output, "Received shutdown signal") {
+		t.Fatalf("shutdown log missing from child output:\n%s", output)
+	}
+	if !strings.Contains(output, "Application stopped") {
+		t.Fatalf("stop log missing from child output:\n%s", output)
+	}
+
+	conn, err := net.DialTimeout("tcp", addr, 200*time.Millisecond)
+	if err == nil {
+		conn.Close()
+		t.Fatalf("SMTP listener %s still accepting after shutdown", addr)
+	}
+}
+
+func serveUntilShutdownSignal(t *testing.T) {
+	t.Helper()
+
+	addr := os.Getenv("INBOUNDPARSE_LISTEN_ADDR")
+	if addr == "" {
+		t.Fatal("INBOUNDPARSE_LISTEN_ADDR is required")
+	}
+
+	cfg := &config.Config{
+		ListenAddr:             addr,
+		WebhookURL:             "http://localhost:8080/webhook",
+		ServerName:             "test",
+		EnableMetrics:          false,
+		EnableSentry:           false,
+		WebhookRetryMultiplier: config.DefaultWebhookRetryMultiplier,
+	}
+
+	app, err := NewApp(cfg)
+	if err != nil {
+		t.Fatalf("NewApp: %v", err)
+	}
+	if err := app.Run(); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	// Signal path already called Stop. A second call must stay a no-op.
+	if err := app.Stop(); err != nil {
+		t.Fatalf("Stop after shutdown: %v", err)
+	}
+}
+
+func reserveLoopbackAddr(t *testing.T) string {
+	t.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("reserve port: %v", err)
+	}
+	addr := ln.Addr().String()
+	if err := ln.Close(); err != nil {
+		t.Fatalf("close reserved port: %v", err)
+	}
+	return addr
+}
+
+func dialUntil(addr string, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	var last error
+	for time.Now().Before(deadline) {
+		conn, err := net.DialTimeout("tcp", addr, 100*time.Millisecond)
+		if err == nil {
+			conn.Close()
+			return nil
+		}
+		last = err
+		time.Sleep(10 * time.Millisecond)
+	}
+	if last == nil {
+		last = errors.New("no connection attempt")
+	}
+	return last
 }
 
 // TestApp_Stop_WithMetricsEnabled tests Stop() when metrics are enabled
@@ -548,9 +669,14 @@ func TestApp_Stop_AfterNoStart(t *testing.T) {
 		t.Fatalf("Expected no error creating app, got %v", err)
 	}
 
-	// Stop the app without starting it — exercises the Stop() happy path
+	// Stop the app without starting it — exercises the Stop() happy path.
+	// A second call must also succeed; shutdown can run more than once.
 	err = app.Stop()
 	if err != nil {
 		t.Fatalf("Expected no error stopping app, got %v", err)
+	}
+	err = app.Stop()
+	if err != nil {
+		t.Fatalf("Expected Stop to be idempotent, got %v", err)
 	}
 }

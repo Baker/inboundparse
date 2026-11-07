@@ -52,8 +52,35 @@ func (s *spfChecker) CheckSPF(ctx context.Context, remoteIP net.IP, domainName, 
 		}, nil
 	}
 
-	// RFC 7208 Section 2.4: Check MAIL FROM identity
-	result, mechanism, err := spf.CheckHost(remoteIP, domainName, from)
+	// RFC 7208 Section 2.4: Check MAIL FROM identity.
+	// CheckHost does not take a context. Run it aside so a canceled
+	// MESSAGE_PROCESSING_TIMEOUT can return without waiting on DNS.
+	type spfLookup struct {
+		result    spf.Result
+		mechanism string
+		err       error
+	}
+	lookup, ok := callWithContext(ctx, func() spfLookup {
+		result, mechanism, err := spf.CheckHost(remoteIP, domainName, from)
+		return spfLookup{result: result, mechanism: mechanism, err: err}
+	})
+	if !ok {
+		metrics.TrackAuthError("spf", "timeout_error")
+		logger.Warn().
+			Err(ctx.Err()).
+			Str("domain", domainName).
+			Str("remote_ip", remoteIP.String()).
+			Str("identity", from).
+			Msg("SPF check canceled")
+		return &domain.SPFResult{
+			Result:    "temperror",
+			Raw:       fmt.Sprintf("SPF check error: %v", ctx.Err()),
+			Problem:   fmt.Sprintf("DNS lookup or processing error: %v", ctx.Err()),
+			Sender:    from,
+			IpAddress: remoteIP.String(),
+		}, nil
+	}
+	result, mechanism, err := lookup.result, lookup.mechanism, lookup.err
 	if err != nil {
 		// Determine error type for metrics
 		errorType := "dns_error"
@@ -71,7 +98,7 @@ func (s *spfChecker) CheckSPF(ctx context.Context, remoteIP net.IP, domainName, 
 			Str("identity", from).
 			Msg("SPF check error")
 		return &domain.SPFResult{
-			Result:    "temperror",
+			Result:    spfResultOnError(result, err),
 			Raw:       fmt.Sprintf("SPF check error: %v", err),
 			Problem:   fmt.Sprintf("DNS lookup or processing error: %v", err),
 			Sender:    from,
@@ -143,4 +170,21 @@ func (s *spfChecker) extractSPFExplanation(domain string, result spf.Result) str
 			Msg("SPF explanation could be extracted from exp= tag in SPF record")
 	}
 	return ""
+}
+
+// spfResultOnError maps a CheckHost result that arrived with a non-nil error.
+// None, Permerror, and Temperror keep the library result (RFC 7208: no record
+// or NXDOMAIN is none, a permanent evaluation error is permerror, and only a
+// transient failure is temperror). A zero or unknown result falls back to the
+// error text.
+func spfResultOnError(result spf.Result, err error) string {
+	switch result {
+	case spf.None, spf.Neutral, spf.Pass, spf.Fail, spf.Softfail, spf.Temperror, spf.Permerror:
+		return result.String()
+	default:
+		if err != nil && strings.Contains(err.Error(), "permanent") {
+			return "permerror"
+		}
+		return "temperror"
+	}
 }

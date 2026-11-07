@@ -1,112 +1,143 @@
 #!/bin/sh
+# Request a Let's Encrypt certificate when DNS credentials are present, then
+# start SMTP. Issuance is optional: a missing credential or a failed request
+# must not stop the server. It listens in plaintext until a certificate exists.
+set -eu
 
-ACME_SH_EMAIL=${ACME_SH_EMAIL:-dev@inboundparse.com}
-DOMAIN=${MXDOMAIN:-mx.inboundparse.com}
+DOMAIN=${MXDOMAIN:-${SERVER_NAME:-mx.inboundparse.com}}
 DNS_API=${DNS_API:-dns_cf}
-CERT_FILE=${CERT_FILE:-/cert/cert.pem}
-KEY_FILE=${KEY_FILE:-/cert/key.pem}
+ACME_SH_EMAIL=${ACME_SH_EMAIL:-devnull@localhost}
+CERT_DIR=/cert
+CERT_PATH="${CERT_DIR}/cert.pem"
+KEY_PATH="${CERT_DIR}/key.pem"
+FULLCHAIN_PATH="${CERT_DIR}/fullchain.pem"
 
-# Ensure cert home exists
-mkdir -p /cert
+mkdir -p "${CERT_DIR}"
 
-# Validate required environment variables for Cloudflare DNS
-if [ "${DNS_API}" = "dns_cf" ]; then
-    if [ -z "${CF_Token}" ] || [ -z "${CF_Zone_ID}" ]; then
-        echo "ERROR: CF_Token and CF_Zone_ID are required when using dns_cf API"
-        echo "Please set these environment variables in your .env file"
-        exit 1
-    fi
+# An empty file left by a failed install is not a certificate.
+if [ -f "${CERT_PATH}" ] && [ ! -s "${CERT_PATH}" ]; then
+    rm -f "${CERT_PATH}"
+fi
+if [ -f "${KEY_PATH}" ] && [ ! -s "${KEY_PATH}" ]; then
+    rm -f "${KEY_PATH}"
+fi
+if [ -f "${FULLCHAIN_PATH}" ] && [ ! -s "${FULLCHAIN_PATH}" ]; then
+    rm -f "${FULLCHAIN_PATH}"
 fi
 
-echo "Starting with configuration:"
-echo "  Domain: ${DOMAIN}"
-echo "  DNS API: ${DNS_API}"
-echo "  ACME Email: ${ACME_SH_EMAIL}"
-
-# acme.sh must be present in the image (installed at build time); never curl|sh at runtime
-if ! command -v acme.sh >/dev/null 2>&1; then
-    echo 'ERROR: acme.sh is not installed or not on PATH'
-    exit 1
-fi
-
-# Set up account on first startup
-if [ ! -f /cert/account.conf ]; then
-    echo "First startup - registering Let's Encrypt account for ${ACME_SH_EMAIL}"
-    # Use Let's Encrypt as default CA to avoid ZeroSSL EAB requirements
-    acme.sh --home /cert --set-default-ca --server letsencrypt
-    if ! acme.sh --home /cert --register-account -m "${ACME_SH_EMAIL}" --server letsencrypt; then
-        echo "ERROR: Failed to register ACME account with Let's Encrypt"
-        exit 1
+# Cloudflare is the default DNS provider. Other acme.sh DNS APIs bring their
+# own credentials, so only dns_cf is checked here.
+dns_ready() {
+    if [ "${DNS_API}" != "dns_cf" ]; then
+        return 0
     fi
-    echo "Requesting certificates for ${DOMAIN} using ${DNS_API}"
-    if ! acme.sh --home /cert --issue -d "${DOMAIN}" --dns "${DNS_API}" --server letsencrypt --log; then
-        echo "ERROR: Failed to issue certificate for ${DOMAIN}"
-        echo "Check your DNS API credentials and domain configuration"
-        exit 1
+    if [ -n "${CF_Token:-}" ] && [ -n "${CF_Zone_ID:-}" ]; then
+        return 0
     fi
-fi
+    return 1
+}
 
-# Check if certificates are already issued and install them
-if acme.sh --home /cert --list | grep -q "${DOMAIN}"; then
-    echo "Certificate for ${DOMAIN} found, installing..."
-    if ! acme.sh --home /cert --install-cert -d "${DOMAIN}" \
-        --cert-file /cert/cert.pem \
-        --key-file /cert/key.pem \
-        --fullchain-file /cert/fullchain.pem; then
-        echo "ERROR: Failed to install existing certificate for ${DOMAIN}"
-        echo "Starting server without SSL certificates..."
-    fi
-else
-    echo "No certificate found for ${DOMAIN}, attempting to issue..."
-    if acme.sh --home /cert --issue -d "${DOMAIN}" --dns "${DNS_API}" --server letsencrypt --log; then
-        echo "Certificate issued successfully, installing..."
-        if ! acme.sh --home /cert --install-cert -d "${DOMAIN}" \
-            --cert-file /cert/cert.pem \
-            --key-file /cert/key.pem \
-            --fullchain-file /cert/fullchain.pem; then
-            echo "ERROR: Failed to install newly issued certificate for ${DOMAIN}"
-            echo "Starting server without SSL certificates..."
-        fi
+install_cert() {
+    acme.sh --home "${CERT_DIR}" --install-cert -d "${DOMAIN}" \
+        --cert-file "${CERT_PATH}" \
+        --key-file "${KEY_PATH}" \
+        --fullchain-file "${FULLCHAIN_PATH}"
+}
+
+if dns_ready; then
+    if ! command -v acme.sh >/dev/null 2>&1; then
+        echo "acme.sh is not installed. Skipping certificate request."
     else
-        echo "Failed to issue certificate for ${DOMAIN}"
-        echo "Check your DNS API credentials and domain configuration"
-        echo "Starting server without SSL certificates..."
+        echo "Certificate configuration:"
+        echo "  Domain: ${DOMAIN}"
+        echo "  DNS API: ${DNS_API}"
+        echo "  ACME Email: ${ACME_SH_EMAIL}"
+
+        # Pin the CA to Let's Encrypt. ZeroSSL asks for an external account
+        # binding that this image does not have.
+        acme.sh --home "${CERT_DIR}" --set-default-ca --server letsencrypt || true
+        if [ ! -f "${CERT_DIR}/account.conf" ]; then
+            acme.sh --home "${CERT_DIR}" --register-account -m "${ACME_SH_EMAIL}" --server letsencrypt || true
+        fi
+
+        if [ ! -s "${CERT_PATH}" ] || [ ! -s "${KEY_PATH}" ]; then
+            # A partial acme.sh directory makes the next --issue refuse to run.
+            if [ ! -s "${CERT_DIR}/${DOMAIN}_ecc/${DOMAIN}.cer" ]; then
+                rm -rf "${CERT_DIR}/${DOMAIN}_ecc"
+            fi
+            echo "Requesting certificate for ${DOMAIN}"
+            if acme.sh --home "${CERT_DIR}" --issue -d "${DOMAIN}" --dns "${DNS_API}" --server letsencrypt; then
+                if ! install_cert; then
+                    echo "Certificate issued, but installing it failed."
+                fi
+            else
+                echo "Certificate request failed."
+            fi
+        else
+            echo "Certificate files found. Renewing if due."
+            acme.sh --home "${CERT_DIR}" --cron || true
+            install_cert || true
+        fi
     fi
-fi
-
-# Upgrade and list certificates
-echo 'Upgrading and listing certificates'
-acme.sh --home /cert --upgrade --auto-upgrade
-acme.sh --home /cert --list
-
-
-# Wait for certificates to be available (with timeout)
-echo "Checking for certificates..."
-CERT_WAIT_COUNT=0
-CERT_WAIT_MAX=30  # 5 minutes max wait
-
-while [ ! -f /cert/cert.pem ] || [ ! -f /cert/key.pem ]; do
-    if [ $CERT_WAIT_COUNT -ge $CERT_WAIT_MAX ]; then
-        echo "Timeout waiting for certificates. Starting server without SSL..."
-        break
-    fi
-    echo "Still waiting for certificates... (${CERT_WAIT_COUNT}/${CERT_WAIT_MAX})"
-    sleep 10
-    CERT_WAIT_COUNT=$((CERT_WAIT_COUNT + 1))
-done
-
-if [ -f /cert/cert.pem ] && [ -f /cert/key.pem ]; then
-    echo "Certificates found, starting SMTP server with SSL..."
 else
-    echo "Starting SMTP server without SSL certificates..."
+    echo "Cloudflare DNS credentials are not set. Skipping certificate request."
 fi
 
-# Start SMTP server with environment variables
-exec /usr/local/bin/inboundparse \
-    -webhook="${WEBHOOK_URL}" \
-    -enable-spf="${ENABLE_SPF}" \
-    -enable-dkim="${ENABLE_DKIM}" \
-    -enable-dmarc="${ENABLE_DMARC}" \
-    -cert-file="${CERT_FILE}" \
-    -key-file="${KEY_FILE}" \
-    -verbose="${VERBOSE}"
+# A non-empty file is not necessarily a certificate. A partial install leaves
+# garbage that tls.LoadX509KeyPair rejects, and that rejection exits the process.
+cert_pair_ok() {
+    cert="$1"
+    key="$2"
+    if [ ! -s "${cert}" ] || [ ! -s "${key}" ]; then
+        return 1
+    fi
+    if ! openssl x509 -in "${cert}" -noout >/dev/null 2>&1; then
+        return 1
+    fi
+    if ! openssl pkey -in "${key}" -noout >/dev/null 2>&1; then
+        return 1
+    fi
+    cert_pub=$(openssl x509 -in "${cert}" -noout -pubkey 2>/dev/null) || return 1
+    key_pub=$(openssl pkey -in "${key}" -pubout 2>/dev/null) || return 1
+    [ "${cert_pub}" = "${key_pub}" ]
+}
+
+# Prefer the chain file so SMTP clients can validate without fetching it.
+# The image ENV may already point CERT_FILE at a path that does not exist;
+# unset it unless the files on disk are a matching pair.
+if ! command -v openssl >/dev/null 2>&1; then
+    echo "openssl is not installed. Starting SMTP without STARTTLS."
+    unset CERT_FILE
+    unset KEY_FILE
+elif cert_pair_ok "${FULLCHAIN_PATH}" "${KEY_PATH}"; then
+    echo "Starting SMTP with STARTTLS."
+    export CERT_FILE="${FULLCHAIN_PATH}"
+    export KEY_FILE="${KEY_PATH}"
+elif cert_pair_ok "${CERT_PATH}" "${KEY_PATH}"; then
+    echo "Starting SMTP with STARTTLS."
+    export CERT_FILE="${CERT_PATH}"
+    export KEY_FILE="${KEY_PATH}"
+else
+    if [ -s "${FULLCHAIN_PATH}" ] || [ -s "${CERT_PATH}" ] || [ -s "${KEY_PATH}" ]; then
+        echo "Certificate files are not a usable pair. Starting SMTP without STARTTLS."
+    else
+        echo "Starting SMTP without STARTTLS."
+    fi
+    unset CERT_FILE
+    unset KEY_FILE
+fi
+
+# The DNS token is only needed to issue the certificate. The mail process
+# parses untrusted SMTP and must not keep a Cloudflare credential.
+unset CF_Token CF_Zone_ID
+
+# Volumes mounted at /cert are root-owned. Issue as root, then drop to the
+# unprivileged user once that user can read the directory.
+if [ "$(id -u)" -eq 0 ] && command -v su-exec >/dev/null 2>&1 && id inboundparse >/dev/null 2>&1; then
+    if chown -R inboundparse:inboundparse "${CERT_DIR}"; then
+        exec su-exec inboundparse:inboundparse /usr/local/bin/inboundparse
+    fi
+    echo "Could not change ownership of ${CERT_DIR}. Starting SMTP as root."
+fi
+
+exec /usr/local/bin/inboundparse

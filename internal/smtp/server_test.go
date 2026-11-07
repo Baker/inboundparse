@@ -11,6 +11,7 @@ import (
 	"math/big"
 	"net"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -732,6 +733,107 @@ func TestSMTPServer_Start_TLSAndStop(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("Start() did not return after Stop()")
 	}
+}
+
+func TestSMTPServer_GreetingWithinOneSecond(t *testing.T) {
+	addr := getFreeAddr(t)
+	config := ServerConfig{
+		ListenAddr: addr,
+		ServerName: "test",
+	}
+	s, err := NewSMTPServer(config, createMockBackend(), &mockLogger{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	errCh := make(chan error, 1)
+	go func() { errCh <- s.Start() }()
+	t.Cleanup(func() { _ = s.Stop() })
+
+	deadline := time.Now().Add(2 * time.Second)
+	var conn net.Conn
+	for {
+		conn, err = net.DialTimeout("tcp", addr, 50*time.Millisecond)
+		if err == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("dial %s: %v", addr, err)
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	defer conn.Close()
+
+	if err := conn.SetReadDeadline(time.Now().Add(time.Second)); err != nil {
+		t.Fatalf("set read deadline: %v", err)
+	}
+	buf := make([]byte, 512)
+	n, err := conn.Read(buf)
+	if err != nil {
+		t.Fatalf("read greeting: %v", err)
+	}
+	if line := string(buf[:n]); !strings.HasPrefix(line, "220") {
+		t.Fatalf("greeting %q, want prefix 220", line)
+	}
+
+	if err := s.Stop(); err != nil {
+		t.Fatalf("Stop() error: %v", err)
+	}
+	select {
+	case <-errCh:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Start() did not return after Stop()")
+	}
+}
+
+func TestSMTPServer_Start_PlainBindFailureReturns(t *testing.T) {
+	occupied, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("occupy port: %v", err)
+	}
+	t.Cleanup(func() { _ = occupied.Close() })
+
+	certFile, keyFile := createTempCertFiles(t)
+	t.Cleanup(func() {
+		_ = os.Remove(certFile)
+		_ = os.Remove(keyFile)
+	})
+
+	tlsAddr := getFreeAddr(t)
+	config := ServerConfig{
+		ListenAddr:    occupied.Addr().String(),
+		ListenAddrTLS: tlsAddr,
+		ServerName:    "test",
+		CertFile:      certFile,
+		KeyFile:       keyFile,
+	}
+	s, err := NewSMTPServer(config, createMockBackend(), &mockLogger{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	t.Cleanup(func() { _ = s.Stop() })
+
+	errCh := make(chan error, 1)
+	go func() { errCh <- s.Start() }()
+
+	var startErr error
+	select {
+	case startErr = <-errCh:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Start() did not return within 2s")
+	}
+	if startErr == nil {
+		t.Fatal("expected Start() to return the plain bind error")
+	}
+	if !strings.Contains(startErr.Error(), "address already in use") {
+		t.Fatalf("Start() error = %v, want address already in use", startErr)
+	}
+
+	ln, listenErr := net.Listen("tcp", tlsAddr)
+	if listenErr != nil {
+		t.Fatalf("TLS listener still bound after plain bind failure: %v", listenErr)
+	}
+	_ = ln.Close()
 }
 
 func TestSMTPServer_ProxyPolicy_NoTrustedProxies(t *testing.T) {

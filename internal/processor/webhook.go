@@ -112,8 +112,14 @@ func NewWebhookSender(config WebhookConfig, logger observability.Logger, metrics
 		Build()
 
 	return &webhookSender{
-		config:         config,
-		client:         &http.Client{Timeout: config.Timeout},
+		config: config,
+		// ErrUseLastResponse keeps a 301/302 from being replayed as a GET with the body dropped.
+		client: &http.Client{
+			Timeout: config.Timeout,
+			CheckRedirect: func(req *http.Request, via []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
+		},
 		logger:         logger,
 		metrics:        metrics,
 		retryPolicy:    retryPolicy,
@@ -177,8 +183,8 @@ func (w *webhookSender) SendWebhook(ctx context.Context, payload interface{}) er
 			return httpErr
 		}
 
-		// Check for HTTP error status codes
-		if httpResp.StatusCode >= 400 {
+		// Only 2xx means the webhook accepted the JSON. 3xx and above use the same error as 4xx/5xx.
+		if httpResp.StatusCode < 200 || httpResp.StatusCode >= 300 {
 			if closeErr := httpResp.Body.Close(); closeErr != nil {
 				w.logger.Warn().
 					Err(closeErr).

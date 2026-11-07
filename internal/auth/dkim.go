@@ -26,7 +26,28 @@ func (d *dkimChecker) CheckDKIM(ctx context.Context, rawMessage string, logger o
 		duration := time.Since(start)
 		metrics.TrackDKIMDuration(duration)
 	}()
-	verifications, err := dkim.Verify(strings.NewReader(rawMessage))
+	// Verify does not take a context. Run it aside so a canceled
+	// MESSAGE_PROCESSING_TIMEOUT can return without waiting on DNS.
+	type dkimLookup struct {
+		verifications []*dkim.Verification
+		err           error
+	}
+	lookup, ok := callWithContext(ctx, func() dkimLookup {
+		verifications, err := dkim.Verify(strings.NewReader(rawMessage))
+		return dkimLookup{verifications: verifications, err: err}
+	})
+	if !ok {
+		metrics.TrackAuthError("dkim", "timeout_error")
+		logger.Warn().
+			Err(ctx.Err()).
+			Msg("DKIM verification canceled")
+		return &domain.DKIMResult{
+			Valid: false,
+			Raw:   fmt.Sprintf("DKIM verification error: %v", ctx.Err()),
+			Error: ctx.Err().Error(),
+		}, nil
+	}
+	verifications, err := lookup.verifications, lookup.err
 	if err != nil {
 		// Determine error type for metrics
 		errorType := "verification_error"

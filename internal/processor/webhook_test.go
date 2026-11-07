@@ -56,6 +56,35 @@ func TestWebhookSender_SendWebhook_Success(t *testing.T) {
 	}
 }
 
+func TestWebhookSender_SendWebhook_Redirect(t *testing.T) {
+	var landedMethod string
+	mux := http.NewServeMux()
+	mux.HandleFunc("/hook", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/landed", http.StatusFound)
+	})
+	mux.HandleFunc("/landed", func(w http.ResponseWriter, r *http.Request) {
+		landedMethod = r.Method
+		w.WriteHeader(http.StatusOK)
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	config := WebhookConfig{
+		URL:        server.URL + "/hook",
+		Timeout:    5 * time.Second,
+		MaxRetries: 0,
+	}
+
+	sender := NewWebhookSender(config, &mockLogger{}, &mockMetricsCollector{})
+
+	err := sender.SendWebhook(context.Background(), map[string]interface{}{
+		"test": "data",
+	})
+	if err == nil {
+		t.Fatalf("redirect followed as %s was treated as delivery", landedMethod)
+	}
+}
+
 func TestWebhookSender_SendWebhook_WithAuth(t *testing.T) {
 	handler := &recordingHandler{t: t}
 	server := httptest.NewServer(handler)
