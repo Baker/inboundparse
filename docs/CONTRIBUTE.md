@@ -34,7 +34,7 @@ We appreciate all kinds of contributions:
 
 ### 2. Set Up Your Environment
 
-- **Ensure you have a Go toolchain that matches `go.mod` (currently Go 1.26.x).**
+- **Ensure you have a Go toolchain that matches `go.mod` (currently Go 1.27.x).**
 - Install dependencies:
   ```bash
   make deps

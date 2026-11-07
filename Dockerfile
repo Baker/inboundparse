@@ -1,6 +1,6 @@
 # Build stage
 # Matches the patch in go.mod. This tag is Alpine 3.24; the runtime stage stays on 3.21.
-FROM golang:1.26.10-alpine AS builder
+FROM golang:1.27.3-alpine AS builder
 
 WORKDIR /app
 
