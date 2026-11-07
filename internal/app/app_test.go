@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"reflect"
+	"runtime"
 	"strings"
 	"sync"
 	"syscall"
@@ -437,6 +438,9 @@ func TestApp_Run_ReturnsStartError(t *testing.T) {
 // Run; the parent signals only after the SMTP port accepts a connection.
 func testRunShutsDownOnSignal(t *testing.T, sig syscall.Signal) {
 	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows cannot deliver SIGINT or SIGTERM to a child process")
+	}
 
 	if os.Getenv("INBOUNDPARSE_RUN_SIGNAL_CHILD") == "1" {
 		serveUntilShutdownSignal(t)
