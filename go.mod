@@ -1,6 +1,6 @@
 module inboundparse
 
-go 1.26.3
+go 1.26.10
 
 require (
 	github.com/emersion/go-msgauth v0.7.0
@@ -15,8 +15,8 @@ require (
 	github.com/rs/zerolog v1.35.1
 	github.com/stretchr/testify v1.11.1
 	github.com/zaccone/spf v0.0.0-20170817004109-76747b8658d9
-	golang.org/x/net v0.54.0
-	golang.org/x/sync v0.20.0
+	golang.org/x/net v0.60.0
+	golang.org/x/sync v0.23.0
 )
 
 require (
@@ -35,11 +35,11 @@ require (
 	github.com/prometheus/common v0.67.5 // indirect
 	github.com/prometheus/procfs v0.20.1 // indirect
 	go.yaml.in/yaml/v2 v2.4.4 // indirect
-	golang.org/x/crypto v0.51.0 // indirect
-	golang.org/x/mod v0.36.0 // indirect
-	golang.org/x/sys v0.44.0 // indirect
-	golang.org/x/text v0.37.0 // indirect
-	golang.org/x/tools v0.45.0 // indirect
+	golang.org/x/crypto v0.57.0 // indirect
+	golang.org/x/mod v0.41.0 // indirect
+	golang.org/x/sys v0.48.0 // indirect
+	golang.org/x/text v0.42.0 // indirect
+	golang.org/x/tools v0.49.0 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
