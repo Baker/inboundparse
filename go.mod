@@ -1,6 +1,6 @@
 module inboundparse
 
-go 1.26.10
+go 1.27.3
 
 require (
 	github.com/emersion/go-msgauth v0.7.0
