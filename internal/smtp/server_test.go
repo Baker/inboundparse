@@ -825,8 +825,9 @@ func TestSMTPServer_Start_PlainBindFailureReturns(t *testing.T) {
 	if startErr == nil {
 		t.Fatal("expected Start() to return the plain bind error")
 	}
-	if !strings.Contains(startErr.Error(), "address already in use") {
-		t.Fatalf("Start() error = %v, want address already in use", startErr)
+	msg := startErr.Error()
+	if !strings.Contains(msg, "address already in use") && !strings.Contains(msg, "Only one usage of each socket address") {
+		t.Fatalf("Start() error = %v, want a bind conflict", startErr)
 	}
 
 	ln, listenErr := net.Listen("tcp", tlsAddr)
