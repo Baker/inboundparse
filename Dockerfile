@@ -22,7 +22,7 @@ FROM alpine:3.21
 ARG ACME_SH_VERSION=3.0.7
 
 # Install ca-certificates, openssl, socat, git, bash; pin acme.sh via git tag (no curl|sh)
-RUN apk add --no-cache ca-certificates openssl socat git bash curl \
+RUN apk add --no-cache ca-certificates openssl socat git bash curl su-exec \
  && git clone --depth 1 --branch "${ACME_SH_VERSION}" https://github.com/acmesh-official/acme.sh.git /opt/acme.sh \
  && addgroup -S inboundparse \
  && adduser -S -G inboundparse -h /home/inboundparse inboundparse \
@@ -39,14 +39,15 @@ COPY start.sh /usr/local/bin/start.sh
 RUN chmod +x /usr/local/bin/inboundparse /usr/local/bin/start.sh \
  && chown inboundparse:inboundparse /usr/local/bin/inboundparse /usr/local/bin/start.sh
 
-USER inboundparse
+# Stay root for the entrypoint. start.sh writes a root-owned /cert volume,
+# then drops to inboundparse before the SMTP process.
 ENV HOME=/home/inboundparse
 
 # Environment variables for acme.sh and SMTP server
 ENV CF_Token=""
 ENV CF_Zone_ID=""
 ENV DNS_API=""
-ENV ACME_SH_EMAIL=""
+ENV ACME_SH_EMAIL="devnull@localhost"
 ENV MXDOMAIN=""
 ENV WEBHOOK_URL=""
 ENV ENABLE_SPF="true"

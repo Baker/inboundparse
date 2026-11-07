@@ -2,8 +2,12 @@ package auth
 
 import (
 	"context"
+	"errors"
 	"net"
+	"strings"
 	"testing"
+
+	"github.com/zaccone/spf"
 )
 
 func TestExtractDomainFromEmail(t *testing.T) {
@@ -227,5 +231,75 @@ func TestSPFChecker_CheckSPF_WithSubdomain(t *testing.T) {
 	// Should handle subdomains
 	if result == nil {
 		t.Error("Expected non-nil result")
+	}
+}
+
+func TestSPFResultOnError(t *testing.T) {
+	cases := []struct {
+		name   string
+		result spf.Result
+		err    error
+		want   string
+	}{
+		{"none with permanent DNS error", spf.None, errors.New("permanent DNS error"), "none"},
+		{"none when record missing", spf.None, errors.New("SPF record not found"), "none"},
+		{"permerror", spf.Permerror, errors.New("too many SPF records"), "permerror"},
+		{"temperror", spf.Temperror, errors.New("temporary DNS error"), "temperror"},
+		{"zero result permanent text", 0, errors.New("permanent DNS error"), "permerror"},
+		{"zero result other text", 0, errors.New("temporary DNS error"), "temperror"},
+		{"unknown result permanent text", spf.Result(99), errors.New("permanent DNS error"), "permerror"},
+		{"unknown result other text", spf.Result(99), errors.New("lookup failed"), "temperror"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := spfResultOnError(tc.result, tc.err); got != tc.want {
+				t.Fatalf("spfResultOnError(%v, %v) = %q, want %q", tc.result, tc.err, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestSPFChecker_CheckSPF_NoSuchHost(t *testing.T) {
+	checker := NewSPFChecker()
+	remoteIP := net.ParseIP("192.168.1.1")
+	result, err := checker.CheckSPF(context.Background(), remoteIP, "no-such-host.invalid", "test@no-such-host.invalid", &MockLogger{}, &mockMetricsCollector{})
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+	if result.Result != "none" {
+		t.Fatalf("Expected result 'none' for NXDOMAIN, got %s (%s)", result.Result, result.Raw)
+	}
+}
+
+func TestSPFChecker_CheckSPF_ContextCanceled(t *testing.T) {
+	checker := NewSPFChecker()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	remoteIP := net.ParseIP("192.168.1.1")
+	result, err := checker.CheckSPF(ctx, remoteIP, "example.com", "test@example.com", &MockLogger{}, &mockMetricsCollector{})
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+	if result.Result != "temperror" {
+		t.Fatalf("Expected result 'temperror', got %s", result.Result)
+	}
+	if !strings.Contains(result.Problem, ctx.Err().Error()) {
+		t.Fatalf("Expected problem to describe %v, got %q", ctx.Err(), result.Problem)
+	}
+}
+
+func TestSPFChecker_CheckSPF_CanceledContextEmptyDomain(t *testing.T) {
+	checker := NewSPFChecker()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	remoteIP := net.ParseIP("192.168.1.1")
+	result, err := checker.CheckSPF(ctx, remoteIP, "", "test@", &MockLogger{}, &mockMetricsCollector{})
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+	if result.Result != "none" {
+		t.Fatalf("Expected result 'none', got %s", result.Result)
 	}
 }

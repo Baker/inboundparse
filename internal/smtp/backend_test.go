@@ -314,6 +314,31 @@ func TestSession_Rcpt(t *testing.T) {
 	}
 }
 
+func TestSession_MailClearsRecipients(t *testing.T) {
+	config := BackendConfig{MaxRecipients: 2}
+	backend := NewBackend(config, createMockMessageProcessor(), &mockMetricsCollector{}, &mockLogger{})
+	session, err := backend.NewSession(nil)
+	if err != nil {
+		t.Fatalf("NewSession: %v", err)
+	}
+
+	if err := session.Mail("first@example.com", nil); err != nil {
+		t.Fatalf("first MAIL: %v", err)
+	}
+	if err := session.Rcpt("old@example.com", nil); err != nil {
+		t.Fatalf("first RCPT: %v", err)
+	}
+	if err := session.Mail("second@example.com", nil); err != nil {
+		t.Fatalf("second MAIL: %v", err)
+	}
+	if err := session.Rcpt("new1@example.com", nil); err != nil {
+		t.Fatalf("first recipient of the new transaction: %v", err)
+	}
+	if err := session.Rcpt("new2@example.com", nil); err != nil {
+		t.Fatalf("second recipient of the new transaction: %v", err)
+	}
+}
+
 func TestSession_Rcpt_MaxRecipients(t *testing.T) {
 	config := BackendConfig{MaxRecipients: 2}
 	messageProcessor := createMockMessageProcessor()

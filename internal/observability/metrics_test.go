@@ -426,6 +426,34 @@ func TestMetricsCollector_TrackWebhookRequest(t *testing.T) {
 	collector.TrackWebhookRequest(500, 200*time.Millisecond)
 }
 
+func TestTrackWebhookRequest_StatusCodeLabelIsNumeric(t *testing.T) {
+	registry := prometheus.NewRegistry()
+	collector := NewMetricsCollectorWithRegistry(registry)
+
+	collector.TrackWebhookRequest(500, time.Millisecond)
+
+	families, err := registry.Gather()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, fam := range families {
+		if fam.GetName() != "webhook_requests_total" {
+			continue
+		}
+		for _, m := range fam.GetMetric() {
+			for _, lp := range m.GetLabel() {
+				if lp.GetName() == "status_code" && lp.GetValue() == "500" {
+					return
+				}
+				if lp.GetName() == "status_code" {
+					t.Fatalf("status_code label = %q, want 500", lp.GetValue())
+				}
+			}
+		}
+	}
+	t.Fatal("webhook_requests_total not found")
+}
+
 func TestMetricsServer_Stop_NotStarted(t *testing.T) {
 	config := MetricsConfig{
 		EnableMetrics: false,

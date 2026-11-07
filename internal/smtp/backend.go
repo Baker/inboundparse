@@ -106,7 +106,10 @@ func (s *Session) Mail(from string, opts *smtp.MailOptions) error {
 	// Track MAIL command
 	s.metrics.TrackSessionCommandCount("MAIL")
 
+	// RFC 5321: MAIL starts a new transaction. A client may send it again
+	// to abort the one in progress, and the previous recipients must go.
 	s.from = from
+	s.to = nil
 	return nil
 }
 

@@ -183,8 +183,15 @@ You can configure InboundParse using environment variables or command line flags
 
 #### TLS Settings
 
-- `CERT_FILE`             Path to TLS certificate file (optional)
+The image entrypoint requests a Let's Encrypt certificate on startup when DNS credentials are set, then starts SMTP. No extra script is required. If those credentials are unset, or issuance fails, SMTP still starts without STARTTLS. A volume mounted at `/cert` keeps the certificate across restarts.
+
+- `CERT_FILE`             Path to TLS certificate file (optional; the entrypoint sets this when it has a certificate)
 - `KEY_FILE`              Path to TLS private key file (optional)
+- `MXDOMAIN`              Certificate domain (default: `SERVER_NAME`, then `mx.inboundparse.com`)
+- `ACME_SH_EMAIL`         Let's Encrypt account email (default: `devnull@localhost`)
+- `DNS_API`               acme.sh DNS provider (default: `dns_cf`)
+- `CF_Token`              Cloudflare API token (required for `dns_cf`)
+- `CF_Zone_ID`            Cloudflare zone id (required for `dns_cf`)
 
 #### Feature Flags
 

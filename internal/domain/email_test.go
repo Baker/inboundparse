@@ -1,7 +1,9 @@
 package domain
 
 import (
+	"encoding/json"
 	"net/mail"
+	"strings"
 	"testing"
 	"time"
 
@@ -146,6 +148,16 @@ func TestAuthenticationResults_Structure(t *testing.T) {
 	}
 	if results.DMARC.Result != "pass" {
 		t.Errorf("Expected DMARC result 'pass', got '%s'", results.DMARC.Result)
+	}
+}
+
+func TestDMARCResult_PercentageZeroMarshals(t *testing.T) {
+	b, err := json.Marshal(DMARCResult{Result: "fail", Percentage: 0})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), `"percentage":0`) {
+		t.Fatalf("pct=0 omitted from JSON: %s", b)
 	}
 }
 

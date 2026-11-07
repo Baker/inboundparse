@@ -67,7 +67,7 @@ type DMARCResult struct {
 	Policy          string              `json:"policy,omitempty"`
 	Error           string              `json:"error,omitempty"`
 	Domain          string              `json:"domain,omitempty"`           // Domain where policy was found
-	Percentage      int                 `json:"percentage,omitempty"`       // pct= tag value (RFC 7489 Section 6.3)
+	Percentage      int                 `json:"percentage"`                 // pct= tag value (RFC 7489 Section 6.3)
 	SubdomainPolicy string              `json:"subdomain_policy,omitempty"` // sp= tag value
 	SPFAligned      bool                `json:"spf_aligned"`                // Whether SPF identifier aligned
 	DKIMAligned     bool                `json:"dkim_aligned"`               // Whether DKIM identifier aligned

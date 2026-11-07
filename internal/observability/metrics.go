@@ -6,6 +6,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -428,7 +429,7 @@ func (m *metricsCollector) TrackDMARCResult(result, policy string) {
 
 // TrackWebhookRequest records webhook request metrics
 func (m *metricsCollector) TrackWebhookRequest(statusCode int, duration time.Duration) {
-	m.webhookRequests.WithLabelValues(http.StatusText(statusCode)).Inc()
+	m.webhookRequests.WithLabelValues(strconv.Itoa(statusCode)).Inc()
 	m.webhookDuration.Observe(duration.Seconds())
 }
 

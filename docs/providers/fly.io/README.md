@@ -6,11 +6,14 @@ The sample Fly config in this directory is [`fly.toml`](./fly.toml). Adjust app 
 # From the directory that contains fly.toml
 fly deploy
 
-# Core secrets (adjust for your webhook and DNS/API provider — see `start.sh` / `Dockerfile` for ACME)
+# The image entrypoint issues the certificate. No extra start script.
+# ACME_SH_EMAIL defaults to devnull@localhost. SMTP still starts without
+# STARTTLS when the DNS secrets are unset or issuance fails.
 fly secrets set WEBHOOK_URL=https://your-webhook-url.com/api/webhook
 fly secrets set CF_Token=your-cloudflare-token
 fly secrets set CF_Zone_ID=your-zone-id
 fly secrets set MXDOMAIN=your-domain.com
+fly secrets set ACME_SH_EMAIL=you@your-domain.com
 
 # Optional: error tracking
 fly secrets set SENTRY_DSN=https://your-dsn@sentry.io/project-id
