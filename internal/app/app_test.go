@@ -79,6 +79,10 @@ func (m *mockAuthChecker) CheckDKIM(ctx context.Context, rawMessage string, logg
 	return nil, nil
 }
 
+func (m *mockAuthChecker) CheckDKIM2(ctx context.Context, rawMessage string, from string, to []string, logger observability.Logger, metrics observability.MetricsCollector) (*domain.DKIM2Result, error) {
+	return nil, nil
+}
+
 func (m *mockAuthChecker) CheckDMARC(ctx context.Context, rawMessage string, headers interface{}, spfResult *domain.SPFResult, dkimResult *domain.DKIMResult, logger observability.Logger) (*domain.DMARCResult, error) {
 	return nil, nil
 }
@@ -140,6 +144,23 @@ func TestNewApp(t *testing.T) {
 	}
 	if app == nil {
 		t.Fatal("Expected non-nil app")
+	}
+}
+
+func TestNewApp_DKIM2Enabled(t *testing.T) {
+	config := &config.Config{
+		ListenAddr:  "127.0.0.1:0",
+		WebhookURL:  "http://localhost:8080/webhook",
+		ServerName:  "test",
+		EnableDKIM2: true,
+	}
+
+	app, err := NewApp(config)
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+	if app == nil || app.authChecker == nil {
+		t.Fatal("Expected app with an auth checker")
 	}
 }
 

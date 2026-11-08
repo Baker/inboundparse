@@ -19,6 +19,7 @@ A SMTP server that receives emails from any domain without authentication and fo
 
 - **SPF Validation (RFC 7208)**: Validates Sender Policy Framework with HELO and envelope sender
 - **DKIM Validation (RFC 6376)**: Verifies DomainKeys Identified Mail signatures with multi-signature support
+- **DKIM2 Verification (draft-ietf-dkim-dkim2-spec-09)**: Verifies DKIM2 signatures against the SMTP envelope and reports the result next to DKIM. It does not accept or reject mail, and it is not an input to DMARC
 - **DMARC Validation (RFC 7489)**: Evaluates DMARC policy with hierarchical domain lookup and subdomain policy inheritance
 - **Comprehensive Results**: Detailed authentication results with domain, mechanism, and alignment data
 - **Domain Hierarchy Tracking**: Tracks all attempted DMARC lookups with detailed per-domain results
@@ -136,6 +137,7 @@ Usage of ./inboundparse:
   -message-processing-timeout int Per-message processing timeout in seconds, including auth and webhook (default 300)
   -enable-spf               Enable SPF validation (default true)
   -enable-dkim              Enable DKIM validation (default true)
+  -enable-dkim2             Enable DKIM2 verification (default true)
   -enable-dmarc             Enable DMARC validation (default true)
   -cert-file string         TLS cert file (optional)
   -key-file string          TLS private key (optional)
@@ -197,6 +199,7 @@ The image entrypoint requests a Let's Encrypt certificate on startup when DNS cr
 
 - `ENABLE_SPF`            Enable SPF checking (`true`/`false`, default: `true`)
 - `ENABLE_DKIM`           Enable DKIM checking (`true`/`false`, default: `true`)
+- `ENABLE_DKIM2`          Enable DKIM2 verification (`true`/`false`, default: `true`)
 - `ENABLE_DMARC`          Enable DMARC checking (`true`/`false`, default: `true`)
 - `VERBOSE`               Enable verbose (debug) logging (`true`/`false`, default: `false`)
 
@@ -219,7 +222,9 @@ When metrics are enabled on a non-loopback address (`0.0.0.0`, public IP, etc.),
 
 ## Webhook Payload
 
-The webhook receives a JSON document shaped like `domain.WebhookPayload`: message metadata and `authentication_results` for SPF/DKIM/DMARC. `from` and `to` are `net/mail.Address` values (JSON fields **`Name`** and **`Address`**). `timestamp` is taken from the parsed `Date` header when present. Attachments and inline parts use the structures from [`letters`](https://github.com/mnako/letters).
+The webhook receives a JSON document shaped like `domain.WebhookPayload`: message metadata and `authentication_results` for SPF, DKIM, DKIM2, and DMARC. `from` and `to` are `net/mail.Address` values (JSON fields **`Name`** and **`Address`**). `timestamp` is taken from the parsed `Date` header when present. Attachments and inline parts use the structures from [`letters`](https://github.com/mnako/letters).
+
+`authentication_results.dkim2` is the draft-09 verification state. `result` is `none` when the message has no DKIM2 fields, and otherwise `pass`, `fail`, `temperror`, or `permerror`. `reason` is the library reason code (`none` on pass, `missing_key`, `envelope_mismatch`, and the rest of that closed set). A canceled check is `temperror` with reason `unavailable`. The signing domain is not included. `signatures[].selector` is present only for a signature set that did not pass. DKIM2 is not used when evaluating DMARC.
 
 ```json
 {
@@ -262,6 +267,32 @@ The webhook receives a JSON document shaped like `domain.WebhookPayload`: messag
       ],
       "raw": "",
       "error": ""
+    },
+    "dkim2": {
+      "result": "pass",
+      "reason": "none",
+      "scope": "chain",
+      "historical_content": "complete",
+      "historical_signatures": "complete",
+      "custody": "not_present",
+      "sequence": 1,
+      "instance": 1,
+      "checks": [
+        { "class": "body_hash", "reason": "none" },
+        { "class": "domain_alignment", "reason": "none" },
+        { "class": "envelope", "reason": "none" },
+        { "class": "header_hash", "reason": "none" },
+        { "class": "next_domain", "reason": "none" },
+        { "class": "signature", "reason": "none" },
+        { "class": "timestamp", "reason": "none" }
+      ],
+      "signatures": [
+        {
+          "algorithm": "ed25519-sha256",
+          "status": "pass",
+          "reason": "none"
+        }
+      ]
     },
     "dmarc": {
       "result": "pass",

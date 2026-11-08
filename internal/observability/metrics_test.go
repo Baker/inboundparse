@@ -10,6 +10,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	dto "github.com/prometheus/client_model/go"
 )
 
 // createTestMetricsCollector creates a metrics collector using a custom registry for testing
@@ -403,6 +404,87 @@ func TestMetricsCollector_TrackDKIMResult(t *testing.T) {
 	// Test DKIM result tracking
 	collector.TrackDKIMResult(true)
 	collector.TrackDKIMResult(false)
+}
+
+func TestMetricsCollector_TrackDKIM2Result(t *testing.T) {
+	registry := prometheus.NewRegistry()
+	collector := NewMetricsCollectorWithRegistry(registry)
+
+	collector.TrackDKIM2Result("pass", "none")
+	collector.TrackDKIM2Result("none", "")
+	collector.TrackDKIM2Result("permerror", "missing_key")
+	collector.TrackDKIM2Duration(time.Millisecond)
+
+	if got := counterValue(t, registry, "auth_checks_dkim2_total", nil); got != 3 {
+		t.Fatalf("auth_checks_dkim2_total = %v, want 3", got)
+	}
+	if got := counterValue(t, registry, "dkim2_results_total", map[string]string{"result": "pass", "reason": "none"}); got != 1 {
+		t.Fatalf("pass/none = %v, want 1", got)
+	}
+	if got := counterValue(t, registry, "dkim2_results_total", map[string]string{"result": "none", "reason": "none"}); got != 1 {
+		t.Fatalf("empty reason was not stored as none: %v", got)
+	}
+	if got := counterValue(t, registry, "dkim2_results_total", map[string]string{"result": "permerror", "reason": "missing_key"}); got != 1 {
+		t.Fatalf("permerror/missing_key = %v, want 1", got)
+	}
+	if got := histogramCount(t, registry, "dkim2_check_duration_seconds"); got != 1 {
+		t.Fatalf("dkim2 duration samples = %v, want 1", got)
+	}
+
+	noop := &NoOpMetricsCollector{}
+	noop.TrackDKIM2Result("pass", "none")
+	noop.TrackDKIM2Duration(time.Millisecond)
+}
+
+func counterValue(t *testing.T, registry *prometheus.Registry, name string, labels map[string]string) float64 {
+	t.Helper()
+	for _, family := range gatherFamilies(t, registry) {
+		if family.GetName() != name {
+			continue
+		}
+		for _, metric := range family.GetMetric() {
+			if labelValuesMatch(metric.GetLabel(), labels) {
+				return metric.GetCounter().GetValue()
+			}
+		}
+	}
+	t.Fatalf("counter %s %v not found", name, labels)
+	return 0
+}
+
+func histogramCount(t *testing.T, registry *prometheus.Registry, name string) uint64 {
+	t.Helper()
+	for _, family := range gatherFamilies(t, registry) {
+		if family.GetName() != name {
+			continue
+		}
+		for _, metric := range family.GetMetric() {
+			return metric.GetHistogram().GetSampleCount()
+		}
+	}
+	t.Fatalf("histogram %s not found", name)
+	return 0
+}
+
+func gatherFamilies(t *testing.T, registry *prometheus.Registry) []*dto.MetricFamily {
+	t.Helper()
+	families, err := registry.Gather()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return families
+}
+
+func labelValuesMatch(got []*dto.LabelPair, want map[string]string) bool {
+	if len(got) != len(want) {
+		return false
+	}
+	for _, label := range got {
+		if want[label.GetName()] != label.GetValue() {
+			return false
+		}
+	}
+	return true
 }
 
 func TestMetricsCollector_TrackDMARCResult(t *testing.T) {

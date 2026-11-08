@@ -47,6 +47,10 @@ func (m *mockAuthChecker) CheckDKIM(ctx context.Context, rawMessage string, logg
 	return nil, nil
 }
 
+func (m *mockAuthChecker) CheckDKIM2(ctx context.Context, rawMessage string, from string, to []string, logger observability.Logger, metrics observability.MetricsCollector) (*domain.DKIM2Result, error) {
+	return nil, nil
+}
+
 func (m *mockAuthChecker) CheckDMARC(ctx context.Context, rawMessage string, headers letters.Headers, spfResult *domain.SPFResult, dkimResult *domain.DKIMResult, logger observability.Logger, metrics observability.MetricsCollector) (*domain.DMARCResult, error) {
 	return nil, nil
 }
@@ -85,6 +89,8 @@ func (m *mockMetricsCollector) TrackWebhookRetry(success bool)                  
 func (m *mockMetricsCollector) TrackWebhookError(errorType string)                         {}
 func (m *mockMetricsCollector) TrackSPFDuration(duration time.Duration)                    {}
 func (m *mockMetricsCollector) TrackDKIMDuration(duration time.Duration)                   {}
+func (m *mockMetricsCollector) TrackDKIM2Result(result, reason string)                     {}
+func (m *mockMetricsCollector) TrackDKIM2Duration(duration time.Duration)                  {}
 func (m *mockMetricsCollector) TrackDMARCDuration(duration time.Duration)                  {}
 func (m *mockMetricsCollector) TrackSPFResultByDomain(domain, result string)               {}
 func (m *mockMetricsCollector) TrackDKIMResultByDomain(domain, result string)              {}

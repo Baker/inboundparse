@@ -13,10 +13,13 @@ type EmailAddress struct {
 	Name    string `json:"name,omitempty"`
 }
 
-// AuthenticationResults contains the results of email authentication checks
+// AuthenticationResults contains the results of email authentication checks.
+// DKIM2 is draft-ietf-dkim-dkim2-spec-09 and stays separate from RFC 6376 DKIM
+// and RFC 7489 DMARC.
 type AuthenticationResults struct {
 	SPF   *SPFResult   `json:"spf,omitempty"`
 	DKIM  *DKIMResult  `json:"dkim,omitempty"`
+	DKIM2 *DKIM2Result `json:"dkim2,omitempty"`
 	DMARC *DMARCResult `json:"dmarc,omitempty"`
 }
 
@@ -58,6 +61,38 @@ type DKIMResult struct {
 	Details    []DKIMSignatureDetail `json:"details,omitempty"` // Per-signature structured data
 	Raw        string                `json:"raw"`
 	Error      string                `json:"error,omitempty"`
+}
+
+// DKIM2Check is one closed-vocabulary fact from DKIM2 verification.
+type DKIM2Check struct {
+	Class  string `json:"class"`
+	Reason string `json:"reason"`
+}
+
+// DKIM2Signature is one signature-set fact. Selector is present only when the
+// library exposes it, which is for a set that did not pass.
+type DKIM2Signature struct {
+	Algorithm string `json:"algorithm"`
+	Status    string `json:"status"`
+	Reason    string `json:"reason"`
+	Selector  string `json:"selector,omitempty"`
+}
+
+// DKIM2Result is the draft-09 verification state reported on the webhook.
+// Result is none, pass, fail, temperror, or permerror. Reason is the library
+// reason code, or unavailable when the check was canceled. The signing domain
+// is withheld on purpose.
+type DKIM2Result struct {
+	Result               string           `json:"result"`
+	Reason               string           `json:"reason,omitempty"`
+	Scope                string           `json:"scope,omitempty"`
+	HistoricalContent    string           `json:"historical_content,omitempty"`
+	HistoricalSignatures string           `json:"historical_signatures,omitempty"`
+	Custody              string           `json:"custody,omitempty"`
+	Sequence             uint64           `json:"sequence,omitempty"`
+	Instance             uint64           `json:"instance,omitempty"`
+	Checks               []DKIM2Check     `json:"checks,omitempty"`
+	Signatures           []DKIM2Signature `json:"signatures,omitempty"`
 }
 
 // DMARCResult contains DMARC validation results

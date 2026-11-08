@@ -19,10 +19,14 @@ import (
 type mockAuthChecker struct {
 	spfResult   *domain.SPFResult
 	dkimResult  *domain.DKIMResult
+	dkim2Result *domain.DKIM2Result
 	dmarcResult *domain.DMARCResult
 	spfErr      error
 	dkimErr     error
+	dkim2Err    error
 	dmarcErr    error
+	dkim2From   string
+	dkim2To     []string
 }
 
 func (m *mockAuthChecker) CheckSPF(ctx context.Context, remoteIP net.IP, domainName, from string, logger observability.Logger, metrics observability.MetricsCollector) (*domain.SPFResult, error) {
@@ -33,15 +37,23 @@ func (m *mockAuthChecker) CheckDKIM(ctx context.Context, rawMessage string, logg
 	return m.dkimResult, m.dkimErr
 }
 
+func (m *mockAuthChecker) CheckDKIM2(ctx context.Context, rawMessage string, from string, to []string, logger observability.Logger, metrics observability.MetricsCollector) (*domain.DKIM2Result, error) {
+	m.dkim2From = from
+	m.dkim2To = append([]string(nil), to...)
+	return m.dkim2Result, m.dkim2Err
+}
+
 func (m *mockAuthChecker) CheckDMARC(ctx context.Context, rawMessage string, headers letters.Headers, spfResult *domain.SPFResult, dkimResult *domain.DKIMResult, logger observability.Logger, metrics observability.MetricsCollector) (*domain.DMARCResult, error) {
 	return m.dmarcResult, m.dmarcErr
 }
 
 type mockWebhookSender struct {
-	err error
+	err     error
+	payload interface{}
 }
 
 func (m *mockWebhookSender) SendWebhook(ctx context.Context, payload interface{}) error {
+	m.payload = payload
 	return m.err
 }
 
@@ -59,6 +71,8 @@ func (m *mockMetricsCollector) TrackWebhookRetry(success bool)                  
 func (m *mockMetricsCollector) TrackWebhookError(errorType string)                         {}
 func (m *mockMetricsCollector) TrackSPFDuration(duration time.Duration)                    {}
 func (m *mockMetricsCollector) TrackDKIMDuration(duration time.Duration)                   {}
+func (m *mockMetricsCollector) TrackDKIM2Result(result, reason string)                     {}
+func (m *mockMetricsCollector) TrackDKIM2Duration(duration time.Duration)                  {}
 func (m *mockMetricsCollector) TrackDMARCDuration(duration time.Duration)                  {}
 func (m *mockMetricsCollector) TrackSPFResultByDomain(domain, result string)               {}
 func (m *mockMetricsCollector) TrackDKIMResultByDomain(domain, result string)              {}
@@ -147,6 +161,42 @@ func TestMessageProcessor_ProcessMessage_Success(t *testing.T) {
 	err := processor.ProcessMessage(ctx, reader, from, to, sessionID, remoteIP)
 	if err != nil {
 		t.Errorf("Expected no error, got %v", err)
+	}
+}
+
+func TestMessageProcessor_ProcessMessage_DKIM2Envelope(t *testing.T) {
+	authChecker := &mockAuthChecker{
+		dkim2Result: &domain.DKIM2Result{Result: "none"},
+	}
+	webhookSender := &mockWebhookSender{}
+	processor := NewMessageProcessor(
+		ProcessorConfig{EnableDKIM2: true},
+		authChecker,
+		webhookSender,
+		&mockMetricsCollector{},
+		&mockSentryClient{},
+		&mockLogger{},
+	)
+
+	message := "From: test@example.com\r\nTo: recipient@example.com\r\nSubject: Test\r\n\r\nTest message"
+	from := "test@example.com"
+	to := []string{"recipient@example.com", "other@example.com"}
+	err := processor.ProcessMessage(context.Background(), strings.NewReader(message), from, to, "test-session", net.ParseIP("192.168.1.1"))
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+	if authChecker.dkim2From != from {
+		t.Fatalf("DKIM2 from = %q, want %q", authChecker.dkim2From, from)
+	}
+	if len(authChecker.dkim2To) != len(to) || authChecker.dkim2To[0] != to[0] || authChecker.dkim2To[1] != to[1] {
+		t.Fatalf("DKIM2 recipients = %#v, want %#v", authChecker.dkim2To, to)
+	}
+	payload, ok := webhookSender.payload.(*domain.WebhookPayload)
+	if !ok || payload.AuthenticationResults.DKIM2 == nil || payload.AuthenticationResults.DKIM2.Result != "none" {
+		t.Fatalf("webhook dkim2 = %#v", webhookSender.payload)
+	}
+	if payload.AuthenticationResults.DMARC != nil || payload.AuthenticationResults.DKIM != nil {
+		t.Fatal("DKIM2 must not populate DKIM or DMARC")
 	}
 }
 
@@ -278,6 +328,9 @@ func TestProcessorConfig_DefaultValues(t *testing.T) {
 	if config.EnableDKIM {
 		t.Error("Expected EnableDKIM to be false by default")
 	}
+	if config.EnableDKIM2 {
+		t.Error("Expected EnableDKIM2 to be false by default")
+	}
 	if config.EnableDMARC {
 		t.Error("Expected EnableDMARC to be false by default")
 	}
@@ -287,6 +340,7 @@ func TestProcessorConfig_WithValues(t *testing.T) {
 	config := ProcessorConfig{
 		EnableSPF:   true,
 		EnableDKIM:  true,
+		EnableDKIM2: true,
 		EnableDMARC: true,
 	}
 
@@ -295,6 +349,9 @@ func TestProcessorConfig_WithValues(t *testing.T) {
 	}
 	if !config.EnableDKIM {
 		t.Error("Expected EnableDKIM to be true")
+	}
+	if !config.EnableDKIM2 {
+		t.Error("Expected EnableDKIM2 to be true")
 	}
 	if !config.EnableDMARC {
 		t.Error("Expected EnableDMARC to be true")
