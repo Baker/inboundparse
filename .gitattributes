@@ -1,2 +1,5 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# DKIM2 fixtures are signed over their exact CRLF bytes.
+internal/auth/testdata/*.eml -text

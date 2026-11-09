@@ -1,0 +1,15 @@
+Message-Instance: m=1;
+	h=sha256:0N0mP52lRu9M/s28hUt1Frp8jB2K1Xco97u3Vg1RUeo=:8vV4yHPoxe2+2N4LaBuUlaiBjwc5mMbTkiDTdFo58ks=;
+DKIM2-Signature: i=1;
+	m=1;
+	t=1700000000;
+	mf=PGFsaWNlQGV4YW1wbGUudGVzdD4=;
+	rt=PGJvYkBleGFtcGxlLm5ldD4=;
+	d=example.test;
+	s=ed:ed25519-sha256:5K7gNwDojHjohkNAWmF1N9BTHtn51ticrSkw8ryzKZXfOyeWtiA6IIE7aZZQKQ+c
+	3t+q8+RyxkDCHG7GuUhMAw==;
+From: alice@example.test
+To: bob@example.net
+Subject: inboundparse dkim2 fixture
+
+Hello DKIM2.

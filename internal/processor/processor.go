@@ -19,6 +19,7 @@ import (
 type ProcessorConfig struct {
 	EnableSPF   bool
 	EnableDKIM  bool
+	EnableDKIM2 bool
 	EnableDMARC bool
 }
 
@@ -130,9 +131,9 @@ func (mp *MessageProcessor) ProcessMessage(ctx context.Context, r io.Reader, fro
 	}
 
 	// Perform authentication checks
-	if mp.config.EnableSPF || mp.config.EnableDKIM || mp.config.EnableDMARC {
+	if mp.config.EnableSPF || mp.config.EnableDKIM || mp.config.EnableDKIM2 || mp.config.EnableDMARC {
 		authStart := time.Now()
-		authResults, err := mp.performAuthenticationChecks(ctx, rawMessage, email.Headers, from, remoteIP, sessionLogger)
+		authResults, err := mp.performAuthenticationChecks(ctx, rawMessage, email.Headers, from, to, remoteIP, sessionLogger)
 		authDuration := time.Since(authStart)
 		mp.metrics.TrackMessageAuthDuration(authDuration)
 
@@ -175,25 +176,28 @@ func (mp *MessageProcessor) ProcessMessage(ctx context.Context, r io.Reader, fro
 }
 
 // performAuthenticationChecks runs all enabled authentication checks.
-// SPF and DKIM run concurrently; DMARC runs after both since it depends on their results.
-func (mp *MessageProcessor) performAuthenticationChecks(ctx context.Context, rawMessage string, headers letters.Headers, from string, remoteIP net.IP, sessionLogger observability.Logger) (domain.AuthenticationResults, error) {
+// SPF, DKIM, and DKIM2 run concurrently. DMARC waits on SPF and DKIM only.
+func (mp *MessageProcessor) performAuthenticationChecks(ctx context.Context, rawMessage string, headers letters.Headers, from string, to []string, remoteIP net.IP, sessionLogger observability.Logger) (domain.AuthenticationResults, error) {
 	results := domain.AuthenticationResults{}
 
 	sessionLogger.Debug().
 		Bool("spf_enabled", mp.config.EnableSPF).
 		Bool("dkim_enabled", mp.config.EnableDKIM).
+		Bool("dkim2_enabled", mp.config.EnableDKIM2).
 		Bool("dmarc_enabled", mp.config.EnableDMARC).
 		Msg("Starting authentication checks")
 
 	senderDomain := auth.ExtractDomainFromEmail(from)
 
-	// Run SPF and DKIM concurrently since they are independent
+	// SPF, RFC 6376 DKIM, and DKIM2 are independent.
 	var (
-		spfResult  *domain.SPFResult
-		dkimResult *domain.DKIMResult
-		spfErr     error
-		dkimErr    error
-		wg         sync.WaitGroup
+		spfResult   *domain.SPFResult
+		dkimResult  *domain.DKIMResult
+		dkim2Result *domain.DKIM2Result
+		spfErr      error
+		dkimErr     error
+		dkim2Err    error
+		wg          sync.WaitGroup
 	)
 
 	if mp.config.EnableSPF {
@@ -209,6 +213,14 @@ func (mp *MessageProcessor) performAuthenticationChecks(ctx context.Context, raw
 		go func() {
 			defer wg.Done()
 			dkimResult, dkimErr = mp.authChecker.CheckDKIM(ctx, rawMessage, sessionLogger, mp.metrics)
+		}()
+	}
+
+	if mp.config.EnableDKIM2 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			dkim2Result, dkim2Err = mp.authChecker.CheckDKIM2(ctx, rawMessage, from, to, sessionLogger, mp.metrics)
 		}()
 	}
 
@@ -237,7 +249,18 @@ func (mp *MessageProcessor) performAuthenticationChecks(ctx context.Context, raw
 		mp.metrics.TrackDKIMResult(dkimResult.Valid)
 	}
 
-	// DMARC depends on SPF and DKIM results, so it runs after both complete
+	if dkim2Err != nil {
+		sessionLogger.Warn().Err(dkim2Err).Msg("DKIM2 check failed")
+		mp.sentry.CaptureError(dkim2Err, map[string]interface{}{
+			"check_type": "dkim2",
+			"from":       from,
+		})
+	} else if dkim2Result != nil {
+		results.DKIM2 = dkim2Result
+		mp.metrics.TrackDKIM2Result(dkim2Result.Result, dkim2Result.Reason)
+	}
+
+	// DMARC depends on SPF and RFC 6376 DKIM. DKIM2 is not an input.
 	if mp.config.EnableDMARC {
 		dmarcResult, err := mp.authChecker.CheckDMARC(ctx, rawMessage, headers, results.SPF, results.DKIM, sessionLogger, mp.metrics)
 		if err != nil {
@@ -252,11 +275,16 @@ func (mp *MessageProcessor) performAuthenticationChecks(ctx context.Context, raw
 		}
 	}
 
-	sessionLogger.Info().
+	completed := sessionLogger.Info().
 		Interface("spf", results.SPF).
 		Interface("dkim", results.DKIM).
-		Interface("dmarc", results.DMARC).
-		Msg("Authentication checks completed")
+		Interface("dmarc", results.DMARC)
+	if results.DKIM2 != nil {
+		completed = completed.
+			Str("dkim2_result", results.DKIM2.Result).
+			Str("dkim2_reason", results.DKIM2.Reason)
+	}
+	completed.Msg("Authentication checks completed")
 
 	return results, nil
 }

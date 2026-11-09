@@ -39,6 +39,9 @@ func TestNew_DefaultValues(t *testing.T) {
 	if !cfg.EnableDKIM {
 		t.Error("Expected EnableDKIM to be true")
 	}
+	if !cfg.EnableDKIM2 {
+		t.Error("Expected EnableDKIM2 to be true")
+	}
 	if !cfg.EnableDMARC {
 		t.Error("Expected EnableDMARC to be true")
 	}

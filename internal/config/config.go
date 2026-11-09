@@ -43,6 +43,7 @@ type Config struct {
 	// Authentication Configuration
 	EnableSPF   bool
 	EnableDKIM  bool
+	EnableDKIM2 bool
 	EnableDMARC bool
 
 	// Observability Configuration
@@ -179,6 +180,7 @@ func New(options ...Option) *Config {
 		SentryEnv:      DefaultSentryEnv,
 		EnableSPF:      true,
 		EnableDKIM:     true,
+		EnableDKIM2:    true,
 		EnableDMARC:    true,
 		// Webhook defaults
 		WebhookMaxRetries:         DefaultWebhookMaxRetries,
@@ -221,6 +223,7 @@ func LoadFromFlags() (*Config, error) {
 		writeTimeout              = flag.Int("write-timeout", int(DefaultWriteTimeout.Seconds()), "Write timeout in seconds")
 		enableSPF                 = flag.Bool("enable-spf", true, "Enable SPF validation")
 		enableDKIM                = flag.Bool("enable-dkim", true, "Enable DKIM validation")
+		enableDKIM2               = flag.Bool("enable-dkim2", true, "Enable DKIM2 verification")
 		enableDMARC               = flag.Bool("enable-dmarc", true, "Enable DMARC validation")
 		certFile                  = flag.String("cert-file", "", "TLS certificate file")
 		keyFile                   = flag.String("key-file", "", "TLS key file")
@@ -272,6 +275,7 @@ func LoadFromFlags() (*Config, error) {
 	verboseVal := utils.GetEnvBool("VERBOSE", *verbose)
 	enableSPFVal := utils.GetEnvBool("ENABLE_SPF", *enableSPF)
 	enableDKIMVal := utils.GetEnvBool("ENABLE_DKIM", *enableDKIM)
+	enableDKIM2Val := utils.GetEnvBool("ENABLE_DKIM2", *enableDKIM2)
 	enableDMARCVal := utils.GetEnvBool("ENABLE_DMARC", *enableDMARC)
 	enableSentryVal := utils.GetEnvBool("ENABLE_SENTRY", *enableSentry)
 	sentryDSNVal := utils.GetEnv("SENTRY_DSN", *sentryDSN)
@@ -295,6 +299,7 @@ func LoadFromFlags() (*Config, error) {
 		WithAuth(enableSPFVal, enableDKIMVal, enableDMARCVal),
 		WithVerbose(verboseVal),
 	)
+	config.EnableDKIM2 = enableDKIM2Val
 
 	// Set webhook retry and rate limiting configuration
 	config.WebhookMaxRetries = webhookMaxRetriesVal

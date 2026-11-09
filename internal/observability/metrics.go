@@ -32,6 +32,7 @@ type MetricsCollector interface {
 	TrackMessage(size int64, success bool)
 	TrackSPFResult(result string)
 	TrackDKIMResult(valid bool)
+	TrackDKIM2Result(result, reason string)
 	TrackDMARCResult(result, policy string)
 	TrackWebhookRequest(statusCode int, duration time.Duration)
 	TrackWebhookRequestSize(requestSize, responseSize int64)
@@ -39,6 +40,7 @@ type MetricsCollector interface {
 	TrackWebhookError(errorType string)
 	TrackSPFDuration(duration time.Duration)
 	TrackDKIMDuration(duration time.Duration)
+	TrackDKIM2Duration(duration time.Duration)
 	TrackDMARCDuration(duration time.Duration)
 	TrackSPFResultByDomain(domain, result string)
 	TrackDKIMResultByDomain(domain, result string)
@@ -87,10 +89,12 @@ type metricsCollector struct {
 	// Authentication metrics
 	spfResults      *prometheus.CounterVec
 	dkimResults     *prometheus.CounterVec
+	dkim2Results    *prometheus.CounterVec
 	dmarcResults    *prometheus.CounterVec
 	dmarcPolicies   *prometheus.CounterVec
 	authChecksSPF   prometheus.Counter
 	authChecksDKIM  prometheus.Counter
+	authChecksDKIM2 prometheus.Counter
 	authChecksDMARC prometheus.Counter
 
 	// Webhook metrics
@@ -104,6 +108,7 @@ type metricsCollector struct {
 	// Authentication duration metrics
 	spfDuration   prometheus.Histogram
 	dkimDuration  prometheus.Histogram
+	dkim2Duration prometheus.Histogram
 	dmarcDuration prometheus.Histogram
 
 	// Domain-based authentication metrics
@@ -208,6 +213,10 @@ func newMetricsCollectorWithFactory(factory promauto.Factory) MetricsCollector {
 			Name: "dkim_results_total",
 			Help: "Total DKIM validation results",
 		}, []string{"result"}),
+		dkim2Results: factory.NewCounterVec(prometheus.CounterOpts{
+			Name: "dkim2_results_total",
+			Help: "Total DKIM2 verification results",
+		}, []string{"result", "reason"}),
 		dmarcResults: factory.NewCounterVec(prometheus.CounterOpts{
 			Name: "dmarc_results_total",
 			Help: "Total DMARC validation results",
@@ -223,6 +232,10 @@ func newMetricsCollectorWithFactory(factory promauto.Factory) MetricsCollector {
 		authChecksDKIM: factory.NewCounter(prometheus.CounterOpts{
 			Name: "auth_checks_dkim_total",
 			Help: "Total DKIM authentication checks performed",
+		}),
+		authChecksDKIM2: factory.NewCounter(prometheus.CounterOpts{
+			Name: "auth_checks_dkim2_total",
+			Help: "Total DKIM2 authentication checks performed",
 		}),
 		authChecksDMARC: factory.NewCounter(prometheus.CounterOpts{
 			Name: "auth_checks_dmarc_total",
@@ -267,6 +280,11 @@ func newMetricsCollectorWithFactory(factory promauto.Factory) MetricsCollector {
 		dkimDuration: factory.NewHistogram(prometheus.HistogramOpts{
 			Name:    "dkim_check_duration_seconds",
 			Help:    "Duration of DKIM authentication checks in seconds",
+			Buckets: prometheus.DefBuckets,
+		}),
+		dkim2Duration: factory.NewHistogram(prometheus.HistogramOpts{
+			Name:    "dkim2_check_duration_seconds",
+			Help:    "Duration of DKIM2 authentication checks in seconds",
 			Buckets: prometheus.DefBuckets,
 		}),
 		dmarcDuration: factory.NewHistogram(prometheus.HistogramOpts{
@@ -418,6 +436,17 @@ func (m *metricsCollector) TrackDKIMResult(valid bool) {
 	}
 }
 
+// TrackDKIM2Result records a DKIM2 result and reason. An empty reason is stored
+// as none so the label stays in the closed vocabulary. Results are not labeled
+// by signing domain.
+func (m *metricsCollector) TrackDKIM2Result(result, reason string) {
+	m.authChecksDKIM2.Inc()
+	if reason == "" {
+		reason = "none"
+	}
+	m.dkim2Results.WithLabelValues(result, reason).Inc()
+}
+
 // TrackDMARCResult records DMARC validation result and policy
 func (m *metricsCollector) TrackDMARCResult(result, policy string) {
 	m.authChecksDMARC.Inc()
@@ -461,6 +490,11 @@ func (m *metricsCollector) TrackSPFDuration(duration time.Duration) {
 // TrackDKIMDuration records DKIM check duration
 func (m *metricsCollector) TrackDKIMDuration(duration time.Duration) {
 	m.dkimDuration.Observe(duration.Seconds())
+}
+
+// TrackDKIM2Duration records DKIM2 check duration
+func (m *metricsCollector) TrackDKIM2Duration(duration time.Duration) {
+	m.dkim2Duration.Observe(duration.Seconds())
 }
 
 // TrackDMARCDuration records DMARC check duration
@@ -713,6 +747,9 @@ func (n *NoOpMetricsCollector) TrackSPFResult(result string) {}
 // TrackDKIMResult does nothing
 func (n *NoOpMetricsCollector) TrackDKIMResult(valid bool) {}
 
+// TrackDKIM2Result does nothing
+func (n *NoOpMetricsCollector) TrackDKIM2Result(result, reason string) {}
+
 // TrackDMARCResult does nothing
 func (n *NoOpMetricsCollector) TrackDMARCResult(result, policy string) {}
 
@@ -733,6 +770,9 @@ func (n *NoOpMetricsCollector) TrackSPFDuration(duration time.Duration) {}
 
 // TrackDKIMDuration does nothing
 func (n *NoOpMetricsCollector) TrackDKIMDuration(duration time.Duration) {}
+
+// TrackDKIM2Duration does nothing
+func (n *NoOpMetricsCollector) TrackDKIM2Duration(duration time.Duration) {}
 
 // TrackDMARCDuration does nothing
 func (n *NoOpMetricsCollector) TrackDMARCDuration(duration time.Duration) {}

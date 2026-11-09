@@ -20,6 +20,8 @@ func (m *mockMetricsCollector) TrackWebhookRetry(success bool)                  
 func (m *mockMetricsCollector) TrackWebhookError(errorType string)                         {}
 func (m *mockMetricsCollector) TrackSPFDuration(duration time.Duration)                    {}
 func (m *mockMetricsCollector) TrackDKIMDuration(duration time.Duration)                   {}
+func (m *mockMetricsCollector) TrackDKIM2Result(result, reason string)                     {}
+func (m *mockMetricsCollector) TrackDKIM2Duration(duration time.Duration)                  {}
 func (m *mockMetricsCollector) TrackDMARCDuration(duration time.Duration)                  {}
 func (m *mockMetricsCollector) TrackSPFResultByDomain(domain, result string)               {}
 func (m *mockMetricsCollector) TrackDKIMResultByDomain(domain, result string)              {}

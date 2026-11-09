@@ -8,10 +8,13 @@ import (
 	"inboundparse/internal/observability"
 	"inboundparse/internal/processor"
 	"inboundparse/internal/smtp"
+	"net"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
+
+	"github.com/croessner/dkim2"
 )
 
 // App represents the application
@@ -60,11 +63,31 @@ func NewApp(cfg *config.Config) (*App, error) {
 		metrics = &observability.NoOpMetricsCollector{}
 	}
 
+	// One verifier for the process. DNSPublicKeyProvider also supplies the
+	// draft-09 From-subdomain policy, so NewVerifier keeps that check on.
+	var dkim2Verifier *dkim2.Verifier
+	if cfg.EnableDKIM2 {
+		transport, err := dkim2.NewNetTXTTransport(net.DefaultResolver)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create DKIM2 DNS transport: %w", err)
+		}
+		provider, err := dkim2.NewDNSPublicKeyProvider(transport)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create DKIM2 key provider: %w", err)
+		}
+		dkim2Verifier, err = dkim2.NewVerifier(provider)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create DKIM2 verifier: %w", err)
+		}
+	}
+
 	// Initialize auth checker
 	authChecker := auth.NewAuthChecker(auth.AuthConfig{
-		EnableSPF:   cfg.EnableSPF,
-		EnableDKIM:  cfg.EnableDKIM,
-		EnableDMARC: cfg.EnableDMARC,
+		EnableSPF:     cfg.EnableSPF,
+		EnableDKIM:    cfg.EnableDKIM,
+		EnableDKIM2:   cfg.EnableDKIM2,
+		EnableDMARC:   cfg.EnableDMARC,
+		DKIM2Verifier: dkim2Verifier,
 	})
 
 	// Initialize webhook sender
@@ -95,6 +118,7 @@ func NewApp(cfg *config.Config) (*App, error) {
 		processor.ProcessorConfig{
 			EnableSPF:   cfg.EnableSPF,
 			EnableDKIM:  cfg.EnableDKIM,
+			EnableDKIM2: cfg.EnableDKIM2,
 			EnableDMARC: cfg.EnableDMARC,
 		},
 		authChecker,
@@ -166,6 +190,7 @@ func (a *App) Start() error {
 		Str("smtp_tls_address", a.config.ListenAddrTLS).
 		Bool("spf_enabled", a.config.EnableSPF).
 		Bool("dkim_enabled", a.config.EnableDKIM).
+		Bool("dkim2_enabled", a.config.EnableDKIM2).
 		Bool("dmarc_enabled", a.config.EnableDMARC).
 		Bool("metrics_enabled", a.config.EnableMetrics).
 		Bool("sentry_enabled", a.config.EnableSentry).
