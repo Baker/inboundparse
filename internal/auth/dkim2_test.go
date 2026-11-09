@@ -78,6 +78,34 @@ func TestDKIM2FixturesKeepCRLF(t *testing.T) {
 	}
 }
 
+func TestCheckDKIM2_UnsignedNonCRLFIsNone(t *testing.T) {
+	verifier := testDKIM2Verifier(t, false)
+	samples := []string{
+		"From: alice@example.test\nTo: bob@example.net\nSubject: hi\n\nbody\n",
+		"From: alice@example.test\r\nTo: bob@example.net\r\nSubject: hi\r\n\r\nbody\n",
+		"From: alice@example.test\n\nDKIM2-Signature: not a header\n",
+	}
+	for _, raw := range samples {
+		result := checkDKIM2(t, verifier, raw, "alice@example.test", []string{"bob@example.net"})
+		if result.Result != "none" || result.Reason != "" || len(result.Signatures) != 0 {
+			t.Fatalf("result = %#v, want none", result)
+		}
+	}
+}
+
+func TestCheckDKIM2_NonCRLFWithDKIM2FieldStaysPermerror(t *testing.T) {
+	verifier := testDKIM2Verifier(t, false)
+	for _, raw := range []string{
+		"DKIM2-Signature: v=1\nFrom: alice@example.test\n\nbody\n",
+		"Message-Instance: i=1\nFrom: alice@example.test\n\nbody\n",
+	} {
+		result := checkDKIM2(t, verifier, raw, "alice@example.test", []string{"bob@example.net"})
+		if result.Result != "permerror" || result.Reason != "malformed_message" {
+			t.Fatalf("result = %s/%s, want permerror/malformed_message", result.Result, result.Reason)
+		}
+	}
+}
+
 func TestCheckDKIM2_None(t *testing.T) {
 	raw := "From: alice@example.test\r\nTo: bob@example.net\r\nSubject: unsigned\r\n\r\nbody\r\n"
 	result := checkDKIM2(t, testDKIM2Verifier(t, false), raw, "", []string{"bob@example.net"})

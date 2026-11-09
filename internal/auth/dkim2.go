@@ -23,8 +23,10 @@ func NewDKIM2Checker(verifier *dkim2.Verifier) DKIM2Checker {
 }
 
 // CheckDKIM2 reports draft-09 verification. A message with no DKIM2 fields is
-// none. Protocol failures stay on the result. A canceled context is temperror
-// with reason unavailable so the webhook still receives a value.
+// none, including when the bytes are not strict CRLF and the verifier cannot
+// parse them. A message that does carry a DKIM2 field and cannot be parsed
+// stays permerror. Protocol failures stay on the result. A canceled context
+// is temperror with reason unavailable so the webhook still receives a value.
 func (c *dkim2Checker) CheckDKIM2(ctx context.Context, rawMessage string, from string, to []string, logger observability.Logger, metrics observability.MetricsCollector) (*domain.DKIM2Result, error) {
 	start := time.Now()
 	defer func() {
@@ -64,6 +66,12 @@ func (c *dkim2Checker) CheckDKIM2(ctx context.Context, rawMessage string, from s
 	}
 
 	result := mapDKIM2Assessment(assessment)
+	// A strict-CRLF parse failure is an applicable permerror before the
+	// verifier can see whether a DKIM2 field exists. Decide absence from
+	// the header names. Assess already ran on the original bytes.
+	if result.Result == "permerror" && result.Reason == "malformed_message" && !messageHasDKIM2Field(rawMessage) {
+		result = &domain.DKIM2Result{Result: "none"}
+	}
 	logger.Debug().
 		Str("result", result.Result).
 		Str("reason", result.Reason).
@@ -83,6 +91,27 @@ func bracketEnvelopePath(addr string) string {
 		return addr
 	}
 	return "<" + addr + ">"
+}
+
+// messageHasDKIM2Field reports whether the header block names a DKIM2 field.
+// The scan uses a copy so the bytes passed to Assess stay unchanged.
+func messageHasDKIM2Field(raw string) bool {
+	normalized := strings.ReplaceAll(raw, "\r\n", "\n")
+	header, _, _ := strings.Cut(normalized, "\n\n")
+	for _, line := range strings.Split(header, "\n") {
+		if strings.HasPrefix(line, " ") || strings.HasPrefix(line, "\t") {
+			continue
+		}
+		name, _, ok := strings.Cut(line, ":")
+		if !ok {
+			continue
+		}
+		switch strings.ToLower(strings.TrimSpace(name)) {
+		case "dkim2-signature", "message-instance":
+			return true
+		}
+	}
+	return false
 }
 
 func canceled(ctx context.Context, err error) bool {
